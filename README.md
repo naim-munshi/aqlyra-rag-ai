@@ -30,9 +30,9 @@
 - Cache: Redis
 - Infrastructure: Docker, Docker Compose
 
-## Project Structure
+### Project Structure
 
-```
+```text
 ihsan-raq-ai/
 ├── backend/
 │   ├── app/
@@ -50,16 +50,16 @@ ihsan-raq-ai/
 │   ├── tests/
 │   ├── uploads/
 │   ├── logs/
-│   ├── .env
-│   ├── alembic.ini
 │   ├── Dockerfile
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── alembic.ini
 ├── frontend/
 ├── docker/
 ├── docs/
 ├── scripts/
 ├── docker-compose.yml
-└── .gitignore
+├── LICENSE
+└── README.md
 ```
 
 ## Quick Start
