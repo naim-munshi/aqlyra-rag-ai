@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.document_unit import DocumentUnit
     from app.models.user import User
 
 
@@ -27,7 +28,8 @@ class Document(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('uploaded', 'queued', 'processing', 'ready', 'failed')",
+            "status IN "
+            "('uploaded', 'queued', 'processing', 'ready', 'failed')",
             name="ck_documents_status",
         ),
         Index(
@@ -150,4 +152,11 @@ class Document(Base):
 
     owner: Mapped["User"] = relationship(
         back_populates="documents",
+    )
+
+    units: Mapped[list["DocumentUnit"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DocumentUnit.unit_index",
     )
