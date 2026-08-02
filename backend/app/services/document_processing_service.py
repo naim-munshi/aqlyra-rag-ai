@@ -29,6 +29,7 @@ def _resolve_stored_document_path(
 
     try:
         document_path.relative_to(upload_root)
+
     except ValueError as exc:
         raise StoredDocumentNotFoundError(
             "Unsafe document storage path"
@@ -72,6 +73,7 @@ def _mark_document_failed(
 
     try:
         db.commit()
+
     except Exception:
         db.rollback()
 
@@ -81,7 +83,9 @@ def process_document(
     document: Document,
 ) -> Document:
     if document.status == "ready":
-        return document
+        raise DocumentProcessingConflictError(
+            "Document has already been processed"
+        )
 
     if document.status in {
         "processing",
@@ -165,6 +169,7 @@ def process_document(
             document_id=document_id,
             error=exc,
         )
+
         raise
 
 
