@@ -40,3 +40,35 @@ class DocumentListResponse(BaseModel):
     total: int = Field(ge=0)
     limit: int = Field(ge=1)
     offset: int = Field(ge=0)
+
+
+class DocumentUnitResponse(BaseModel):
+    id: str
+    document_id: str
+    unit_index: int = Field(ge=1)
+    unit_type: Literal[
+        "page",
+        "slide",
+        "sheet",
+        "section",
+        "text",
+    ]
+    source_label: str
+    content: str
+    content_hash: str
+    char_count: int = Field(ge=0)
+    word_count: int = Field(ge=0)
+    unit_metadata: dict[str, object]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentUnitListResponse(BaseModel):
+    document_id: str
+    document_status: DocumentStatus
+    items: list[DocumentUnitResponse]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)

@@ -13,11 +13,20 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.logging import app_logger
 from app.database.connection import get_db
 from app.models.user import User
+from app.parsers import DocumentParsingError
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
+    DocumentUnitListResponse,
+)
+from app.services.document_processing_service import (
+    DocumentProcessingConflictError,
+    StoredDocumentNotFoundError,
+    list_document_units,
+    process_document,
 )
 from app.services.document_service import (
     create_document,
@@ -54,28 +63,37 @@ async def upload_document(
         UploadFile,
         File(
             description=(
-                "PDF, DOCX, XLSX, PPTX, TXT, MD, or CSV document"
+                "PDF, DOCX, XLSX, PPTX, TXT, "
+                "MD, or CSV document"
             )
         ),
     ],
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
     try:
-        pending_upload = await save_upload_to_temporary_storage(
-            upload=file,
-            user_id=str(current_user.id),
+        pending_upload = (
+            await save_upload_to_temporary_storage(
+                upload=file,
+                user_id=str(current_user.id),
+            )
         )
 
     except FileTooLargeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            status_code=(
+                status.HTTP_413_CONTENT_TOO_LARGE
+            ),
             detail=str(exc),
         ) from exc
 
     except UnsupportedFileTypeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            status_code=(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+            ),
             detail=str(exc),
         ) from exc
 
@@ -91,21 +109,32 @@ async def upload_document(
     duplicate_document = get_document_by_checksum(
         db=db,
         user_id=str(current_user.id),
-        checksum_sha256=pending_upload.checksum_sha256,
+        checksum_sha256=(
+            pending_upload.checksum_sha256
+        ),
     )
 
     if duplicate_document is not None:
-        discard_pending_upload(pending_upload)
+        discard_pending_upload(
+            pending_upload
+        )
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "message": "This document has already been uploaded",
-                "document_id": duplicate_document.id,
+                "message": (
+                    "This document has already "
+                    "been uploaded"
+                ),
+                "document_id": (
+                    duplicate_document.id
+                ),
             },
         )
 
-    finalize_pending_upload(pending_upload)
+    finalize_pending_upload(
+        pending_upload
+    )
 
     try:
         return create_document(
@@ -134,7 +163,9 @@ def read_documents(
         int,
         Query(ge=0),
     ] = 0,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ) -> DocumentListResponse:
     documents, total = list_user_documents(
@@ -152,13 +183,132 @@ def read_documents(
     )
 
 
+@router.post(
+    "/{document_id}/process",
+    response_model=DocumentResponse,
+)
+def process_uploaded_document(
+    document_id: str,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    document = get_user_document(
+        db=db,
+        user_id=str(current_user.id),
+        document_id=document_id,
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    try:
+        processed_document = process_document(
+            db=db,
+            document=document,
+        )
+
+        app_logger.info(
+            f"Document processed: {document_id}"
+        )
+
+        return processed_document
+
+    except DocumentProcessingConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    except StoredDocumentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    except DocumentParsingError as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        app_logger.exception(
+            f"Unexpected document processing "
+            f"error for {document_id}: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail="Document processing failed",
+        ) from exc
+
+
+@router.get(
+    "/{document_id}/units",
+    response_model=DocumentUnitListResponse,
+)
+def read_document_units(
+    document_id: str,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=500),
+    ] = 100,
+    offset: Annotated[
+        int,
+        Query(ge=0),
+    ] = 0,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> DocumentUnitListResponse:
+    document = get_user_document(
+        db=db,
+        user_id=str(current_user.id),
+        document_id=document_id,
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    units, total = list_document_units(
+        db=db,
+        document_id=document.id,
+        limit=limit,
+        offset=offset,
+    )
+
+    return DocumentUnitListResponse(
+        document_id=document.id,
+        document_status=document.status,
+        items=units,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get(
     "/{document_id}",
     response_model=DocumentResponse,
 )
 def read_document(
     document_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
     document = get_user_document(
@@ -182,7 +332,9 @@ def read_document(
 )
 def delete_document(
     document_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
     document = get_user_document(
@@ -204,7 +356,9 @@ def delete_document(
         document=document,
     )
 
-    delete_stored_file(storage_path)
+    delete_stored_file(
+        storage_path
+    )
 
     return Response(
         status_code=status.HTTP_204_NO_CONTENT
