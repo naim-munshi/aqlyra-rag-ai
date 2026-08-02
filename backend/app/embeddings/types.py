@@ -1,17 +1,31 @@
 from dataclasses import dataclass
-from typing import Protocol, Sequence, runtime_checkable
+from typing import (
+    Protocol,
+    Sequence,
+    runtime_checkable,
+)
 
 
 class EmbeddingError(Exception):
     """Base exception for embedding failures."""
 
 
-class EmbeddingValidationError(EmbeddingError):
+class EmbeddingValidationError(
+    EmbeddingError
+):
     """Raised when embedding input or output is invalid."""
 
 
-class EmbeddingProviderNotFoundError(EmbeddingError):
+class EmbeddingProviderNotFoundError(
+    EmbeddingError
+):
     """Raised when an embedding provider is not registered."""
+
+
+class EmbeddingProviderRequestError(
+    EmbeddingError
+):
+    """Raised when an external embedding request fails."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +60,10 @@ class EmbeddingProviderInfo:
 @runtime_checkable
 class EmbeddingProvider(Protocol):
     @property
-    def info(self) -> EmbeddingProviderInfo:
-        """Return the provider configuration."""
+    def info(
+        self,
+    ) -> EmbeddingProviderInfo:
+        """Return provider configuration."""
 
     def embed_documents(
         self,

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.embeddings import (
     EmbeddingProvider,
-    create_embedding_provider,
+    create_configured_embedding_provider,
     validate_embedding_vector,
 )
 from app.models.document_chunk import DocumentChunk
@@ -52,10 +52,7 @@ def create_chunk_embeddings(
 
     active_provider = (
         provider
-        or create_embedding_provider(
-            provider_name="deterministic",
-            dimension=EMBEDDING_DIMENSION,
-        )
+        or create_configured_embedding_provider()
     )
 
     provider_info = active_provider.info
@@ -164,8 +161,11 @@ def create_chunk_embeddings(
                     "source_label": (
                         chunk.source_label
                     ),
-                    "cost_mode": (
-                        "local-development"
+                    "provider_name": (
+                        provider_info.provider_name
+                    ),
+                    "model_name": (
+                        provider_info.model_name
                     ),
                 },
             )

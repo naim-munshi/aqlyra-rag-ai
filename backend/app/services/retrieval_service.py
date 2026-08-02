@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.embeddings import (
     EmbeddingProvider,
-    create_embedding_provider,
+    create_configured_embedding_provider,
     validate_embedding_vector,
 )
 from app.models.document import Document
@@ -26,10 +26,7 @@ def search_similar_chunks(
 ) -> list[RetrievalHit]:
     active_provider = (
         provider
-        or create_embedding_provider(
-            provider_name="deterministic",
-            dimension=EMBEDDING_DIMENSION,
-        )
+        or create_configured_embedding_provider()
     )
 
     provider_info = active_provider.info
