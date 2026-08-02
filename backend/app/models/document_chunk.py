@@ -21,6 +21,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.document_unit import DocumentUnit
+    from app.models.embedding_record import EmbeddingRecord
 
 
 class DocumentChunk(Base):
@@ -261,4 +262,16 @@ class DocumentChunk(Base):
         "DocumentChunk",
         back_populates="parent",
         passive_deletes=True,
+    )
+
+    embedding_records: Mapped[
+        list["EmbeddingRecord"]
+    ] = relationship(
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by=(
+            "EmbeddingRecord.provider_name, "
+            "EmbeddingRecord.model_name"
+        ),
     )

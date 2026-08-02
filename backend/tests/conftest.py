@@ -18,7 +18,6 @@ TEST_UPLOAD_DIR = Path(
     )
 )
 
-# These values must exist before app modules are imported.
 os.environ["SECRET_KEY"] = (
     "test-only-secret-key-do-not-use-in-production"
 )
@@ -38,18 +37,17 @@ from app.models import (
     Document,
     DocumentChunk,
     DocumentUnit,
+    EmbeddingRecord,
     User,
 )
 
-
-# Importing the models registers their tables in Base.metadata.
 _REGISTERED_MODELS = (
     User,
     Document,
     DocumentUnit,
     DocumentChunk,
+    EmbeddingRecord,
 )
-
 
 test_engine = create_engine(
     TEST_DATABASE_URL,
@@ -136,7 +134,11 @@ def db_session() -> Generator[
 @pytest.fixture
 def client(
     db_session: Session,
-) -> Generator[TestClient, None, None]:
+) -> Generator[
+    TestClient,
+    None,
+    None,
+]:
     def override_get_db() -> Generator[
         Session,
         None,
@@ -149,7 +151,9 @@ def client(
     ] = override_get_db
 
     try:
-        with TestClient(app) as test_client:
+        with TestClient(
+            app
+        ) as test_client:
             yield test_client
 
     finally:

@@ -12,6 +12,9 @@ from app.parsers import parse_document
 from app.services.chunk_service import (
     create_document_chunks,
 )
+from app.services.embedding_service import (
+    create_chunk_embeddings,
+)
 
 
 class DocumentProcessingConflictError(Exception):
@@ -186,13 +189,19 @@ def process_document(
         ]
 
         db.add_all(extracted_units)
-
         db.flush()
 
-        create_document_chunks(
+        chunks = create_document_chunks(
             db=db,
             document=document,
             units=extracted_units,
+        )
+
+        db.flush()
+
+        create_chunk_embeddings(
+            db=db,
+            chunks=chunks,
         )
 
         document.page_count = (
