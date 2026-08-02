@@ -9,10 +9,10 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,10 +32,10 @@ class Document(Base):
             "('uploaded', 'queued', 'processing', 'ready', 'failed')",
             name="ck_documents_status",
         ),
-        Index(
-            "ix_documents_user_checksum",
+        UniqueConstraint(
             "user_id",
             "checksum_sha256",
+            name="uq_documents_user_checksum",
         ),
     )
 

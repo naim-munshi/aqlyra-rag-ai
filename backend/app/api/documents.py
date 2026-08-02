@@ -29,6 +29,7 @@ from app.services.document_processing_service import (
     process_document,
 )
 from app.services.document_service import (
+    DuplicateDocumentError,
     create_document,
     delete_document_record,
     get_document_by_checksum,
@@ -142,6 +143,36 @@ async def upload_document(
             user_id=str(current_user.id),
             pending_upload=pending_upload,
         )
+
+    except DuplicateDocumentError as exc:
+        delete_stored_file(
+            pending_upload.relative_storage_path
+        )
+
+        existing_document = get_document_by_checksum(
+            db=db,
+            user_id=str(current_user.id),
+            checksum_sha256=(
+                pending_upload.checksum_sha256
+            ),
+        )
+
+        detail: dict[str, str] = {
+            "message": (
+                "This document has already "
+                "been uploaded"
+            ),
+        }
+
+        if existing_document is not None:
+            detail["document_id"] = (
+                existing_document.id
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+        ) from exc
 
     except Exception:
         delete_stored_file(
