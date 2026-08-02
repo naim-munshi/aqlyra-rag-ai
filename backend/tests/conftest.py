@@ -34,9 +34,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.database.base import Base
 from app.database.connection import get_db
 from app.main import app
-from app.models.document import Document
-from app.models.document_unit import DocumentUnit
-from app.models.user import User
+from app.models import (
+    Document,
+    DocumentChunk,
+    DocumentUnit,
+    User,
+)
 
 
 # Importing the models registers their tables in Base.metadata.
@@ -44,6 +47,7 @@ _REGISTERED_MODELS = (
     User,
     Document,
     DocumentUnit,
+    DocumentChunk,
 )
 
 

@@ -20,6 +20,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.document import Document
+    from app.models.document_chunk import DocumentChunk
 
 
 class DocumentUnit(Base):
@@ -131,4 +132,11 @@ class DocumentUnit(Base):
 
     document: Mapped["Document"] = relationship(
         back_populates="units",
+    )
+
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+        back_populates="unit",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DocumentChunk.chunk_index",
     )
