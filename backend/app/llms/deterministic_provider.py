@@ -5,6 +5,11 @@ from app.llms.types import (
 )
 
 
+DEFAULT_DETERMINISTIC_RESPONSE = (
+    "Deterministic grounded answer [S1]."
+)
+
+
 class DeterministicLLMProvider:
     """
     Predictable provider for tests and local pipeline checks.
@@ -16,11 +21,13 @@ class DeterministicLLMProvider:
         self,
         *,
         response_text: str = (
-            "Deterministic test response."
+            DEFAULT_DETERMINISTIC_RESPONSE
         ),
         max_output_tokens: int = 800,
     ) -> None:
-        cleaned_response = response_text.strip()
+        cleaned_response = (
+            response_text.strip()
+        )
 
         if not cleaned_response:
             raise LLMValidationError(
@@ -33,12 +40,18 @@ class DeterministicLLMProvider:
                 "max_output_tokens must be positive"
             )
 
-        self._response_text = cleaned_response
+        self._response_text = (
+            cleaned_response
+        )
 
         self._info = LLMProviderInfo(
             provider_name="deterministic",
-            model_name="deterministic-rag-v1",
-            max_output_tokens=max_output_tokens,
+            model_name=(
+                "deterministic-rag-v1"
+            ),
+            max_output_tokens=(
+                max_output_tokens
+            ),
         )
 
     @property
@@ -66,5 +79,7 @@ class DeterministicLLMProvider:
             provider_name=(
                 self.info.provider_name
             ),
-            model_name=self.info.model_name,
+            model_name=(
+                self.info.model_name
+            ),
         )

@@ -2,6 +2,7 @@ from typing import Any
 
 from app.config.settings import settings
 from app.llms.deterministic_provider import (
+    DEFAULT_DETERMINISTIC_RESPONSE,
     DeterministicLLMProvider,
 )
 from app.llms.openai_provider import (
@@ -30,7 +31,7 @@ def create_llm_provider(
     timeout_seconds: float = 60.0,
     max_retries: int = 2,
     deterministic_response: str = (
-        "Deterministic test response."
+        DEFAULT_DETERMINISTIC_RESPONSE
     ),
     client: Any | None = None,
 ) -> LLMProvider:
@@ -38,7 +39,9 @@ def create_llm_provider(
         provider_name.strip().lower()
     )
 
-    if normalized_provider == "deterministic":
+    if normalized_provider == (
+        "deterministic"
+    ):
         return DeterministicLLMProvider(
             response_text=(
                 deterministic_response
@@ -63,7 +66,9 @@ def create_llm_provider(
         )
 
     supported = ", ".join(
-        sorted(SUPPORTED_LLM_PROVIDERS)
+        sorted(
+            SUPPORTED_LLM_PROVIDERS
+        )
     )
 
     raise LLMValidationError(
@@ -76,11 +81,14 @@ def create_llm_provider(
 def create_configured_llm_provider(
 ) -> LLMProvider:
     return create_llm_provider(
-        provider_name=settings.LLM_PROVIDER,
+        provider_name=(
+            settings.LLM_PROVIDER
+        ),
         model_name=settings.LLM_MODEL,
         api_key=settings.OPENAI_API_KEY,
         max_output_tokens=(
-            settings.LLM_MAX_OUTPUT_TOKENS
+            settings
+            .LLM_MAX_OUTPUT_TOKENS
         ),
         timeout_seconds=(
             settings.LLM_TIMEOUT_SECONDS
