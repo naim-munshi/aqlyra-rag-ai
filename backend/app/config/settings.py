@@ -38,28 +38,27 @@ class Settings(BaseSettings):
     EMBEDDING_PROVIDER: str = (
         "deterministic"
     )
-
     EMBEDDING_MODEL: str = (
         "text-embedding-3-small"
     )
-
     EMBEDDING_DIMENSION: int = 384
-
     EMBEDDING_MAX_BATCH_SIZE: int = 128
-
     EMBEDDING_TIMEOUT_SECONDS: float = 30.0
-
     EMBEDDING_MAX_RETRIES: int = 3
+
+    # LLM generation
+    LLM_PROVIDER: str = "deterministic"
+    LLM_MODEL: str = "gpt-5"
+    LLM_MAX_OUTPUT_TOKENS: int = 800
+    LLM_TIMEOUT_SECONDS: float = 60.0
+    LLM_MAX_RETRIES: int = 2
 
     # Document uploads
     UPLOAD_DIR: Path = Path("uploads")
-
     MAX_UPLOAD_SIZE_MB: int = 25
-
     UPLOAD_CHUNK_SIZE_BYTES: int = (
         1_048_576
     )
-
     ALLOWED_DOCUMENT_EXTENSIONS: str = (
         ".pdf,.docx,.xlsx,.pptx,"
         ".txt,.md,.csv"
@@ -85,14 +84,31 @@ class Settings(BaseSettings):
     ) -> str:
         normalized = value.strip().lower()
 
-        allowed_providers = {
+        if normalized not in {
             "deterministic",
             "openai",
-        }
-
-        if normalized not in allowed_providers:
+        }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
+                "'deterministic' or 'openai'"
+            )
+
+        return normalized
+
+    @field_validator("LLM_PROVIDER")
+    @classmethod
+    def validate_llm_provider(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "deterministic",
+            "openai",
+        }:
+            raise ValueError(
+                "LLM_PROVIDER must be "
                 "'deterministic' or 'openai'"
             )
 
@@ -101,61 +117,61 @@ class Settings(BaseSettings):
     @field_validator(
         "EMBEDDING_DIMENSION",
         "EMBEDDING_MAX_BATCH_SIZE",
+        "LLM_MAX_OUTPUT_TOKENS",
     )
     @classmethod
     def validate_positive_integer(
         cls,
         value: int,
     ) -> int:
-        if value <= 0:
+        if value < 1:
             raise ValueError(
-                "Embedding numeric settings "
-                "must be positive"
+                "Value must be positive"
             )
 
         return value
 
     @field_validator(
-        "EMBEDDING_MAX_RETRIES"
+        "EMBEDDING_MAX_RETRIES",
+        "LLM_MAX_RETRIES",
     )
     @classmethod
-    def validate_retry_count(
+    def validate_nonnegative_integer(
         cls,
         value: int,
     ) -> int:
         if value < 0:
             raise ValueError(
-                "EMBEDDING_MAX_RETRIES "
-                "cannot be negative"
+                "Retry count cannot be negative"
             )
 
         return value
 
     @field_validator(
-        "EMBEDDING_TIMEOUT_SECONDS"
+        "EMBEDDING_TIMEOUT_SECONDS",
+        "LLM_TIMEOUT_SECONDS",
     )
     @classmethod
-    def validate_embedding_timeout(
+    def validate_positive_timeout(
         cls,
         value: float,
     ) -> float:
         if value <= 0:
             raise ValueError(
-                "EMBEDDING_TIMEOUT_SECONDS "
-                "must be positive"
+                "Timeout must be positive"
             )
 
         return value
 
     @model_validator(mode="after")
-    def validate_embedding_configuration(
+    def validate_provider_configuration(
         self,
     ) -> Self:
         if self.EMBEDDING_DIMENSION != 384:
             raise ValueError(
-                "EMBEDDING_DIMENSION must remain "
-                "384 until the pgvector schema "
-                "is migrated"
+                "EMBEDDING_DIMENSION must be 384 "
+                "because the database vector "
+                "column uses VECTOR(384)"
             )
 
         if not self.EMBEDDING_MODEL.strip():
@@ -163,13 +179,24 @@ class Settings(BaseSettings):
                 "EMBEDDING_MODEL cannot be empty"
             )
 
-        if (
+        if not self.LLM_MODEL.strip():
+            raise ValueError(
+                "LLM_MODEL cannot be empty"
+            )
+
+        uses_openai = (
             self.EMBEDDING_PROVIDER == "openai"
+            or self.LLM_PROVIDER == "openai"
+        )
+
+        if (
+            uses_openai
             and not self.OPENAI_API_KEY.strip()
         ):
             raise ValueError(
-                "OPENAI_API_KEY is required when "
-                "EMBEDDING_PROVIDER=openai"
+                "OPENAI_API_KEY is required "
+                "when an OpenAI provider "
+                "is enabled"
             )
 
         return self
