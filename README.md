@@ -16,10 +16,13 @@ The frontend is not part of the repository yet. My current focus is the backend 
 | Embedding storage and vector retrieval | Implemented |
 | Grounded answer generation | Implemented |
 | Citation reference validation | Implemented |
-| Frontend and deployment | Not started |
-| Latest local test checkpoint | 86 passing tests |
+| Dockerized local runtime | Implemented |
+| GitHub Actions CI | Implemented |
+| Frontend | Not started |
+| Cloud deployment | Not started |
+| Latest test checkpoint | 87 passed |
 
-The test count is a local development checkpoint. A CI workflow has not been added yet.
+The automated suite runs with deterministic embedding and LLM providers, both locally and in GitHub Actions.
 
 ## What works
 
@@ -102,7 +105,7 @@ Changing an embedding configuration should not require parsing and chunking the 
 | Document parsing | pypdf, python-docx, python-pptx, openpyxl |
 | LLM and embeddings | OpenAI SDK, deterministic test providers |
 | Local infrastructure | Docker Compose |
-| Tests | pytest, FastAPI TestClient |
+| Tests and CI | pytest, FastAPI TestClient, GitHub Actions |
 
 ## Repository structure
 
@@ -131,14 +134,18 @@ ihsan-rag-ai/
 │   │   ├── services/
 │   │   └── main.py
 │   ├── tests/
+│   ├── .dockerignore
 │   ├── .env.example
 │   ├── alembic.ini
+│   ├── docker-entrypoint.sh
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── RAG_PIPELINE.md
 ├── .github/
+│   └── workflows/
+│       └── backend-tests.yml
 ├── .gitignore
 ├── docker-compose.yml
 ├── LICENSE
@@ -164,6 +171,7 @@ ihsan-rag-ai/
 | `backend/alembic/versions/` | Database migration history |
 | `backend/tests/` | Unit and integration tests |
 | `docs/` | Detailed architecture and RAG pipeline notes |
+| `.github/workflows/backend-tests.yml` | Runs database migrations and backend tests in GitHub Actions |
 
 ## Where the main logic lives
 
@@ -187,20 +195,50 @@ ihsan-rag-ai/
 
 - Git
 - Docker Desktop
-- Python 3
+- Python 3.14 for direct local backend development
 
-### Setup
+### Docker quick start
 
 ```bash
 git clone https://github.com/naim-munshi/ihsan-rag-ai.git
 cd ihsan-rag-ai
 
-docker compose up -d
+docker compose up --build -d
+docker compose ps
+```
+
+The backend entrypoint waits for PostgreSQL, enables pgvector, applies Alembic migrations, and then starts FastAPI.
+
+Verify the runtime:
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/v1/health
+curl -fsS http://127.0.0.1:8000/
+```
+
+Swagger UI is available at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Stop the services without deleting the database and upload volumes:
+
+```bash
+docker compose down
+```
+
+### Local backend development
+
+The backend can also run directly while PostgreSQL remains in Docker:
+
+```bash
+docker compose up -d postgres
 
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 cp .env.example .env
 alembic upgrade head
@@ -208,9 +246,8 @@ alembic upgrade head
 python -m uvicorn app.main:app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000` and Swagger UI is available at `http://127.0.0.1:8000/docs`.
+The checked-in environment example uses deterministic providers. OpenAI providers require an API key in the private `.env` file. The real `.env` file must not be committed.
 
-The checked-in environment example uses deterministic providers. For OpenAI, add the API key to the private `.env` file and change the relevant provider settings. The real `.env` file must not be committed.
 
 ## API endpoints
 
@@ -265,6 +302,8 @@ From the backend directory:
 ```bash
 python -m pytest
 ```
+
+The current checkpoint is `87 passed`. GitHub Actions runs the same suite for relevant pushes and pull requests to `main`.
 
 The suite currently covers:
 
