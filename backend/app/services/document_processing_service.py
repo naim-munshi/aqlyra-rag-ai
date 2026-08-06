@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import utc_now_naive
 from app.config.settings import settings
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
@@ -89,7 +90,7 @@ def _mark_document_failed(
         error_message
     )
     failed_document.processed_at = (
-        datetime.utcnow()
+        utc_now_naive()
     )
 
     try:
@@ -219,7 +220,7 @@ def process_document(
         document.status = "ready"
         document.error_message = None
         document.processed_at = (
-            datetime.utcnow()
+            utc_now_naive()
         )
 
         db.commit()
