@@ -4,7 +4,7 @@ This file records how the backend is currently put together and why a few choice
 
 ## System boundary
 
-Ihsan RAG AI is currently a backend service. A client can register, upload private documents, process them, search them, and request a grounded answer. The backend owns authentication, storage coordination, parsing, chunking, embeddings, retrieval, and answer validation.
+Aqlyra RAG AI is currently a backend service. A client can register, upload private documents, process them, search them, and request a grounded answer. The backend owns authentication, storage coordination, parsing, chunking, embeddings, retrieval, and answer validation.
 
 There is no frontend or background worker in the repository yet.
 

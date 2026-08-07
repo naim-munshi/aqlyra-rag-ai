@@ -1,4 +1,4 @@
-# Ihsan RAG AI
+# Aqlyra RAG AI
 
 I built this project to understand what a RAG system needs beyond a notebook demo.
 
@@ -112,7 +112,7 @@ Changing an embedding configuration should not require parsing and chunking the 
 The tree below shows the repository at a folder level. Generated folders such as `.venv`, `__pycache__`, test caches, and local uploads are intentionally left out.
 
 ```text
-ihsan-rag-ai/
+aqlyra-rag-ai/
 ├── backend/
 │   ├── alembic/
 │   │   └── versions/
@@ -200,8 +200,8 @@ ihsan-rag-ai/
 ### Docker quick start
 
 ```bash
-git clone https://github.com/naim-munshi/ihsan-rag-ai.git
-cd ihsan-rag-ai
+git clone https://github.com/naim-munshi/aqlyra-rag-ai.git
+cd aqlyra-rag-ai
 
 docker compose up --build -d
 docker compose ps

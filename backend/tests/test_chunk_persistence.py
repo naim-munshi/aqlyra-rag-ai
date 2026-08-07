@@ -118,7 +118,7 @@ def test_processing_persists_content_chunks(
 
     content = (
         "# Introduction\n\n"
-        "Ihsan RAG AI processes "
+        "Aqlyra RAG AI processes "
         "documents securely.\n\n"
         "# Retrieval\n\n"
         "The system retrieves relevant "

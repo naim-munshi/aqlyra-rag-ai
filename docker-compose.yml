@@ -1,14 +1,14 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: ihsan-postgres
+    container_name: aqlyra-postgres
 
     restart: unless-stopped
 
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ihsan_raq_ai
+      POSTGRES_DB: aqlyra_rag_ai
 
     ports:
       - "5432:5432"
@@ -19,7 +19,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U postgres -d ihsan_raq_ai
+        - pg_isready -U postgres -d aqlyra_rag_ai
       interval: 5s
       timeout: 5s
       retries: 10
@@ -30,7 +30,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
 
-    container_name: ihsan-backend
+    container_name: aqlyra-backend
 
     restart: unless-stopped
 
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
 
     environment:
-      PROJECT_NAME: Ihsan RAG AI
+      PROJECT_NAME: Aqlyra RAG AI
       VERSION: 1.0.0
       API_V1_STR: /api/v1
       DEBUG: "false"
@@ -49,7 +49,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
 
       DATABASE_URL: >-
-        postgresql+psycopg://postgres:postgres@postgres:5432/ihsan_raq_ai
+        postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai
 
       REDIS_URL: redis://localhost:6379/0
 

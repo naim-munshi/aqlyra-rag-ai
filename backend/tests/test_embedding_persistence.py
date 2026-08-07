@@ -54,7 +54,7 @@ def upload_and_process(
 ) -> str:
     content = (
         "# Embedding Pipeline\n\n"
-        "Ihsan RAG AI converts document chunks "
+        "Aqlyra RAG AI converts document chunks "
         "into vector representations.\n\n"
         "# Retrieval\n\n"
         "Vector similarity helps locate relevant "

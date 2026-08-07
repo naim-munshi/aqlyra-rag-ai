@@ -41,7 +41,7 @@ def upload_test_document(
 ):
     content = (
         "# Introduction\n\n"
-        "Ihsan RAG AI securely processes documents.\n\n"
+        "Aqlyra RAG AI securely processes documents.\n\n"
         "# Retrieval\n\n"
         "Relevant evidence is retrieved with citations.\n"
     ).encode("utf-8")

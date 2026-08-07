@@ -48,7 +48,7 @@ def upload_markdown_document(
             "file": (
                 "rag-test.md",
                 (
-                    "# Ihsan RAG AI\n\n"
+                    "# Aqlyra RAG AI\n\n"
                     "This document explains secure "
                     "retrieval-augmented generation."
                 ).encode("utf-8"),

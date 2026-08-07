@@ -25,7 +25,7 @@ def create_source(
 
 def test_short_unit_creates_single_content_chunk() -> None:
     source = create_source(
-        "Ihsan RAG AI retrieves evidence "
+        "Aqlyra RAG AI retrieves evidence "
         "and produces cited answers."
     )
 

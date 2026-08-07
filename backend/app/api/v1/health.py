@@ -7,6 +7,6 @@ router = APIRouter()
 async def health():
     return {
         "status": "healthy",
-        "service": "ihsan-raq-ai",
+        "service": "aqlyra-rag-ai",
         "version": "1.0.0",
     }

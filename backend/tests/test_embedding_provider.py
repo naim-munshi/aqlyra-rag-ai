@@ -76,7 +76,7 @@ def test_embedding_has_correct_dimension_and_norm() -> None:
     )
 
     vector = provider.embed_query(
-        "Ihsan RAG AI embedding pipeline"
+        "Aqlyra RAG AI embedding pipeline"
     )
 
     magnitude = math.sqrt(

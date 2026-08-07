@@ -13,7 +13,7 @@ from pydantic_settings import (
 
 class Settings(BaseSettings):
     # Project
-    PROJECT_NAME: str = "Ihsan RAG AI"
+    PROJECT_NAME: str = "Aqlyra RAG AI"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = False

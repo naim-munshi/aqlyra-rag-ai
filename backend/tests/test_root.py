@@ -10,6 +10,6 @@ def test_root_endpoint(
 
     payload = response.json()
 
-    assert payload["project"] == "Ihsan RAG AI"
+    assert payload["project"] == "Aqlyra RAG AI"
     assert payload["status"] == "running"
     assert payload["version"] == "1.0.0"
