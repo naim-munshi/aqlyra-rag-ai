@@ -3,16 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ChevronDown,
   CircleHelp,
   FileText,
   FolderPlus,
-  History,
-  House,
-  Library,
   LogOut,
   MessageSquareText,
   Plus,
-  Search,
   Settings,
   Sparkles,
 } from "lucide-react";
@@ -25,34 +22,6 @@ type SidebarProps = {
   user: UserResponse;
 };
 
-const navigation = [
-  {
-    label: "Home",
-    icon: House,
-  },
-  {
-    label: "Documents",
-    icon: FileText,
-  },
-  {
-    label: "Collections",
-    icon: Library,
-  },
-  {
-    label: "RAG Chat",
-    icon: MessageSquareText,
-    active: true,
-  },
-  {
-    label: "Retrieval",
-    icon: Search,
-  },
-  {
-    label: "History",
-    icon: History,
-  },
-];
-
 export function Sidebar({
   user,
 }: SidebarProps) {
@@ -61,7 +30,39 @@ export function Sidebar({
   const [settingsOpen, setSettingsOpen] =
     useState(false);
 
+  const [
+    profileMenuOpen,
+    setProfileMenuOpen,
+  ] = useState(false);
+
+  function startNewChat() {
+    setProfileMenuOpen(false);
+
+    window.dispatchEvent(
+      new Event("aqlyra:new-chat"),
+    );
+  }
+
+  function openDocuments() {
+    window.dispatchEvent(
+      new Event("aqlyra:open-documents"),
+    );
+  }
+
+  function focusChat() {
+    window.dispatchEvent(
+      new Event("aqlyra:focus-chat"),
+    );
+  }
+
+  function openSettings() {
+    setProfileMenuOpen(false);
+    setSettingsOpen(true);
+  }
+
   async function handleLogout() {
+    setProfileMenuOpen(false);
+
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
@@ -85,18 +86,27 @@ export function Sidebar({
         <div className="mt-7 space-y-2">
           <button
             type="button"
-            className="flex h-11 w-full items-center gap-3 rounded-xl border border-[var(--aq-cyan)] bg-[var(--aq-card)] px-4 text-sm font-semibold text-[var(--aq-text)] transition hover:bg-[var(--aq-control)]"
+            disabled
+            title="Projects coming later"
+            className="flex h-11 w-full items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm font-semibold text-[var(--aq-muted)]"
           >
             <FolderPlus
               size={18}
               strokeWidth={1.8}
             />
 
-            <span>New project</span>
+            <span className="flex-1 text-left">
+              New project
+            </span>
+
+            <span className="text-[8px] font-medium">
+              Soon
+            </span>
           </button>
 
           <button
             type="button"
+            onClick={startNewChat}
             className="flex h-11 w-full items-center gap-3 rounded-xl bg-[var(--aq-blue)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--aq-blue-hover)]"
           >
             <Plus
@@ -104,46 +114,39 @@ export function Sidebar({
               strokeWidth={2}
             />
 
-            <span>New chat</span>
+            New chat
           </button>
         </div>
 
-        <nav className="mt-5 space-y-1">
-          {navigation.map((item) => {
-            const Icon = item.icon;
+        <nav className="mt-6 space-y-1">
+          <button
+            type="button"
+            onClick={openDocuments}
+            className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-[var(--aq-muted)] transition hover:bg-[var(--aq-card)] hover:text-[var(--aq-text)]"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-panel)]">
+              <FileText size={15} />
+            </span>
 
-            return (
-              <button
-                key={item.label}
-                type="button"
-                className={[
-                  "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm transition",
-                  item.active
-                    ? "bg-[var(--aq-blue-muted)] font-semibold text-[var(--aq-text)]"
-                    : "text-[var(--aq-muted)] hover:bg-[var(--aq-card)] hover:text-[var(--aq-text)]",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "flex h-8 w-8 items-center justify-center rounded-full border",
-                    item.active
-                      ? "border-[var(--aq-blue)] bg-[var(--aq-blue)] text-white"
-                      : "border-[var(--aq-border)] bg-[var(--aq-panel)] text-[var(--aq-muted)]",
-                  ].join(" ")}
-                >
-                  <Icon
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                </span>
+            Documents
+          </button>
 
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+          <button
+            type="button"
+            onClick={focusChat}
+            className="flex h-11 w-full items-center gap-3 rounded-xl bg-[var(--aq-blue-muted)] px-3 text-sm font-semibold"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--aq-blue)] text-white">
+              <MessageSquareText
+                size={15}
+              />
+            </span>
+
+            RAG Chat
+          </button>
         </nav>
 
-        <div className="mt-auto">
+        <div className="mt-auto pt-5">
           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-4">
             <div className="flex items-center gap-2">
               <Sparkles
@@ -151,14 +154,14 @@ export function Sidebar({
                 className="text-[var(--aq-cyan)]"
               />
 
-              <p className="text-sm font-bold text-[var(--aq-text)]">
+              <p className="text-sm font-bold">
                 Aqlyra Plus
               </p>
             </div>
 
             <p className="mt-3 text-xs leading-5 text-[var(--aq-muted)]">
-              More storage, higher limits,
-              advanced voice and team tools.
+              Higher limits and premium workspace
+              features.
             </p>
 
             <button
@@ -169,55 +172,117 @@ export function Sidebar({
             </button>
           </div>
 
-          <div className="mt-5 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3">
-            <div className="flex items-center gap-3">
+          <div className="relative mt-4">
+            {profileMenuOpen && (
+              <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-40 overflow-hidden rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl">
+                <div className="border-b border-[var(--aq-border)] px-3 pb-3 pt-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--aq-blue)] text-xs font-bold text-white">
+                      {user.username
+                        .slice(0, 1)
+                        .toUpperCase()}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold">
+                        {user.username}
+                      </p>
+
+                      <p className="mt-1 truncate text-[9px] text-[var(--aq-muted)]">
+                        {user.email}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="py-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileMenuOpen(false)
+                    }
+                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                  >
+                    <Sparkles
+                      size={15}
+                      className="text-[var(--aq-cyan)]"
+                    />
+                    Upgrade plan
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openSettings}
+                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                  >
+                    <Settings size={15} />
+                    Settings
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileMenuOpen(false)
+                    }
+                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                  >
+                    <CircleHelp size={15} />
+                    Help
+                  </button>
+                </div>
+
+                <div className="border-t border-[var(--aq-border)] pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleLogout();
+                    }}
+                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                  >
+                    <LogOut size={15} />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              aria-expanded={profileMenuOpen}
+              onClick={() =>
+                setProfileMenuOpen(
+                  (current) => !current,
+                )
+              }
+              className="flex w-full items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3 text-left transition hover:bg-[var(--aq-control)]"
+            >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--aq-blue)] text-xs font-bold text-white">
                 {user.username
                   .slice(0, 1)
                   .toUpperCase()}
               </div>
 
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-[var(--aq-text)]">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">
                   {user.username}
                 </p>
 
-                <p className="mt-1 truncate text-[10px] text-[var(--aq-muted)]">
+                <p className="mt-1 truncate text-[9px] text-[var(--aq-muted)]">
                   {user.email}
                 </p>
               </div>
-            </div>
-          </div>
 
-          <div className="mt-4 flex items-center justify-between px-2">
-            <button
-              type="button"
-              onClick={() =>
-                setSettingsOpen(true)
-              }
-              className="flex items-center gap-2 text-xs text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]"
-            >
-              <Settings size={15} />
-              Settings
-            </button>
-
-            <button
-              type="button"
-              className="flex items-center gap-2 text-xs text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]"
-            >
-              <CircleHelp size={15} />
-              Help
+              <ChevronDown
+                size={15}
+                className={[
+                  "text-[var(--aq-muted)] transition-transform",
+                  profileMenuOpen
+                    ? "rotate-180"
+                    : "",
+                ].join(" ")}
+              />
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] text-xs font-semibold text-[var(--aq-muted)] transition hover:bg-[var(--aq-control)] hover:text-[var(--aq-text)]"
-          >
-            <LogOut size={15} />
-            Sign out
-          </button>
         </div>
       </aside>
 

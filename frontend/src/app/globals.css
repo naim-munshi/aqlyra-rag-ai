@@ -6,41 +6,40 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --aq-bg: #050911;
-  --aq-bg-deep: #03070e;
-  --aq-topbar: #050a14;
+  --aq-bg: #000000;
+  --aq-bg-deep: #050505;
+  --aq-topbar: #050505;
 
-  --aq-panel: #091220;
-  --aq-panel-strong: #050b14;
+  --aq-panel: #0a0a0a;
+  --aq-panel-strong: #080808;
 
-  --aq-card: #080f1c;
-  --aq-card-strong: #08101d;
-  --aq-control: #0b1728;
+  --aq-card: #101010;
+  --aq-card-strong: #0d0d0d;
+  --aq-control: #181818;
 
-  --aq-border: #1b304d;
-  --aq-border-hover: #31557e;
+  --aq-border: #262626;
+  --aq-border-hover: #3d3d3d;
 
   --aq-blue: #126bfa;
   --aq-blue-hover: #287cff;
-  --aq-blue-soft: #0d2e61;
-  --aq-blue-muted: #0a2040;
+  --aq-blue-soft: #10264a;
+  --aq-blue-muted: #0b1d35;
 
   --aq-cyan: #1ac7fa;
 
-  --aq-text: #eef6ff;
-  --aq-text-soft: #dce9f7;
-  --aq-muted: #829ebd;
+  --aq-text: #f2f2f2;
+  --aq-text-soft: #dedede;
+  --aq-muted: #9b9b9b;
 
   --aq-success: #2ed99c;
   --aq-warning: #fab82e;
 
-  --aq-preview: #f1f5fb;
-  --aq-preview-text: #141f2e;
+  --aq-preview: #161616;
+  --aq-preview-text: #ececec;
   --aq-highlight: #fad142;
 
-  --aq-overlay: rgba(0, 0, 0, 0.68);
+  --aq-overlay: rgba(0, 0, 0, 0.76);
 }
-
 
 /* Aqlyra Light */
 
@@ -81,7 +80,6 @@
 
   --aq-overlay: rgba(15, 23, 42, 0.32);
 }
-
 
 * {
   box-sizing: border-box;
