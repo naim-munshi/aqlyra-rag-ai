@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* Aqlyra Dark — default */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --aq-bg: #050911;
+  --aq-bg-deep: #03070e;
+  --aq-topbar: #050a14;
+
+  --aq-panel: #091220;
+  --aq-panel-strong: #050b14;
+
+  --aq-card: #080f1c;
+  --aq-card-strong: #08101d;
+  --aq-control: #0b1728;
+
+  --aq-border: #1b304d;
+  --aq-border-hover: #31557e;
+
+  --aq-blue: #126bfa;
+  --aq-blue-hover: #287cff;
+  --aq-blue-soft: #0d2e61;
+  --aq-blue-muted: #0a2040;
+
+  --aq-cyan: #1ac7fa;
+
+  --aq-text: #eef6ff;
+  --aq-text-soft: #dce9f7;
+  --aq-muted: #829ebd;
+
+  --aq-success: #2ed99c;
+  --aq-warning: #fab82e;
+
+  --aq-preview: #f1f5fb;
+  --aq-preview-text: #141f2e;
+  --aq-highlight: #fad142;
+
+  --aq-overlay: rgba(0, 0, 0, 0.68);
+}
+
+
+/* Aqlyra Light */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --aq-bg: #f4f7fb;
+  --aq-bg-deep: #ffffff;
+  --aq-topbar: #ffffff;
+
+  --aq-panel: #ffffff;
+  --aq-panel-strong: #fbfdff;
+
+  --aq-card: #f7f9fc;
+  --aq-card-strong: #ffffff;
+  --aq-control: #eef3f9;
+
+  --aq-border: #d5e0ed;
+  --aq-border-hover: #a9bfd8;
+
+  --aq-blue: #126bfa;
+  --aq-blue-hover: #075be0;
+  --aq-blue-soft: #e7f0ff;
+  --aq-blue-muted: #e8f1ff;
+
+  --aq-cyan: #007fa8;
+
+  --aq-text: #102033;
+  --aq-text-soft: #263b51;
+  --aq-muted: #657a91;
+
+  --aq-success: #087f5b;
+  --aq-warning: #a66c00;
+
+  --aq-preview: #f4f7fb;
+  --aq-preview-text: #141f2e;
+  --aq-highlight: #ffd84d;
+
+  --aq-overlay: rgba(15, 23, 42, 0.32);
+}
+
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--aq-bg);
+  color: var(--aq-text);
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+::selection {
+  background: rgba(18, 107, 250, 0.35);
+}
+
+.aq-panel {
+  background: var(--aq-panel);
+  border: 1px solid var(--aq-border);
+  border-radius: 16px;
+}
+
+.aq-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--aq-border) transparent;
+}
