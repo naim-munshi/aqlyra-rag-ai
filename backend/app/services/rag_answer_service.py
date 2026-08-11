@@ -7,11 +7,15 @@ from app.llms import (
     create_configured_llm_provider,
 )
 from app.rag import (
+    CitationValidationError,
     EvidenceContextConfig,
     EvidenceSource,
     build_evidence_context,
-    generate_grounded_answer_draft,
     validate_grounded_answer_draft,
+)
+from app.rag.answer_service import (
+    generate_grounded_answer_draft,
+    repair_grounded_answer_draft,
 )
 from app.retrieval import RetrievalQuery
 from app.services.retrieval_service import (
@@ -149,11 +153,25 @@ def answer_question(
         provider=active_provider,
     )
 
-    validated = (
-        validate_grounded_answer_draft(
-            draft
+    try:
+        validated = (
+            validate_grounded_answer_draft(
+                draft
+            )
         )
-    )
+
+    except CitationValidationError:
+        draft = repair_grounded_answer_draft(
+            draft=draft,
+            evidence_context=evidence_context,
+            provider=active_provider,
+        )
+
+        validated = (
+            validate_grounded_answer_draft(
+                draft
+            )
+        )
 
     if validated.is_refusal:
         answer_text = (

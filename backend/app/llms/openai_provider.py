@@ -43,6 +43,7 @@ def _optional_integer(
 
 def _extract_response_text(
     response: Any,
+    provider_label: str,
 ) -> str:
     output_text = _read_value(
         response,
@@ -105,7 +106,8 @@ def _extract_response_text(
                         return cleaned_refusal
 
     raise LLMProviderResponseError(
-        "OpenAI returned no usable text output"
+        f"{provider_label} returned "
+        "no usable text output"
     )
 
 
@@ -119,12 +121,38 @@ class OpenAILLMProvider:
         timeout_seconds: float = 60.0,
         max_retries: int = 2,
         client: Any | None = None,
+        provider_name: str = "openai",
+        provider_label: str = "OpenAI",
+        api_key_name: str = "OPENAI_API_KEY",
+        base_url: str | None = None,
+        send_store: bool = True,
     ) -> None:
+        cleaned_provider_name = (
+            provider_name
+            .strip()
+            .lower()
+        )
+
+        cleaned_provider_label = (
+            provider_label.strip()
+        )
+
         cleaned_model = model.strip()
+
+        if not cleaned_provider_name:
+            raise LLMValidationError(
+                "Provider name cannot be empty"
+            )
+
+        if not cleaned_provider_label:
+            raise LLMValidationError(
+                "Provider label cannot be empty"
+            )
 
         if not cleaned_model:
             raise LLMValidationError(
-                "OpenAI model cannot be empty"
+                f"{cleaned_provider_label} "
+                "model cannot be empty"
             )
 
         if max_output_tokens < 1:
@@ -144,32 +172,58 @@ class OpenAILLMProvider:
 
         cleaned_key = api_key.strip()
 
-        if client is None and not cleaned_key:
+        if (
+            client is None
+            and not cleaned_key
+        ):
             raise LLMValidationError(
-                "OPENAI_API_KEY is required "
-                "for the OpenAI LLM provider"
+                f"{api_key_name} is required "
+                f"for the "
+                f"{cleaned_provider_label} "
+                "LLM provider"
             )
 
+        self._provider_label = (
+            cleaned_provider_label
+        )
+
+        self._send_store = send_store
+
         self._info = LLMProviderInfo(
-            provider_name="openai",
+            provider_name=(
+                cleaned_provider_name
+            ),
             model_name=cleaned_model,
             max_output_tokens=(
                 max_output_tokens
             ),
         )
 
-        self._client = (
-            client
-            if client is not None
-            else OpenAI(
-                api_key=cleaned_key,
-                timeout=timeout_seconds,
-                max_retries=max_retries,
+        if client is not None:
+            self._client = client
+        else:
+            client_options: dict[
+                str,
+                Any,
+            ] = {
+                "api_key": cleaned_key,
+                "timeout": timeout_seconds,
+                "max_retries": max_retries,
+            }
+
+            if base_url:
+                client_options["base_url"] = (
+                    base_url
+                )
+
+            self._client = OpenAI(
+                **client_options
             )
-        )
 
     @property
-    def info(self) -> LLMProviderInfo:
+    def info(
+        self,
+    ) -> LLMProviderInfo:
         return self._info
 
     def generate(
@@ -194,27 +248,36 @@ class OpenAILLMProvider:
                 "LLM input cannot be empty"
             )
 
+        request: dict[str, Any] = {
+            "model": self.info.model_name,
+            "instructions": (
+                cleaned_instructions
+            ),
+            "input": cleaned_input,
+            "max_output_tokens": (
+                self.info
+                .max_output_tokens
+            ),
+        }
+
+        if self._send_store:
+            request["store"] = False
+
         try:
             response = (
-                self._client.responses.create(
-                    model=self.info.model_name,
-                    instructions=(
-                        cleaned_instructions
-                    ),
-                    input=cleaned_input,
-                    max_output_tokens=(
-                        self.info.max_output_tokens
-                    ),
-                    store=False,
-                )
+                self._client
+                .responses
+                .create(**request)
             )
         except Exception as exc:
             raise LLMProviderRequestError(
-                "OpenAI response generation failed"
+                f"{self._provider_label} "
+                "response generation failed"
             ) from exc
 
         text = _extract_response_text(
-            response
+            response,
+            self._provider_label,
         )
 
         usage = _read_value(
@@ -238,24 +301,32 @@ class OpenAILLMProvider:
             provider_name=(
                 self.info.provider_name
             ),
-            model_name=self.info.model_name,
+            model_name=(
+                self.info.model_name
+            ),
             response_id=response_id,
-            input_tokens=_optional_integer(
-                _read_value(
-                    usage,
-                    "input_tokens",
+            input_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "input_tokens",
+                    )
                 )
             ),
-            output_tokens=_optional_integer(
-                _read_value(
-                    usage,
-                    "output_tokens",
+            output_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "output_tokens",
+                    )
                 )
             ),
-            total_tokens=_optional_integer(
-                _read_value(
-                    usage,
-                    "total_tokens",
+            total_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "total_tokens",
+                    )
                 )
             ),
         )

@@ -24,6 +24,8 @@ os.environ["SECRET_KEY"] = (
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["UPLOAD_DIR"] = str(TEST_UPLOAD_DIR)
 os.environ["DEBUG"] = "false"
+os.environ["EMBEDDING_PROVIDER"] = "deterministic"
+os.environ["LLM_PROVIDER"] = "deterministic"
 
 import pytest
 from fastapi.testclient import TestClient

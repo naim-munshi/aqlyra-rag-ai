@@ -15,6 +15,10 @@ from app.rag import (
     MissingEvidenceError,
     build_grounded_prompt,
     generate_grounded_answer_draft,
+    validate_grounded_answer_draft,
+)
+from app.rag.answer_service import (
+    repair_grounded_answer_draft,
 )
 
 
@@ -25,6 +29,9 @@ class RecordingLLMProvider:
         response_text: str = (
             "JWT protects private routes [S1]."
         ),
+        response_texts: (
+            tuple[str, ...] | None
+        ) = None,
     ) -> None:
         self._info = LLMProviderInfo(
             provider_name="recording",
@@ -32,7 +39,11 @@ class RecordingLLMProvider:
             max_output_tokens=500,
         )
 
-        self._response_text = response_text
+        self._response_texts = (
+            response_texts
+            if response_texts is not None
+            else (response_text,)
+        )
 
         self.calls: list[
             tuple[str, str]
@@ -55,8 +66,17 @@ class RecordingLLMProvider:
             )
         )
 
+        response_index = min(
+            len(self.calls) - 1,
+            len(self._response_texts) - 1,
+        )
+
         return LLMGeneration(
-            text=self._response_text,
+            text=(
+                self._response_texts[
+                    response_index
+                ]
+            ),
             provider_name=(
                 self.info.provider_name
             ),
@@ -284,3 +304,61 @@ def test_draft_detects_insufficient_evidence(
         draft.evidence_was_truncated
         is True
     )
+
+
+def test_citation_repair_produces_valid_answer(
+) -> None:
+    provider = RecordingLLMProvider(
+        response_texts=(
+            (
+                "JWT bearer tokens protect "
+                "private API routes."
+            ),
+            (
+                "JWT bearer tokens protect "
+                "private API routes [S1]."
+            ),
+        )
+    )
+
+    context = create_evidence_context()
+
+    draft = generate_grounded_answer_draft(
+        question=(
+            "How are private routes protected?"
+        ),
+        evidence_context=context,
+        provider=provider,
+    )
+
+    repaired = repair_grounded_answer_draft(
+        draft=draft,
+        evidence_context=context,
+        provider=provider,
+    )
+
+    validated = (
+        validate_grounded_answer_draft(
+            repaired
+        )
+    )
+
+    assert len(provider.calls) == 2
+
+    assert (
+        "ORIGINAL ANSWER"
+        in provider.calls[1][1]
+    )
+
+    assert repaired.answer_text == (
+        "JWT bearer tokens protect "
+        "private API routes [S1]."
+    )
+
+    assert repaired.input_tokens == 200
+    assert repaired.output_tokens == 40
+    assert repaired.total_tokens == 240
+
+    assert validated.is_refusal is False
+    assert validated.citation_ids == ("S1",)
+    assert validated.citation_count == 1

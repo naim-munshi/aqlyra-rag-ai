@@ -13,7 +13,9 @@ from pydantic_settings import (
 
 class Settings(BaseSettings):
     # Project
-    PROJECT_NAME: str = "Aqlyra RAG AI"
+    PROJECT_NAME: str = (
+        "Aqlyra RAG AI"
+    )
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = False
@@ -25,7 +27,9 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: (
+        int
+    ) = 30
 
     # Database
     DATABASE_URL: str
@@ -35,8 +39,9 @@ class Settings(BaseSettings):
         "redis://localhost:6379/0"
     )
 
-    # OpenAI
+    # Provider credentials
     OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
 
     # Embeddings
     EMBEDDING_PROVIDER: str = (
@@ -46,24 +51,34 @@ class Settings(BaseSettings):
         "text-embedding-3-small"
     )
     EMBEDDING_DIMENSION: int = 384
-    EMBEDDING_MAX_BATCH_SIZE: int = 128
-    EMBEDDING_TIMEOUT_SECONDS: float = 30.0
+    EMBEDDING_MAX_BATCH_SIZE: (
+        int
+    ) = 128
+    EMBEDDING_TIMEOUT_SECONDS: (
+        float
+    ) = 30.0
     EMBEDDING_MAX_RETRIES: int = 3
 
     # LLM generation
-    LLM_PROVIDER: str = "deterministic"
+    LLM_PROVIDER: str = (
+        "deterministic"
+    )
     LLM_MODEL: str = "gpt-5"
     LLM_MAX_OUTPUT_TOKENS: int = 800
     LLM_TIMEOUT_SECONDS: float = 60.0
     LLM_MAX_RETRIES: int = 2
 
     # Document uploads
-    UPLOAD_DIR: Path = Path("uploads")
+    UPLOAD_DIR: Path = Path(
+        "uploads"
+    )
     MAX_UPLOAD_SIZE_MB: int = 25
     UPLOAD_CHUNK_SIZE_BYTES: int = (
         1_048_576
     )
-    ALLOWED_DOCUMENT_EXTENSIONS: str = (
+    ALLOWED_DOCUMENT_EXTENSIONS: (
+        str
+    ) = (
         ".pdf,.docx,.xlsx,.pptx,"
         ".txt,.md,.csv"
     )
@@ -86,34 +101,43 @@ class Settings(BaseSettings):
         cls,
         value: str,
     ) -> str:
-        normalized = value.strip().lower()
+        normalized = (
+            value.strip().lower()
+        )
 
         if normalized not in {
             "deterministic",
             "openai",
         }:
             raise ValueError(
-                "EMBEDDING_PROVIDER must be "
-                "'deterministic' or 'openai'"
+                "EMBEDDING_PROVIDER "
+                "must be 'deterministic' "
+                "or 'openai'"
             )
 
         return normalized
 
-    @field_validator("LLM_PROVIDER")
+    @field_validator(
+        "LLM_PROVIDER"
+    )
     @classmethod
     def validate_llm_provider(
         cls,
         value: str,
     ) -> str:
-        normalized = value.strip().lower()
+        normalized = (
+            value.strip().lower()
+        )
 
         if normalized not in {
             "deterministic",
+            "groq",
             "openai",
         }:
             raise ValueError(
                 "LLM_PROVIDER must be "
-                "'deterministic' or 'openai'"
+                "'deterministic', "
+                "'groq', or 'openai'"
             )
 
         return normalized
@@ -146,7 +170,8 @@ class Settings(BaseSettings):
     ) -> int:
         if value < 0:
             raise ValueError(
-                "Retry count cannot be negative"
+                "Retry count cannot "
+                "be negative"
             )
 
         return value
@@ -171,16 +196,21 @@ class Settings(BaseSettings):
     def validate_provider_configuration(
         self,
     ) -> Self:
-        if self.EMBEDDING_DIMENSION != 384:
+        if (
+            self.EMBEDDING_DIMENSION
+            != 384
+        ):
             raise ValueError(
-                "EMBEDDING_DIMENSION must be 384 "
-                "because the database vector "
+                "EMBEDDING_DIMENSION "
+                "must be 384 because "
+                "the database vector "
                 "column uses VECTOR(384)"
             )
 
         if not self.EMBEDDING_MODEL.strip():
             raise ValueError(
-                "EMBEDDING_MODEL cannot be empty"
+                "EMBEDDING_MODEL "
+                "cannot be empty"
             )
 
         if not self.LLM_MODEL.strip():
@@ -189,18 +219,33 @@ class Settings(BaseSettings):
             )
 
         uses_openai = (
-            self.EMBEDDING_PROVIDER == "openai"
-            or self.LLM_PROVIDER == "openai"
+            self.EMBEDDING_PROVIDER
+            == "openai"
+            or self.LLM_PROVIDER
+            == "openai"
         )
 
         if (
             uses_openai
-            and not self.OPENAI_API_KEY.strip()
+            and not
+            self.OPENAI_API_KEY.strip()
         ):
             raise ValueError(
-                "OPENAI_API_KEY is required "
-                "when an OpenAI provider "
+                "OPENAI_API_KEY is "
+                "required when an "
+                "OpenAI provider "
                 "is enabled"
+            )
+
+        if (
+            self.LLM_PROVIDER == "groq"
+            and not
+            self.GROQ_API_KEY.strip()
+        ):
+            raise ValueError(
+                "GROQ_API_KEY is required "
+                "when the Groq LLM "
+                "provider is enabled"
             )
 
         return self
@@ -222,8 +267,10 @@ class Settings(BaseSettings):
         return {
             extension.strip().lower()
             for extension
-            in self.ALLOWED_DOCUMENT_EXTENSIONS.split(
-                ","
+            in (
+                self
+                .ALLOWED_DOCUMENT_EXTENSIONS
+                .split(",")
             )
             if extension.strip()
         }
