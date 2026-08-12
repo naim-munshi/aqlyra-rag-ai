@@ -799,7 +799,7 @@ export function RAGWorkspace() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv"
+        accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp"
         className="hidden"
         onChange={
           handleAttachmentChange

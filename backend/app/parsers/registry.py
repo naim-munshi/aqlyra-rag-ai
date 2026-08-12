@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.parsers.image_parser import ImageOCRParser
 from app.parsers.office_parser import (
     DOCXParser,
     PPTXParser,
@@ -22,6 +23,7 @@ _PARSERS: tuple[DocumentParser, ...] = (
     DOCXParser(),
     PPTXParser(),
     XLSXParser(),
+    ImageOCRParser(),
     PlainTextParser(),
     CSVParser(),
 )

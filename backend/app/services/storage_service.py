@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from app.config.settings import settings
 
@@ -62,6 +63,10 @@ _CANONICAL_CONTENT_TYPES: dict[str, str] = {
     ".txt": "text/plain",
     ".md": "text/markdown",
     ".csv": "text/csv",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
 }
 
 
@@ -72,6 +77,17 @@ _OOXML_REQUIRED_FILES: dict[str, str] = {
 }
 
 
+_IMAGE_FORMAT_BY_EXTENSION: dict[str, str] = {
+    ".png": "PNG",
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".webp": "WEBP",
+}
+
+
+MAX_IMAGE_PIXELS = 40_000_000
+
+
 def _upload_root() -> Path:
     root = settings.UPLOAD_DIR.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -80,17 +96,29 @@ def _upload_root() -> Path:
 
 def _sanitize_original_filename(filename: str | None) -> str:
     if filename is None:
-        raise UnsupportedFileTypeError("The uploaded file has no filename")
+        raise UnsupportedFileTypeError(
+            "The uploaded file has no filename"
+        )
 
     normalized = unicodedata.normalize("NFKC", filename)
     basename = Path(normalized).name.strip()
 
     basename = basename.replace("\x00", "")
-    basename = re.sub(r"[^A-Za-z0-9._ -]", "_", basename)
-    basename = re.sub(r"\s+", " ", basename).strip(" .")
+    basename = re.sub(
+        r"[^A-Za-z0-9._ -]",
+        "_",
+        basename,
+    )
+    basename = re.sub(
+        r"\s+",
+        " ",
+        basename,
+    ).strip(" .")
 
     if not basename:
-        raise UnsupportedFileTypeError("The filename is invalid")
+        raise UnsupportedFileTypeError(
+            "The filename is invalid"
+        )
 
     return basename[:255]
 
@@ -104,7 +132,8 @@ def _get_extension(filename: str) -> str:
         )
 
         raise UnsupportedFileTypeError(
-            f"Unsupported file type. Allowed extensions: {allowed}"
+            "Unsupported file type. "
+            f"Allowed extensions: {allowed}"
         )
 
     return extension
@@ -120,7 +149,10 @@ def _validate_pdf(path: Path) -> None:
         )
 
 
-def _validate_ooxml(path: Path, extension: str) -> None:
+def _validate_ooxml(
+    path: Path,
+    extension: str,
+) -> None:
     if not zipfile.is_zipfile(path):
         raise InvalidFileContentError(
             f"The file content is not a valid {extension} document"
@@ -130,8 +162,14 @@ def _validate_ooxml(path: Path, extension: str) -> None:
 
     try:
         with zipfile.ZipFile(path) as archive:
-            archive_files = set(archive.namelist())
-    except (OSError, zipfile.BadZipFile) as exc:
+            archive_files = set(
+                archive.namelist()
+            )
+
+    except (
+        OSError,
+        zipfile.BadZipFile,
+    ) as exc:
         raise InvalidFileContentError(
             f"The file content is not a valid {extension} document"
         ) from exc
@@ -143,14 +181,18 @@ def _validate_ooxml(path: Path, extension: str) -> None:
 
 
 def _validate_text(path: Path) -> None:
-    decoder = codecs.getincrementaldecoder("utf-8-sig")(
+    decoder = codecs.getincrementaldecoder(
+        "utf-8-sig"
+    )(
         errors="strict"
     )
 
     try:
         with path.open("rb") as file:
             while True:
-                chunk = file.read(settings.UPLOAD_CHUNK_SIZE_BYTES)
+                chunk = file.read(
+                    settings.UPLOAD_CHUNK_SIZE_BYTES
+                )
 
                 if not chunk:
                     break
@@ -162,11 +204,61 @@ def _validate_text(path: Path) -> None:
 
                 decoder.decode(chunk)
 
-            decoder.decode(b"", final=True)
+            decoder.decode(
+                b"",
+                final=True,
+            )
 
     except UnicodeDecodeError as exc:
         raise InvalidFileContentError(
             "Text files must use UTF-8 encoding"
+        ) from exc
+
+
+def _validate_image(
+    path: Path,
+    extension: str,
+) -> None:
+    expected_format = (
+        _IMAGE_FORMAT_BY_EXTENSION[extension]
+    )
+
+    try:
+        with Image.open(path) as image:
+            detected_format = (
+                image.format or ""
+            ).upper()
+
+            if detected_format != expected_format:
+                raise InvalidFileContentError(
+                    "Image content does not match "
+                    f"{extension}"
+                )
+
+            width, height = image.size
+
+            if width < 1 or height < 1:
+                raise InvalidFileContentError(
+                    "Image dimensions are invalid"
+                )
+
+            if width * height > MAX_IMAGE_PIXELS:
+                raise InvalidFileContentError(
+                    "Image dimensions are too large"
+                )
+
+            image.verify()
+
+    except InvalidFileContentError:
+        raise
+
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise InvalidFileContentError(
+            "The uploaded file is not a valid image"
         ) from exc
 
 
@@ -178,41 +270,73 @@ def _validate_file_content(
         _validate_pdf(path)
 
     elif extension in _OOXML_REQUIRED_FILES:
-        _validate_ooxml(path, extension)
+        _validate_ooxml(
+            path,
+            extension,
+        )
 
-    elif extension in {".txt", ".md", ".csv"}:
+    elif extension in {
+        ".txt",
+        ".md",
+        ".csv",
+    }:
         _validate_text(path)
+
+    elif extension in _IMAGE_FORMAT_BY_EXTENSION:
+        _validate_image(
+            path,
+            extension,
+        )
 
     else:
         raise UnsupportedFileTypeError(
             f"Unsupported extension: {extension}"
         )
 
-    return _CANONICAL_CONTENT_TYPES[extension]
+    return _CANONICAL_CONTENT_TYPES[
+        extension
+    ]
 
 
 async def save_upload_to_temporary_storage(
     upload: UploadFile,
     user_id: str,
 ) -> PendingUpload:
-    original_filename = _sanitize_original_filename(
-        upload.filename
+    original_filename = (
+        _sanitize_original_filename(
+            upload.filename
+        )
     )
-    extension = _get_extension(original_filename)
+
+    extension = _get_extension(
+        original_filename
+    )
 
     upload_root = _upload_root()
-    temporary_directory = upload_root / ".tmp" / user_id
-    temporary_directory.mkdir(parents=True, exist_ok=True)
+
+    temporary_directory = (
+        upload_root
+        / ".tmp"
+        / user_id
+    )
+
+    temporary_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     temporary_path = (
-        temporary_directory / f"{uuid4().hex}.part"
+        temporary_directory
+        / f"{uuid4().hex}.part"
     )
 
     checksum = hashlib.sha256()
     total_size = 0
 
     try:
-        with temporary_path.open("xb") as output_file:
+        with temporary_path.open(
+            "xb"
+        ) as output_file:
             while True:
                 chunk = await upload.read(
                     settings.UPLOAD_CHUNK_SIZE_BYTES
@@ -237,18 +361,28 @@ async def save_upload_to_temporary_storage(
                 "The uploaded file is empty"
             )
 
-        canonical_content_type = _validate_file_content(
-            temporary_path,
-            extension,
+        canonical_content_type = (
+            _validate_file_content(
+                temporary_path,
+                extension,
+            )
         )
 
-        stored_filename = f"{uuid4().hex}{extension}"
-        relative_path = Path(user_id) / stored_filename
+        stored_filename = (
+            f"{uuid4().hex}{extension}"
+        )
+
+        relative_path = (
+            Path(user_id)
+            / stored_filename
+        )
 
         return PendingUpload(
             original_filename=original_filename,
             stored_filename=stored_filename,
-            relative_storage_path=relative_path.as_posix(),
+            relative_storage_path=(
+                relative_path.as_posix()
+            ),
             temporary_path=temporary_path,
             content_type=canonical_content_type,
             file_extension=extension,
@@ -257,7 +391,9 @@ async def save_upload_to_temporary_storage(
         )
 
     except Exception:
-        temporary_path.unlink(missing_ok=True)
+        temporary_path.unlink(
+            missing_ok=True
+        )
         raise
 
     finally:
@@ -268,12 +404,15 @@ def finalize_pending_upload(
     pending_upload: PendingUpload,
 ) -> Path:
     root = _upload_root()
+
     final_path = (
-        root / pending_upload.relative_storage_path
+        root
+        / pending_upload.relative_storage_path
     ).resolve()
 
     try:
         final_path.relative_to(root)
+
     except ValueError as exc:
         raise RuntimeError(
             "Unsafe storage path detected"
@@ -304,23 +443,29 @@ def delete_stored_file(
     relative_storage_path: str,
 ) -> None:
     root = _upload_root()
+
     file_path = (
-        root / relative_storage_path
+        root
+        / relative_storage_path
     ).resolve()
 
     try:
         file_path.relative_to(root)
+
     except ValueError as exc:
         raise RuntimeError(
             "Unsafe storage path detected"
         ) from exc
 
-    file_path.unlink(missing_ok=True)
+    file_path.unlink(
+        missing_ok=True
+    )
 
     parent = file_path.parent
 
     if parent != root:
         try:
             parent.rmdir()
+
         except OSError:
             pass

@@ -80,7 +80,7 @@ class Settings(BaseSettings):
         str
     ) = (
         ".pdf,.docx,.xlsx,.pptx,"
-        ".txt,.md,.csv"
+        ".txt,.md,.csv,.png,.jpg,.jpeg,.webp"
     )
 
     # Logging

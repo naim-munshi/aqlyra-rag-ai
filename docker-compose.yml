@@ -70,7 +70,7 @@ services:
       MAX_UPLOAD_SIZE_MB: "25"
       UPLOAD_CHUNK_SIZE_BYTES: "1048576"
       ALLOWED_DOCUMENT_EXTENSIONS: >-
-        .pdf,.docx,.xlsx,.pptx,.txt,.md,.csv
+        .pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp
 
       LOG_LEVEL: INFO
 

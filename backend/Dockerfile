@@ -37,6 +37,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libgomp1 \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-jpn \
+        tesseract-ocr-ben \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
