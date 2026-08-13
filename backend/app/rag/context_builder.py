@@ -161,6 +161,25 @@ def _build_source_header(
     return f"[{source_id}] {filename}"
 
 
+def _ranking_value(
+    hit: RetrievalEvidence,
+) -> float:
+    ranking_score = getattr(
+        hit,
+        "ranking_score",
+        None,
+    )
+
+    if ranking_score is not None:
+        return float(
+            ranking_score
+        )
+
+    return float(
+        hit.similarity_score
+    )
+
+
 def _sort_key(
     hit: RetrievalEvidence,
 ) -> tuple[
@@ -170,7 +189,7 @@ def _sort_key(
     str,
 ]:
     return (
-        -float(hit.similarity_score),
+        -_ranking_value(hit),
         str(hit.document_id),
         int(hit.chunk_index),
         str(hit.chunk_id),

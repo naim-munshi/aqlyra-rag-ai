@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy.orm import Session
 
 from app.retrieval import (
@@ -12,6 +13,21 @@ from app.services.lexical_retrieval_service import (
 )
 
 import app.services.hybrid_retrieval_service as hybrid_module
+
+
+class FakeEmbeddingProvider:
+    def __init__(self) -> None:
+        self.embed_calls = 0
+
+    def embed_query(
+        self,
+        text: str,
+    ) -> list[float]:
+        assert text.strip()
+
+        self.embed_calls += 1
+
+        return [0.0] * 384
 
 
 def make_vector_hit(
@@ -93,16 +109,22 @@ def test_hybrid_retrieval_fuses_both_rankings(
         ),
     ]
 
+    fake_provider = FakeEmbeddingProvider()
+
     captured_top_k: list[int] = []
 
     def fake_vector_search(
         db,
         query,
         provider=None,
+        query_vector=None,
     ):
+        assert query_vector is not None
+
         captured_top_k.append(
             query.top_k
         )
+
         return vector_hits
 
     def fake_lexical_search(
@@ -110,7 +132,34 @@ def test_hybrid_retrieval_fuses_both_rankings(
         query,
     ):
         assert query.top_k == 8
+
         return lexical_hits
+
+    def fake_score_specific_chunks(
+        *,
+        db,
+        query,
+        chunk_ids,
+        provider=None,
+        query_vector=None,
+    ):
+        assert query_vector is not None
+        assert chunk_ids == (
+            "chunk-d",
+        )
+
+        return {
+            "chunk-d": make_vector_hit(
+                "chunk-d",
+                0.70,
+            )
+        }
+
+    monkeypatch.setattr(
+        hybrid_module,
+        "create_configured_embedding_provider",
+        lambda: fake_provider,
+    )
 
     monkeypatch.setattr(
         hybrid_module,
@@ -124,6 +173,12 @@ def test_hybrid_retrieval_fuses_both_rankings(
         fake_lexical_search,
     )
 
+    monkeypatch.setattr(
+        hybrid_module,
+        "score_specific_chunks",
+        fake_score_specific_chunks,
+    )
+
     results = search_hybrid_chunks(
         db=db_session,
         query=RetrievalQuery(
@@ -134,10 +189,38 @@ def test_hybrid_retrieval_fuses_both_rankings(
     )
 
     assert len(results) == 2
-
     assert results[0].chunk_id == "chunk-b"
 
     assert captured_top_k == [8]
+
+    # Query embedding must only be generated once.
+    assert fake_provider.embed_calls == 1
+
+    # Semantic values retain dense-vector meaning.
+    assert (
+        results[0].similarity_score
+        == pytest.approx(0.90)
+    )
+
+    assert (
+        results[0].cosine_distance
+        == pytest.approx(0.10)
+    )
+
+    # Hybrid/RRF ranking is a separate value.
+    assert (
+        results[0].ranking_score
+        is not None
+    )
+
+    assert (
+        results[0].ranking_score
+        == pytest.approx(
+            results[0].metadata[
+                "hybrid_score"
+            ]
+        )
+    )
 
     assert (
         results[0].metadata[
@@ -164,14 +247,24 @@ def test_hybrid_retrieval_fuses_both_rankings(
         results[0].metadata[
             "semantic_similarity_score"
         ]
-        == 0.90
+        == pytest.approx(0.90)
     )
 
     assert (
         results[0].metadata[
             "lexical_score"
         ]
-        == 0.9
+        == pytest.approx(0.9)
+    )
+
+    assert (
+        results[0].metadata[
+            "retrieval_sources"
+        ]
+        == [
+            "vector",
+            "lexical",
+        ]
     )
 
 
@@ -179,6 +272,14 @@ def test_hybrid_retrieval_can_keep_lexical_only_hit(
     monkeypatch,
     db_session: Session,
 ) -> None:
+    fake_provider = FakeEmbeddingProvider()
+
+    monkeypatch.setattr(
+        hybrid_module,
+        "create_configured_embedding_provider",
+        lambda: fake_provider,
+    )
+
     monkeypatch.setattr(
         hybrid_module,
         "search_similar_chunks",
@@ -196,6 +297,19 @@ def test_hybrid_retrieval_can_keep_lexical_only_hit(
         ],
     )
 
+    monkeypatch.setattr(
+        hybrid_module,
+        "score_specific_chunks",
+        lambda **kwargs: {
+            "exact-keyword": (
+                make_vector_hit(
+                    "exact-keyword",
+                    0.25,
+                )
+            )
+        },
+    )
+
     results = search_hybrid_chunks(
         db=db_session,
         query=RetrievalQuery(
@@ -206,9 +320,27 @@ def test_hybrid_retrieval_can_keep_lexical_only_hit(
     )
 
     assert len(results) == 1
+
     assert (
         results[0].chunk_id
         == "exact-keyword"
+    )
+
+    # Lexical candidate gets a real dense score,
+    # but it was not a vector top-K candidate.
+    assert (
+        results[0].similarity_score
+        == pytest.approx(0.25)
+    )
+
+    assert (
+        results[0].cosine_distance
+        == pytest.approx(0.75)
+    )
+
+    assert (
+        results[0].ranking_score
+        is not None
     )
 
     assert (
@@ -224,3 +356,12 @@ def test_hybrid_retrieval_can_keep_lexical_only_hit(
         ]
         == 1
     )
+
+    assert (
+        results[0].metadata[
+            "retrieval_sources"
+        ]
+        == ["lexical"]
+    )
+
+    assert fake_provider.embed_calls == 1

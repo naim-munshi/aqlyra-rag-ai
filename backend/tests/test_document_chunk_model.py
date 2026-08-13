@@ -1,3 +1,5 @@
+from typing import cast
+from sqlalchemy import Table
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
@@ -54,10 +56,14 @@ def test_document_chunk_model_has_required_fields() -> None:
 
 
 def test_document_chunk_unique_constraint_exists() -> None:
+    table = cast(
+        Table,
+        DocumentChunk.__table__,
+    )
+
     constraint_names = {
         constraint.name
-        for constraint
-        in DocumentChunk.__table__.constraints
+        for constraint in table.constraints
     }
 
     assert (

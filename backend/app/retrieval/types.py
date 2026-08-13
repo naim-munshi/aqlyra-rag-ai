@@ -99,6 +99,7 @@ class RetrievalHit:
     end_page: int | None
     similarity_score: float
     cosine_distance: float
+    ranking_score: float | None = None
     metadata: dict[str, Any] = field(
         default_factory=dict
     )
