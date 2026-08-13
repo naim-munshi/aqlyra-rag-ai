@@ -18,8 +18,8 @@ from app.rag.answer_service import (
     repair_grounded_answer_draft,
 )
 from app.retrieval import RetrievalQuery
-from app.services.retrieval_service import (
-    search_similar_chunks,
+from app.services.hybrid_retrieval_service import (
+    search_hybrid_chunks,
 )
 
 
@@ -80,7 +80,7 @@ def answer_question(
         or create_configured_llm_provider()
     )
 
-    hits = search_similar_chunks(
+    hits = search_hybrid_chunks(
         db=db,
         query=RetrievalQuery(
             user_id=user_id,
