@@ -126,6 +126,7 @@ class OpenAILLMProvider:
         api_key_name: str = "OPENAI_API_KEY",
         base_url: str | None = None,
         send_store: bool = True,
+        reasoning_effort: str | None = None,
     ) -> None:
         cleaned_provider_name = (
             provider_name
@@ -188,6 +189,27 @@ class OpenAILLMProvider:
         )
 
         self._send_store = send_store
+
+        if reasoning_effort is None:
+            self._reasoning_effort = None
+        else:
+            normalized_effort = (
+                reasoning_effort.strip().lower()
+            )
+
+            if normalized_effort not in {
+                "low",
+                "medium",
+                "high",
+            }:
+                raise LLMValidationError(
+                    "reasoning_effort must be "
+                    "low, medium, or high"
+                )
+
+            self._reasoning_effort = (
+                normalized_effort
+            )
 
         self._info = LLMProviderInfo(
             provider_name=(
@@ -262,6 +284,11 @@ class OpenAILLMProvider:
 
         if self._send_store:
             request["store"] = False
+
+        if self._reasoning_effort is not None:
+            request["reasoning"] = {
+                "effort": self._reasoning_effort,
+            }
 
         try:
             response = (

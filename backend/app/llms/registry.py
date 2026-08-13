@@ -34,6 +34,7 @@ def create_llm_provider(
     max_output_tokens: int = 800,
     timeout_seconds: float = 60.0,
     max_retries: int = 2,
+    reasoning_effort: str | None = None,
     deterministic_response: str = (
         DEFAULT_DETERMINISTIC_RESPONSE
     ),
@@ -69,6 +70,9 @@ def create_llm_provider(
             ),
             max_retries=max_retries,
             client=client,
+            reasoning_effort=(
+                reasoning_effort
+            ),
         )
 
     if normalized_provider == "openai":
@@ -83,6 +87,9 @@ def create_llm_provider(
             ),
             max_retries=max_retries,
             client=client,
+            reasoning_effort=(
+                reasoning_effort
+            ),
         )
 
     supported = ", ".join(

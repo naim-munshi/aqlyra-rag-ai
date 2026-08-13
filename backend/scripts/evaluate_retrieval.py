@@ -6,10 +6,61 @@ from pathlib import Path
 from app.database.connection import (
     SessionLocal,
 )
+from app.config.settings import settings
+from app.llms import (
+    create_llm_provider,
+)
+from app.reranking import (
+    IdentityReranker,
+    LLMReranker,
+    RerankerProvider,
+)
 from app.retrieval.benchmark import (
     load_benchmark_specs,
     run_retrieval_benchmark,
 )
+
+
+def create_reranker(
+    name: str,
+) -> RerankerProvider | None:
+    if name == "none":
+        return None
+
+    if name == "identity":
+        return IdentityReranker()
+
+    if name == "llm":
+        api_key = ""
+
+        if settings.LLM_PROVIDER == "groq":
+            api_key = settings.GROQ_API_KEY
+        elif settings.LLM_PROVIDER == "openai":
+            api_key = settings.OPENAI_API_KEY
+
+        provider = create_llm_provider(
+            provider_name=(
+                settings.LLM_PROVIDER
+            ),
+            model_name=settings.LLM_MODEL,
+            api_key=api_key,
+            max_output_tokens=1_024,
+            timeout_seconds=(
+                settings.LLM_TIMEOUT_SECONDS
+            ),
+            max_retries=(
+                settings.LLM_MAX_RETRIES
+            ),
+            reasoning_effort="low",
+        )
+
+        return LLMReranker(
+            provider=provider
+        )
+
+    raise ValueError(
+        f"Unsupported reranker: {name}"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +108,21 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--reranker",
+        choices=(
+            "none",
+            "identity",
+            "llm",
+        ),
+        default="none",
+        help=(
+            "Optional candidate reranker. "
+            "'llm' uses the configured "
+            "LLM provider."
+        ),
+    )
+
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -75,6 +141,10 @@ def main() -> None:
         args.dataset
     )
 
+    reranker = create_reranker(
+        args.reranker
+    )
+
     with SessionLocal() as db:
         report = run_retrieval_benchmark(
             db=db,
@@ -84,6 +154,7 @@ def main() -> None:
             retrieval_depth=(
                 args.retrieval_depth
             ),
+            reranker=reranker,
         )
 
     print()
@@ -118,46 +189,104 @@ def main() -> None:
         report.retrieval_depth,
     )
 
+    if report.reranked is not None:
+        print(
+            "Reranker:",
+            report.reranker_provider_name,
+            "/",
+            report.reranker_model_name,
+        )
+
     print()
 
-    print(
-        "Metric".ljust(18),
-        "Vector".rjust(10),
-        "Hybrid".rjust(10),
-        "Delta".rjust(10),
-    )
+    if report.reranked is None:
+        print(
+            "Metric".ljust(18),
+            "Vector".rjust(10),
+            "Hybrid".rjust(10),
+            "V→H".rjust(10),
+        )
 
-    print("-" * 51)
+        print("-" * 51)
 
-    print(
-        "Hit Rate@K".ljust(18),
-        f"{report.vector.hit_rate_at_k:.3f}"
-        .rjust(10),
-        f"{report.hybrid.hit_rate_at_k:.3f}"
-        .rjust(10),
-        f"{report.hit_rate_delta:+.3f}"
-        .rjust(10),
-    )
+        rows = (
+            (
+                "Hit Rate@K",
+                report.vector.hit_rate_at_k,
+                report.hybrid.hit_rate_at_k,
+                report.hit_rate_delta,
+            ),
+            (
+                "Recall@K",
+                report.vector.mean_recall_at_k,
+                report.hybrid.mean_recall_at_k,
+                report.recall_delta,
+            ),
+            (
+                "MRR@K",
+                report.vector.mrr_at_k,
+                report.hybrid.mrr_at_k,
+                report.mrr_delta,
+            ),
+        )
 
-    print(
-        "Recall@K".ljust(18),
-        f"{report.vector.mean_recall_at_k:.3f}"
-        .rjust(10),
-        f"{report.hybrid.mean_recall_at_k:.3f}"
-        .rjust(10),
-        f"{report.recall_delta:+.3f}"
-        .rjust(10),
-    )
+        for name, vector, hybrid, delta in rows:
+            print(
+                name.ljust(18),
+                f"{vector:.3f}".rjust(10),
+                f"{hybrid:.3f}".rjust(10),
+                f"{delta:+.3f}".rjust(10),
+            )
 
-    print(
-        "MRR@K".ljust(18),
-        f"{report.vector.mrr_at_k:.3f}"
-        .rjust(10),
-        f"{report.hybrid.mrr_at_k:.3f}"
-        .rjust(10),
-        f"{report.mrr_delta:+.3f}"
-        .rjust(10),
-    )
+    else:
+        print(
+            "Metric".ljust(18),
+            "Vector".rjust(10),
+            "Hybrid".rjust(10),
+            "Reranked".rjust(10),
+            "H→R".rjust(10),
+        )
+
+        print("-" * 61)
+
+        rows = (
+            (
+                "Hit Rate@K",
+                report.vector.hit_rate_at_k,
+                report.hybrid.hit_rate_at_k,
+                report.reranked.hit_rate_at_k,
+                report.rerank_hit_rate_delta,
+            ),
+            (
+                "Recall@K",
+                report.vector.mean_recall_at_k,
+                report.hybrid.mean_recall_at_k,
+                report.reranked.mean_recall_at_k,
+                report.rerank_recall_delta,
+            ),
+            (
+                "MRR@K",
+                report.vector.mrr_at_k,
+                report.hybrid.mrr_at_k,
+                report.reranked.mrr_at_k,
+                report.rerank_mrr_delta,
+            ),
+        )
+
+        for (
+            name,
+            vector,
+            hybrid,
+            reranked,
+            delta,
+        ) in rows:
+            print(
+                name.ljust(18),
+                f"{vector:.3f}".rjust(10),
+                f"{hybrid:.3f}".rjust(10),
+                f"{reranked:.3f}".rjust(10),
+                f"{delta:+.3f}".rjust(10),
+            )
 
     if args.output is not None:
         args.output.parent.mkdir(

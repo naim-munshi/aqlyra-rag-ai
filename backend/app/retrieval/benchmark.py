@@ -16,12 +16,16 @@ from app.retrieval.evaluation import (
     RetrievalEvaluationSummary,
     evaluate_rankings,
 )
+from app.reranking import RerankerProvider
 from app.retrieval.types import RetrievalQuery
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
 from app.services.retrieval_service import (
     search_similar_chunks,
+)
+from app.services.reranked_retrieval_service import (
+    rerank_hits,
 )
 
 
@@ -70,6 +74,12 @@ class RetrievalBenchmarkReport:
     hit_rate_delta: float
     recall_delta: float
     mrr_delta: float
+    reranked: RetrievalEvaluationSummary | None = None
+    reranker_provider_name: str | None = None
+    reranker_model_name: str | None = None
+    rerank_hit_rate_delta: float | None = None
+    rerank_recall_delta: float | None = None
+    rerank_mrr_delta: float | None = None
 
 
 def load_benchmark_specs(
@@ -304,6 +314,7 @@ def run_retrieval_benchmark(
     k: int = 5,
     retrieval_depth: int = 20,
     provider: EmbeddingProvider | None = None,
+    reranker: RerankerProvider | None = None,
     chunk_roles: tuple[
         str,
         ...,
@@ -348,6 +359,11 @@ def run_retrieval_benchmark(
         tuple[str, ...],
     ] = {}
 
+    reranked_rankings: dict[
+        str,
+        tuple[str, ...],
+    ] = {}
+
     for case in cases:
         retrieval_query = RetrievalQuery(
             user_id=user_id,
@@ -382,6 +398,21 @@ def run_retrieval_benchmark(
             for hit in hybrid_hits
         )
 
+        if reranker is not None:
+            reranked_hits = rerank_hits(
+                query_text=case.query,
+                hits=hybrid_hits,
+                reranker=reranker,
+                fallback_on_error=False,
+            )
+
+            reranked_rankings[
+                case.query_id
+            ] = tuple(
+                hit.chunk_id
+                for hit in reranked_hits
+            )
+
     vector_summary = evaluate_rankings(
         cases=cases,
         rankings=vector_rankings,
@@ -392,6 +423,16 @@ def run_retrieval_benchmark(
         cases=cases,
         rankings=hybrid_rankings,
         k=k,
+    )
+
+    reranked_summary = (
+        evaluate_rankings(
+            cases=cases,
+            rankings=reranked_rankings,
+            k=k,
+        )
+        if reranker is not None
+        else None
     )
 
     provider_info = (
@@ -435,5 +476,34 @@ def run_retrieval_benchmark(
         mrr_delta=(
             hybrid_summary.mrr_at_k
             - vector_summary.mrr_at_k
+        ),
+        reranked=reranked_summary,
+        reranker_provider_name=(
+            reranker.info.provider_name
+            if reranker is not None
+            else None
+        ),
+        reranker_model_name=(
+            reranker.info.model_name
+            if reranker is not None
+            else None
+        ),
+        rerank_hit_rate_delta=(
+            reranked_summary.hit_rate_at_k
+            - hybrid_summary.hit_rate_at_k
+            if reranked_summary is not None
+            else None
+        ),
+        rerank_recall_delta=(
+            reranked_summary.mean_recall_at_k
+            - hybrid_summary.mean_recall_at_k
+            if reranked_summary is not None
+            else None
+        ),
+        rerank_mrr_delta=(
+            reranked_summary.mrr_at_k
+            - hybrid_summary.mrr_at_k
+            if reranked_summary is not None
+            else None
         ),
     )

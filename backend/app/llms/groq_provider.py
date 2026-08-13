@@ -28,6 +28,7 @@ class GroqLLMProvider(
         timeout_seconds: float = 60.0,
         max_retries: int = 2,
         client: Any | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -45,4 +46,7 @@ class GroqLLMProvider(
             api_key_name="GROQ_API_KEY",
             base_url=GROQ_BASE_URL,
             send_store=False,
+            reasoning_effort=(
+                reasoning_effort
+            ),
         )
