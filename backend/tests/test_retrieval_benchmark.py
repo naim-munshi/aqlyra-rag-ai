@@ -155,6 +155,8 @@ def test_run_benchmark_compares_vector_and_hybrid(
     ):
         query = kwargs["query"]
 
+        assert query.top_k == 20
+
         if query.text == "first question":
             return [
                 FakeHit("noise"),
@@ -169,6 +171,8 @@ def test_run_benchmark_compares_vector_and_hybrid(
         **kwargs,
     ):
         query = kwargs["query"]
+
+        assert query.top_k == 20
 
         if query.text == "first question":
             return [
@@ -207,6 +211,7 @@ def test_run_benchmark_compares_vector_and_hybrid(
     )
 
     assert report.case_count == 2
+    assert report.retrieval_depth == 20
 
     assert (
         report.vector.hit_rate_at_k

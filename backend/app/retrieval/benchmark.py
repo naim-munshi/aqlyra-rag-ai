@@ -63,6 +63,7 @@ class RetrievalBenchmarkReport:
     model_name: str
     benchmark_label: str
     k: int
+    retrieval_depth: int
     case_count: int
     vector: RetrievalEvaluationSummary
     hybrid: RetrievalEvaluationSummary
@@ -301,6 +302,7 @@ def run_retrieval_benchmark(
         ...,
     ],
     k: int = 5,
+    retrieval_depth: int = 20,
     provider: EmbeddingProvider | None = None,
     chunk_roles: tuple[
         str,
@@ -310,6 +312,18 @@ def run_retrieval_benchmark(
     if not 1 <= k <= 50:
         raise ValueError(
             "k must be between 1 and 50"
+        )
+
+    if not 1 <= retrieval_depth <= 50:
+        raise ValueError(
+            "retrieval_depth must be "
+            "between 1 and 50"
+        )
+
+    if k > retrieval_depth:
+        raise ValueError(
+            "k cannot exceed "
+            "retrieval_depth"
         )
 
     active_provider = (
@@ -338,7 +352,7 @@ def run_retrieval_benchmark(
         retrieval_query = RetrievalQuery(
             user_id=user_id,
             text=case.query,
-            top_k=k,
+            top_k=retrieval_depth,
             chunk_roles=chunk_roles,
         )
 
@@ -406,6 +420,7 @@ def run_retrieval_benchmark(
         ),
         benchmark_label=benchmark_label,
         k=k,
+        retrieval_depth=retrieval_depth,
         case_count=len(cases),
         vector=vector_summary,
         hybrid=hybrid_summary,

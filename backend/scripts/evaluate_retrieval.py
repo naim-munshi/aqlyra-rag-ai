@@ -47,6 +47,16 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--retrieval-depth",
+        type=int,
+        default=20,
+        help=(
+            "Fixed retrieval depth used before "
+            "calculating metrics at K."
+        ),
+    )
+
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -71,6 +81,9 @@ def main() -> None:
             user_id=args.user_id,
             specs=specs,
             k=args.k,
+            retrieval_depth=(
+                args.retrieval_depth
+            ),
         )
 
     print()
@@ -98,6 +111,11 @@ def main() -> None:
 
     print(
         f"K: {report.k}"
+    )
+
+    print(
+        "Retrieval depth:",
+        report.retrieval_depth,
     )
 
     print()

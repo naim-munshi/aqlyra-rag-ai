@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "benchmark_type": "controlled synthetic retrieval",
+  "description": "Controlled Aqlyra retrieval corpus with semantic paraphrases and exact identifier questions.",
+  "cases": [
+    {
+      "query_id": "security-review-month",
+      "query": "Which month is the yearly security assessment scheduled?",
+      "document_filename": "security_policy.md",
+      "evidence_marker": "The annual security review happens every October."
+    },
+    {
+      "query_id": "security-emergency-code",
+      "query": "What is the emergency credential reference code?",
+      "document_filename": "security_policy.md",
+      "evidence_marker": "The emergency credential reference is ZX-41-LANTERN."
+    },
+    {
+      "query_id": "incident-retention",
+      "query": "How long must incident records be kept?",
+      "document_filename": "operations_policy.md",
+      "evidence_marker": "Incident records are retained for seven years."
+    },
+    {
+      "query_id": "sev1-acknowledgement",
+      "query": "What is the acknowledgement deadline for a severity-one incident?",
+      "document_filename": "operations_policy.md",
+      "evidence_marker": "A severity-one incident must be acknowledged within 15 minutes."
+    },
+    {
+      "query_id": "vector-backup-time",
+      "query": "At what UTC time does the nightly vector backup begin?",
+      "document_filename": "platform_handbook.md",
+      "evidence_marker": "The nightly vector backup starts at 02:30 UTC."
+    },
+    {
+      "query_id": "retrieval-cache-ttl",
+      "query": "How long does a retrieval cache entry remain valid?",
+      "document_filename": "platform_handbook.md",
+      "evidence_marker": "The retrieval cache has an 18-minute TTL."
+    },
+    {
+      "query_id": "orbit-sample-count",
+      "query": "How many samples were used in experiment ORBIT-73?",
+      "document_filename": "research_notes.md",
+      "evidence_marker": "Experiment ORBIT-73 used 1,200 samples."
+    },
+    {
+      "query_id": "validation-split",
+      "query": "What fraction of the dataset was reserved for validation?",
+      "document_filename": "research_notes.md",
+      "evidence_marker": "The validation split was 18 percent of the dataset."
+    },
+    {
+      "query_id": "p1-escalation",
+      "query": "After how many minutes is a priority-one support case escalated?",
+      "document_filename": "support_manual.md",
+      "evidence_marker": "A priority-one support case is escalated after 12 minutes."
+    },
+    {
+      "query_id": "recovery-signals",
+      "query": "How many independent identity signals are required for account recovery?",
+      "document_filename": "support_manual.md",
+      "evidence_marker": "Account recovery requires two independent identity signals."
+    },
+    {
+      "query_id": "export-deadline",
+      "query": "What is the completion deadline for an approved data export request?",
+      "document_filename": "privacy_standard.md",
+      "evidence_marker": "Approved data export requests must be completed within 21 days."
+    },
+    {
+      "query_id": "audit-log-retention",
+      "query": "For how many days are privacy audit logs retained?",
+      "document_filename": "privacy_standard.md",
+      "evidence_marker": "Privacy audit logs are retained for 400 days."
+    },
+    {
+      "query_id": "canary-traffic",
+      "query": "What percentage of traffic does a production canary receive initially?",
+      "document_filename": "deployment_guide.md",
+      "evidence_marker": "A production canary begins with 5 percent of traffic."
+    },
+    {
+      "query_id": "rollback-threshold",
+      "query": "What error-rate condition automatically triggers rollback?",
+      "document_filename": "deployment_guide.md",
+      "evidence_marker": "Rollback is triggered when the error rate exceeds 2.5 percent for three consecutive minutes."
+    },
+    {
+      "query_id": "invoice-approval",
+      "query": "How many approvers are needed for a vendor invoice above 25,000 dollars?",
+      "document_filename": "finance_controls.md",
+      "evidence_marker": "Vendor invoices above 25,000 dollars require two approvers."
+    },
+    {
+      "query_id": "monthly-close-lock",
+      "query": "On which business day does the monthly accounting close become locked?",
+      "document_filename": "finance_controls.md",
+      "evidence_marker": "The monthly accounting close locks on the fourth business day."
+    },
+    {
+      "query_id": "dataset-registry-label",
+      "query": "What is the registry label for the restricted dataset?",
+      "document_filename": "data_governance.md",
+      "evidence_marker": "The restricted dataset registry label is DV-88-PINE."
+    },
+    {
+      "query_id": "telemetry-retention",
+      "query": "When is raw telemetry deleted?",
+      "document_filename": "data_governance.md",
+      "evidence_marker": "Raw telemetry is deleted after 45 days."
+    },
+    {
+      "query_id": "recovery-time-objective",
+      "query": "What is the documented recovery time objective?",
+      "document_filename": "continuity_plan.md",
+      "evidence_marker": "The recovery time objective is 90 minutes."
+    },
+    {
+      "query_id": "failover-schedule",
+      "query": "When are the scheduled failover tests performed?",
+      "document_filename": "continuity_plan.md",
+      "evidence_marker": "The scheduled failover test runs on the first Tuesday of March and September."
+    }
+  ]
+}
