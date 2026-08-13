@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "Example Aqlyra retrieval benchmark cases. Replace these values with evidence that exists in ready documents for the benchmark user.",
+  "cases": [
+    {
+      "query_id": "security-review-month",
+      "query": "When does the annual security review happen?",
+      "document_filename": "security-policy.md",
+      "evidence_marker": "annual security review happens every October"
+    },
+    {
+      "query_id": "incident-retention",
+      "query": "How long are incident records retained?",
+      "document_filename": "operations-policy.md",
+      "evidence_marker": "incident records are retained for seven years"
+    }
+  ]
+}
