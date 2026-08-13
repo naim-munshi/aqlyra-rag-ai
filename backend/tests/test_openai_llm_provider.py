@@ -228,3 +228,48 @@ def test_openai_llm_provider_requires_api_key(
         OpenAILLMProvider(
             api_key="",
         )
+
+
+def test_openai_llm_provider_sends_text_format(
+) -> None:
+    resource = FakeResponsesResource(
+        response=SimpleNamespace(
+            id="response-json",
+            output_text='{"scores":[]}',
+            usage=None,
+        )
+    )
+
+    text_format = {
+        "type": "json_schema",
+        "name": "test_schema",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "scores": {
+                    "type": "array",
+                },
+            },
+            "required": ["scores"],
+            "additionalProperties": False,
+        },
+    }
+
+    provider = OpenAILLMProvider(
+        api_key="",
+        client=FakeOpenAIClient(resource),
+        text_format=text_format,
+    )
+
+    provider.generate(
+        instructions="Return structured JSON.",
+        input_text="Test input",
+    )
+
+    assert (
+        resource.calls[0]["text"]
+        == {
+            "format": text_format,
+        }
+    )

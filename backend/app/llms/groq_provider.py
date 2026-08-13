@@ -29,6 +29,7 @@ class GroqLLMProvider(
         max_retries: int = 2,
         client: Any | None = None,
         reasoning_effort: str | None = None,
+        text_format: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -49,4 +50,5 @@ class GroqLLMProvider(
             reasoning_effort=(
                 reasoning_effort
             ),
+            text_format=text_format,
         )

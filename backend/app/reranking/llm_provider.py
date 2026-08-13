@@ -16,6 +16,41 @@ from app.reranking.types import (
 )
 
 
+RERANKER_TEXT_FORMAT = {
+    "type": "json_schema",
+    "name": "aqlyra_reranker_scores",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "scores": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                        },
+                        "score": {
+                            "type": "number",
+                        },
+                    },
+                    "required": [
+                        "id",
+                        "score",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": [
+            "scores",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+
 RERANKER_INSTRUCTIONS = """
 You are a retrieval reranker.
 

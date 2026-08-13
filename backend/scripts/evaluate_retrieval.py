@@ -10,6 +10,9 @@ from app.config.settings import settings
 from app.llms import (
     create_llm_provider,
 )
+from app.reranking.llm_provider import (
+    RERANKER_TEXT_FORMAT,
+)
 from app.reranking import (
     IdentityReranker,
     LLMReranker,
@@ -52,6 +55,9 @@ def create_reranker(
                 settings.LLM_MAX_RETRIES
             ),
             reasoning_effort="low",
+            text_format=(
+                RERANKER_TEXT_FORMAT
+            ),
         )
 
         return LLMReranker(

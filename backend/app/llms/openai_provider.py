@@ -127,6 +127,7 @@ class OpenAILLMProvider:
         base_url: str | None = None,
         send_store: bool = True,
         reasoning_effort: str | None = None,
+        text_format: dict[str, Any] | None = None,
     ) -> None:
         cleaned_provider_name = (
             provider_name
@@ -189,6 +190,15 @@ class OpenAILLMProvider:
         )
 
         self._send_store = send_store
+
+        if text_format is None:
+            self._text_format = None
+        elif not isinstance(text_format, dict):
+            raise LLMValidationError(
+                "text_format must be a dictionary"
+            )
+        else:
+            self._text_format = dict(text_format)
 
         if reasoning_effort is None:
             self._reasoning_effort = None
@@ -288,6 +298,11 @@ class OpenAILLMProvider:
         if self._reasoning_effort is not None:
             request["reasoning"] = {
                 "effort": self._reasoning_effort,
+            }
+
+        if self._text_format is not None:
+            request["text"] = {
+                "format": self._text_format,
             }
 
         try:
