@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.llms import (
     LLMProvider,
     create_configured_llm_provider,
@@ -17,10 +18,72 @@ from app.rag.answer_service import (
     generate_grounded_answer_draft,
     repair_grounded_answer_draft,
 )
-from app.retrieval import RetrievalQuery
+from app.reranking import (
+    RerankerError,
+    RerankerProvider,
+    create_configured_reranker,
+)
+from app.retrieval import (
+    RetrievalHit,
+    RetrievalQuery,
+)
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
+from app.services.reranked_retrieval_service import (
+    search_reranked_chunks,
+)
+
+
+def _retrieve_rag_hits(
+    *,
+    db: Session,
+    query: RetrievalQuery,
+    reranker: RerankerProvider | None = None,
+) -> list[RetrievalHit]:
+    """
+    Retrieve RAG evidence with optional semantic reranking.
+
+    Reranking is feature-gated. Configuration/provider failures
+    fall back to the existing hybrid retrieval path.
+    """
+
+    reranking_enabled = (
+        settings.RAG_RERANKER_ENABLED
+    )
+
+    candidate_depth = (
+        settings.RERANKER_CANDIDATE_DEPTH
+    )
+
+    if (
+        not reranking_enabled
+        or query.top_k > candidate_depth
+    ):
+        return search_hybrid_chunks(
+            db=db,
+            query=query,
+        )
+
+    try:
+        active_reranker = (
+            reranker
+            or create_configured_reranker()
+        )
+
+    except RerankerError:
+        return search_hybrid_chunks(
+            db=db,
+            query=query,
+        )
+
+    return search_reranked_chunks(
+        db=db,
+        query=query,
+        reranker=active_reranker,
+        candidate_depth=candidate_depth,
+        fallback_on_error=True,
+    )
 
 
 INSUFFICIENT_EVIDENCE_MESSAGE = (
@@ -72,6 +135,7 @@ def answer_question(
     max_source_tokens: int = 700,
     max_sources: int = 8,
     provider: LLMProvider | None = None,
+    reranker: RerankerProvider | None = None,
 ) -> RAGAnswerResult:
     cleaned_question = question.strip()
 
@@ -80,7 +144,7 @@ def answer_question(
         or create_configured_llm_provider()
     )
 
-    hits = search_hybrid_chunks(
+    hits = _retrieve_rag_hits(
         db=db,
         query=RetrievalQuery(
             user_id=user_id,
@@ -90,6 +154,7 @@ def answer_question(
             chunk_roles=chunk_roles,
             min_similarity=min_similarity,
         ),
+        reranker=reranker,
     )
 
     evidence_context = build_evidence_context(

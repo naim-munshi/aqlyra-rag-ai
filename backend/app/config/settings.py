@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 60.0
     LLM_MAX_RETRIES: int = 2
 
+    # RAG reranking
+    RAG_RERANKER_ENABLED: bool = False
+    RERANKER_PROVIDER: str = "llm"
+    RERANKER_CANDIDATE_DEPTH: int = 15
+    RERANKER_MAX_CANDIDATE_CHARS: int = 900
+    RERANKER_MAX_OUTPUT_TOKENS: int = 1_024
+    RERANKER_REASONING_EFFORT: str = "low"
+
     # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
@@ -143,9 +151,55 @@ class Settings(BaseSettings):
         return normalized
 
     @field_validator(
+        "RERANKER_PROVIDER"
+    )
+    @classmethod
+    def validate_reranker_provider(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "identity",
+            "llm",
+        }:
+            raise ValueError(
+                "RERANKER_PROVIDER must be "
+                "'identity' or 'llm'"
+            )
+
+        return normalized
+
+    @field_validator(
+        "RERANKER_REASONING_EFFORT"
+    )
+    @classmethod
+    def validate_reranker_reasoning_effort(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "low",
+            "medium",
+            "high",
+        }:
+            raise ValueError(
+                "RERANKER_REASONING_EFFORT must "
+                "be 'low', 'medium', or 'high'"
+            )
+
+        return normalized
+
+    @field_validator(
         "EMBEDDING_DIMENSION",
         "EMBEDDING_MAX_BATCH_SIZE",
         "LLM_MAX_OUTPUT_TOKENS",
+        "RERANKER_CANDIDATE_DEPTH",
+        "RERANKER_MAX_CANDIDATE_CHARS",
+        "RERANKER_MAX_OUTPUT_TOKENS",
     )
     @classmethod
     def validate_positive_integer(
@@ -216,6 +270,22 @@ class Settings(BaseSettings):
         if not self.LLM_MODEL.strip():
             raise ValueError(
                 "LLM_MODEL cannot be empty"
+            )
+
+        if self.RERANKER_CANDIDATE_DEPTH > 50:
+            raise ValueError(
+                "RERANKER_CANDIDATE_DEPTH "
+                "cannot exceed 50"
+            )
+
+        if (
+            self.RAG_RERANKER_ENABLED
+            and self.RERANKER_PROVIDER == "llm"
+            and self.LLM_PROVIDER == "deterministic"
+        ):
+            raise ValueError(
+                "LLM reranking requires a "
+                "non-deterministic LLM provider"
             )
 
         uses_openai = (
