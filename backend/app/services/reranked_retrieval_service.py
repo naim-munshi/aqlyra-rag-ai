@@ -159,6 +159,7 @@ def search_reranked_chunks(
         DEFAULT_RERANK_CANDIDATE_DEPTH
     ),
     fallback_on_error: bool = True,
+    reranker_query_text: str | None = None,
 ) -> list[RetrievalHit]:
     if not 1 <= candidate_depth <= 50:
         raise ValueError(
@@ -184,7 +185,10 @@ def search_reranked_chunks(
     )
 
     reranked = rerank_hits(
-        query_text=query.text,
+        query_text=(
+            reranker_query_text
+            or query.text
+        ),
         hits=hybrid_hits,
         reranker=reranker,
         fallback_on_error=(

@@ -16,6 +16,7 @@ from app.retrieval.evaluation import (
     RetrievalEvaluationSummary,
     evaluate_rankings,
 )
+from app.query_rewriting import QueryRewriter
 from app.reranking import RerankerProvider
 from app.retrieval.types import RetrievalQuery
 from app.services.hybrid_retrieval_service import (
@@ -75,6 +76,8 @@ class RetrievalBenchmarkReport:
     recall_delta: float
     mrr_delta: float
     reranked: RetrievalEvaluationSummary | None = None
+    query_rewriter_provider_name: str | None = None
+    query_rewriter_model_name: str | None = None
     reranker_provider_name: str | None = None
     reranker_model_name: str | None = None
     rerank_hit_rate_delta: float | None = None
@@ -315,6 +318,7 @@ def run_retrieval_benchmark(
     retrieval_depth: int = 20,
     provider: EmbeddingProvider | None = None,
     reranker: RerankerProvider | None = None,
+    query_rewriter: QueryRewriter | None = None,
     chunk_roles: tuple[
         str,
         ...,
@@ -365,9 +369,18 @@ def run_retrieval_benchmark(
     ] = {}
 
     for case in cases:
+        retrieval_text = case.query
+
+        if query_rewriter is not None:
+            retrieval_text = (
+                query_rewriter.rewrite(
+                    case.query
+                )
+            )
+
         retrieval_query = RetrievalQuery(
             user_id=user_id,
-            text=case.query,
+            text=retrieval_text,
             top_k=retrieval_depth,
             chunk_roles=chunk_roles,
         )
@@ -478,6 +491,16 @@ def run_retrieval_benchmark(
             - vector_summary.mrr_at_k
         ),
         reranked=reranked_summary,
+        query_rewriter_provider_name=(
+            query_rewriter.info.provider_name
+            if query_rewriter is not None
+            else None
+        ),
+        query_rewriter_model_name=(
+            query_rewriter.info.model_name
+            if query_rewriter is not None
+            else None
+        ),
         reranker_provider_name=(
             reranker.info.provider_name
             if reranker is not None

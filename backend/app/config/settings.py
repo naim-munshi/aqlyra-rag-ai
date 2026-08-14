@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     RERANKER_MAX_OUTPUT_TOKENS: int = 1_024
     RERANKER_REASONING_EFFORT: str = "low"
 
+    # RAG query rewriting
+    RAG_QUERY_REWRITE_ENABLED: bool = False
+    QUERY_REWRITER_PROVIDER: str = "llm"
+    QUERY_REWRITER_MAX_CHARS: int = 500
+    QUERY_REWRITER_MAX_OUTPUT_TOKENS: int = 256
+    QUERY_REWRITER_REASONING_EFFORT: str = "low"
+
     # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
@@ -172,6 +179,49 @@ class Settings(BaseSettings):
         return normalized
 
     @field_validator(
+        "QUERY_REWRITER_PROVIDER"
+    )
+    @classmethod
+    def validate_query_rewriter_provider(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "identity",
+            "llm",
+        }:
+            raise ValueError(
+                "QUERY_REWRITER_PROVIDER must be "
+                "'identity' or 'llm'"
+            )
+
+        return normalized
+
+    @field_validator(
+        "QUERY_REWRITER_REASONING_EFFORT"
+    )
+    @classmethod
+    def validate_query_rewriter_reasoning_effort(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "low",
+            "medium",
+            "high",
+        }:
+            raise ValueError(
+                "QUERY_REWRITER_REASONING_EFFORT "
+                "must be 'low', 'medium', or 'high'"
+            )
+
+        return normalized
+
+    @field_validator(
         "RERANKER_REASONING_EFFORT"
     )
     @classmethod
@@ -200,6 +250,8 @@ class Settings(BaseSettings):
         "RERANKER_CANDIDATE_DEPTH",
         "RERANKER_MAX_CANDIDATE_CHARS",
         "RERANKER_MAX_OUTPUT_TOKENS",
+        "QUERY_REWRITER_MAX_CHARS",
+        "QUERY_REWRITER_MAX_OUTPUT_TOKENS",
     )
     @classmethod
     def validate_positive_integer(
@@ -285,6 +337,16 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "LLM reranking requires a "
+                "non-deterministic LLM provider"
+            )
+
+        if (
+            self.RAG_QUERY_REWRITE_ENABLED
+            and self.QUERY_REWRITER_PROVIDER == "llm"
+            and self.LLM_PROVIDER == "deterministic"
+        ):
+            raise ValueError(
+                "LLM query rewriting requires a "
                 "non-deterministic LLM provider"
             )
 

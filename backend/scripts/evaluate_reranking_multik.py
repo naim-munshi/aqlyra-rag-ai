@@ -6,6 +6,10 @@ from pathlib import Path
 from app.config.settings import settings
 from app.database.connection import SessionLocal
 from app.llms import create_llm_provider
+from app.query_rewriting import (
+    QueryRewriter,
+    create_configured_query_rewriter,
+)
 from app.reranking import LLMReranker
 from app.reranking.llm_provider import (
     RERANKER_TEXT_FORMAT,
@@ -44,6 +48,19 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--query-rewriter",
+        choices=(
+            "none",
+            "llm",
+        ),
+        default="none",
+        help=(
+            "Optional retrieval query rewrite. "
+            "'llm' uses the configured LLM provider."
+        ),
+    )
+
+    parser.add_argument(
         "--delay-seconds",
         type=float,
         default=45.0,
@@ -60,6 +77,20 @@ def parse_args() -> argparse.Namespace:
     )
 
     return parser.parse_args()
+
+
+def create_query_rewriter(
+    name: str,
+) -> QueryRewriter | None:
+    if name == "none":
+        return None
+
+    if name == "llm":
+        return create_configured_query_rewriter()
+
+    raise ValueError(
+        f"Unsupported query rewriter: {name}"
+    )
 
 
 def create_reranker() -> LLMReranker:
@@ -102,12 +133,17 @@ def main() -> None:
 
     reranker = create_reranker()
 
+    query_rewriter = create_query_rewriter(
+        args.query_rewriter
+    )
+
     with SessionLocal() as db:
         report = run_reranking_benchmark_once(
             db=db,
             user_id=args.user_id,
             specs=specs,
             reranker=reranker,
+            query_rewriter=query_rewriter,
             ks=(1, 3, 5),
             retrieval_depth=(
                 args.retrieval_depth
@@ -132,6 +168,21 @@ def main() -> None:
         "/",
         report.reranker_model_name,
     )
+    if (
+        report.query_rewriter_provider_name
+        is not None
+    ):
+        print(
+            "Query rewriter:",
+            report.query_rewriter_provider_name,
+            "/",
+            report.query_rewriter_model_name,
+        )
+    else:
+        print(
+            "Query rewriter: none"
+        )
+
     print(
         "Cases:",
         report.case_count,

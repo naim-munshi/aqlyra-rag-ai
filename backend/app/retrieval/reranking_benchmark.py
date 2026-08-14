@@ -7,6 +7,7 @@ from app.embeddings import (
     EmbeddingProvider,
     create_configured_embedding_provider,
 )
+from app.query_rewriting import QueryRewriter
 from app.reranking import RerankerProvider
 from app.retrieval import RetrievalQuery
 from app.retrieval.benchmark import (
@@ -55,6 +56,9 @@ class RerankingBenchmarkReport:
     reranker_provider_name: str
     reranker_model_name: str
 
+    query_rewriter_provider_name: str | None
+    query_rewriter_model_name: str | None
+
     retrieval_depth: int
     case_count: int
     results: tuple[MultiKResult, ...]
@@ -76,6 +80,7 @@ def run_reranking_benchmark_once(
     ),
     retrieval_depth: int = 15,
     provider: EmbeddingProvider | None = None,
+    query_rewriter: QueryRewriter | None = None,
     chunk_roles: tuple[
         str,
         ...,
@@ -147,9 +152,18 @@ def run_reranking_benchmark_once(
             f"{case.query_id}"
         )
 
+        retrieval_text = case.query
+
+        if query_rewriter is not None:
+            retrieval_text = (
+                query_rewriter.rewrite(
+                    case.query
+                )
+            )
+
         query = RetrievalQuery(
             user_id=user_id,
-            text=case.query,
+            text=retrieval_text,
             top_k=retrieval_depth,
             chunk_roles=chunk_roles,
         )
@@ -285,6 +299,16 @@ def run_reranking_benchmark_once(
         ),
         reranker_model_name=(
             reranker.info.model_name
+        ),
+        query_rewriter_provider_name=(
+            query_rewriter.info.provider_name
+            if query_rewriter is not None
+            else None
+        ),
+        query_rewriter_model_name=(
+            query_rewriter.info.model_name
+            if query_rewriter is not None
+            else None
         ),
         retrieval_depth=retrieval_depth,
         case_count=len(cases),

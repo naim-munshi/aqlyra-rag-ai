@@ -82,8 +82,12 @@ def test_rag_uses_reranker_when_enabled(
         reranker,
         candidate_depth,
         fallback_on_error,
+        reranker_query_text,
     ):
         captured["top_k"] = query.top_k
+        captured["reranker_query_text"] = (
+            reranker_query_text
+        )
         captured["reranker"] = reranker
         captured["candidate_depth"] = (
             candidate_depth
@@ -114,6 +118,9 @@ def test_rag_uses_reranker_when_enabled(
     )
     assert captured["candidate_depth"] == 15
     assert captured["fallback"] is True
+    assert captured["reranker_query_text"] == (
+        "Which evidence is relevant?"
+    )
 
 
 def test_rag_falls_back_when_reranker_configuration_fails(

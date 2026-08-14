@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,11 @@ from app.rag.answer_service import (
     generate_grounded_answer_draft,
     repair_grounded_answer_draft,
 )
+from app.query_rewriting import (
+    QueryRewriter,
+    QueryRewriteError,
+    create_configured_query_rewriter,
+)
 from app.reranking import (
     RerankerError,
     RerankerProvider,
@@ -35,11 +40,46 @@ from app.services.reranked_retrieval_service import (
 )
 
 
+def _rewrite_retrieval_query(
+    *,
+    query: RetrievalQuery,
+    query_rewriter: QueryRewriter | None = None,
+) -> RetrievalQuery:
+    """
+    Rewrite only the retrieval query.
+
+    The original user question remains authoritative
+    for reranking and grounded answer generation.
+    """
+
+    if not settings.RAG_QUERY_REWRITE_ENABLED:
+        return query
+
+    try:
+        active_rewriter = (
+            query_rewriter
+            or create_configured_query_rewriter()
+        )
+
+        rewritten_text = active_rewriter.rewrite(
+            query.text
+        )
+
+    except QueryRewriteError:
+        return query
+
+    return replace(
+        query,
+        text=rewritten_text,
+    )
+
+
 def _retrieve_rag_hits(
     *,
     db: Session,
     query: RetrievalQuery,
     reranker: RerankerProvider | None = None,
+    query_rewriter: QueryRewriter | None = None,
 ) -> list[RetrievalHit]:
     """
     Retrieve RAG evidence with optional semantic reranking.
@@ -47,6 +87,13 @@ def _retrieve_rag_hits(
     Reranking is feature-gated. Configuration/provider failures
     fall back to the existing hybrid retrieval path.
     """
+
+    original_query_text = query.text
+
+    retrieval_query = _rewrite_retrieval_query(
+        query=query,
+        query_rewriter=query_rewriter,
+    )
 
     reranking_enabled = (
         settings.RAG_RERANKER_ENABLED
@@ -62,7 +109,7 @@ def _retrieve_rag_hits(
     ):
         return search_hybrid_chunks(
             db=db,
-            query=query,
+            query=retrieval_query,
         )
 
     try:
@@ -74,15 +121,18 @@ def _retrieve_rag_hits(
     except RerankerError:
         return search_hybrid_chunks(
             db=db,
-            query=query,
+            query=retrieval_query,
         )
 
     return search_reranked_chunks(
         db=db,
-        query=query,
+        query=retrieval_query,
         reranker=active_reranker,
         candidate_depth=candidate_depth,
         fallback_on_error=True,
+        reranker_query_text=(
+            original_query_text
+        ),
     )
 
 
@@ -136,6 +186,7 @@ def answer_question(
     max_sources: int = 8,
     provider: LLMProvider | None = None,
     reranker: RerankerProvider | None = None,
+    query_rewriter: QueryRewriter | None = None,
 ) -> RAGAnswerResult:
     cleaned_question = question.strip()
 
@@ -155,6 +206,7 @@ def answer_question(
             min_similarity=min_similarity,
         ),
         reranker=reranker,
+        query_rewriter=query_rewriter,
     )
 
     evidence_context = build_evidence_context(

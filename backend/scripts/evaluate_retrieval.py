@@ -10,6 +10,11 @@ from app.config.settings import settings
 from app.llms import (
     create_llm_provider,
 )
+from app.query_rewriting import (
+    IdentityQueryRewriter,
+    QueryRewriter,
+    create_configured_query_rewriter,
+)
 from app.reranking.llm_provider import (
     RERANKER_TEXT_FORMAT,
 )
@@ -69,6 +74,23 @@ def create_reranker(
     )
 
 
+def create_query_rewriter(
+    name: str,
+) -> QueryRewriter | None:
+    if name == "none":
+        return None
+
+    if name == "identity":
+        return IdentityQueryRewriter()
+
+    if name == "llm":
+        return create_configured_query_rewriter()
+
+    raise ValueError(
+        f"Unsupported query rewriter: {name}"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -114,6 +136,21 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--query-rewriter",
+        choices=(
+            "none",
+            "identity",
+            "llm",
+        ),
+        default="none",
+        help=(
+            "Optional retrieval query rewriter. "
+            "'llm' uses the configured LLM "
+            "provider."
+        ),
+    )
+
+    parser.add_argument(
         "--reranker",
         choices=(
             "none",
@@ -151,6 +188,10 @@ def main() -> None:
         args.reranker
     )
 
+    query_rewriter = create_query_rewriter(
+        args.query_rewriter
+    )
+
     with SessionLocal() as db:
         report = run_retrieval_benchmark(
             db=db,
@@ -161,6 +202,7 @@ def main() -> None:
                 args.retrieval_depth
             ),
             reranker=reranker,
+            query_rewriter=query_rewriter,
         )
 
     print()
@@ -194,6 +236,17 @@ def main() -> None:
         "Retrieval depth:",
         report.retrieval_depth,
     )
+
+    if (
+        report.query_rewriter_provider_name
+        is not None
+    ):
+        print(
+            "Query rewriter:",
+            report.query_rewriter_provider_name,
+            "/",
+            report.query_rewriter_model_name,
+        )
 
     if report.reranked is not None:
         print(
