@@ -5,7 +5,12 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config.settings import settings
 from app.database.base import Base
-from app.models import Document, User
+from app.models import (
+    Conversation,
+    Document,
+    Message,
+    User,
+)
 
 config = context.config
 
@@ -21,7 +26,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Importing the models registers their tables with Base.metadata.
-_ = (Document, User)
+_ = (
+    Conversation,
+    Document,
+    Message,
+    User,
+)
 target_metadata = Base.metadata
 
 

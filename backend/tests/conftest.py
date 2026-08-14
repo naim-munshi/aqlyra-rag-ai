@@ -36,15 +36,19 @@ from app.database.base import Base
 from app.database.connection import get_db
 from app.main import app
 from app.models import (
+    Conversation,
     Document,
     DocumentChunk,
     DocumentUnit,
     EmbeddingRecord,
+    Message,
     User,
 )
 
 _REGISTERED_MODELS = (
     User,
+    Conversation,
+    Message,
     Document,
     DocumentUnit,
     DocumentChunk,

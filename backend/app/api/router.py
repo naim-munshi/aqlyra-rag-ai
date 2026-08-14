@@ -3,6 +3,9 @@ from fastapi import APIRouter
 from app.api.auth import (
     router as auth_router,
 )
+from app.api.conversations import (
+    router as conversations_router,
+)
 from app.api.documents import (
     router as documents_router,
 )
@@ -35,6 +38,10 @@ api_router.include_router(
 
 api_router.include_router(
     users_router
+)
+
+api_router.include_router(
+    conversations_router
 )
 
 api_router.include_router(

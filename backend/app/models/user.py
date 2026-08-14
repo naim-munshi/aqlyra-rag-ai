@@ -9,6 +9,7 @@ from app.core.datetime_utils import utc_now_naive
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.conversation import Conversation
     from app.models.document import Document
 
 
@@ -60,6 +61,14 @@ class User(Base):
     )
 
     documents: Mapped[list["Document"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    conversations: Mapped[
+        list["Conversation"]
+    ] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
         passive_deletes=True,
