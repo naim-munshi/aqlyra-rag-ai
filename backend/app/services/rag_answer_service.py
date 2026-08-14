@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
@@ -40,6 +41,9 @@ from app.services.reranked_retrieval_service import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 def _rewrite_retrieval_query(
     *,
     query: RetrievalQuery,
@@ -65,7 +69,13 @@ def _rewrite_retrieval_query(
             query.text
         )
 
-    except QueryRewriteError:
+    except QueryRewriteError as exc:
+        logger.warning(
+            "query_rewrite_failed "
+            "fallback=original_query "
+            "error_type=%s",
+            type(exc).__name__,
+        )
         return query
 
     return replace(
@@ -118,7 +128,13 @@ def _retrieve_rag_hits(
             or create_configured_reranker()
         )
 
-    except RerankerError:
+    except RerankerError as exc:
+        logger.warning(
+            "reranker_config_failed "
+            "fallback=hybrid "
+            "error_type=%s",
+            type(exc).__name__,
+        )
         return search_hybrid_chunks(
             db=db,
             query=retrieval_query,

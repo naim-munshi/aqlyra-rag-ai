@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,9 @@ from app.retrieval import (
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_RERANK_CANDIDATE_DEPTH = 20
@@ -142,9 +146,16 @@ def rerank_hits(
             reranker=reranker,
         )
 
-    except RerankerError:
+    except RerankerError as exc:
         if not fallback_on_error:
             raise
+
+        logger.warning(
+            "reranker_runtime_failed "
+            "fallback=original_hybrid_order "
+            "error_type=%s",
+            type(exc).__name__,
+        )
 
         return list(hits)
 
