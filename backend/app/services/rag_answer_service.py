@@ -190,6 +190,7 @@ def answer_question(
     db: Session,
     user_id: str,
     question: str,
+    retrieval_question: str | None = None,
     top_k: int = 8,
     document_ids: tuple[str, ...] = (),
     chunk_roles: tuple[str, ...] = (
@@ -206,6 +207,17 @@ def answer_question(
 ) -> RAGAnswerResult:
     cleaned_question = question.strip()
 
+    cleaned_retrieval_question = (
+        retrieval_question.strip()
+        if retrieval_question is not None
+        else cleaned_question
+    )
+
+    if not cleaned_retrieval_question:
+        cleaned_retrieval_question = (
+            cleaned_question
+        )
+
     active_provider = (
         provider
         or create_configured_llm_provider()
@@ -215,7 +227,7 @@ def answer_question(
         db=db,
         query=RetrievalQuery(
             user_id=user_id,
-            text=cleaned_question,
+            text=cleaned_retrieval_question,
             top_k=top_k,
             document_ids=document_ids,
             chunk_roles=chunk_roles,
