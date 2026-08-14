@@ -9,18 +9,42 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.logging import app_logger
 from app.database.connection import get_db
+from app.embeddings import EmbeddingError
+from app.llms import (
+    LLMProviderRequestError,
+    LLMProviderResponseError,
+    LLMValidationError,
+)
 from app.models.user import User
+from app.rag import (
+    CitationValidationError,
+    GroundedAnswerError,
+)
+from app.retrieval import (
+    RetrievalProviderError,
+    RetrievalValidationError,
+)
 from app.schemas.conversation import (
+    ChatTurnResponse,
     ConversationCreate,
+    ConversationMessageCreate,
     ConversationResponse,
     ConversationUpdate,
+    MessageResponse,
+)
+from app.services.chat_service import (
+    ChatValidationError,
+    execute_chat_turn,
 )
 from app.services.conversation_service import (
     create_conversation,
     delete_conversation,
     get_conversation_for_user,
     list_conversations_for_user,
+    list_messages_for_conversation,
+    persist_chat_turn,
     update_conversation,
 )
 
@@ -82,6 +106,185 @@ def list_conversations_endpoint(
         user_id=str(current_user.id),
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/{conversation_id}/messages",
+    response_model=list[MessageResponse],
+)
+def list_messages_endpoint(
+    conversation_id: str,
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=200,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> list[MessageResponse]:
+    conversation = get_conversation_for_user(
+        db=db,
+        user_id=str(current_user.id),
+        conversation_id=conversation_id,
+    )
+
+    if conversation is None:
+        raise _conversation_not_found()
+
+    return list_messages_for_conversation(
+        db=db,
+        conversation_id=conversation.id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=ChatTurnResponse,
+)
+def create_message_endpoint(
+    conversation_id: str,
+    request: ConversationMessageCreate,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> ChatTurnResponse:
+    conversation = get_conversation_for_user(
+        db=db,
+        user_id=str(current_user.id),
+        conversation_id=conversation_id,
+    )
+
+    if conversation is None:
+        raise _conversation_not_found()
+
+    try:
+        result = execute_chat_turn(
+            db=db,
+            conversation=conversation,
+            message=request.content,
+            document_ids=tuple(
+                request.document_ids
+            ),
+            top_k=request.top_k,
+        )
+
+    except (
+        RetrievalValidationError,
+        ChatValidationError,
+    ) as exc:
+        raise HTTPException(
+            status_code=(
+                status
+                .HTTP_422_UNPROCESSABLE_CONTENT
+            ),
+            detail=str(exc),
+        ) from exc
+
+    except (
+        RetrievalProviderError,
+        LLMValidationError,
+    ) as exc:
+        app_logger.exception(
+            "Conversation provider "
+            "configuration failed: "
+            f"conversation_id={conversation.id}"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status
+                .HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Conversation provider "
+                "configuration failed"
+            ),
+        ) from exc
+
+    except (
+        EmbeddingError,
+        LLMProviderRequestError,
+    ) as exc:
+        app_logger.exception(
+            "Conversation provider request failed: "
+            f"conversation_id={conversation.id}"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status
+                .HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail=(
+                "Conversation provider service "
+                "is unavailable"
+            ),
+        ) from exc
+
+    except (
+        LLMProviderResponseError,
+        CitationValidationError,
+        GroundedAnswerError,
+    ) as exc:
+        app_logger.exception(
+            "Conversation answer validation failed: "
+            f"conversation_id={conversation.id}"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_502_BAD_GATEWAY
+            ),
+            detail=(
+                "The generated conversation answer "
+                "failed validation"
+            ),
+        ) from exc
+
+    user_message, assistant_message = (
+        persist_chat_turn(
+            db=db,
+            conversation=conversation,
+            user_content=request.content,
+            assistant_content=result.content,
+            mode=result.mode,
+            provider_name=(
+                result.provider_name
+            ),
+            model_name=result.model_name,
+            response_id=result.response_id,
+            citations=list(
+                result.citations
+            ),
+            is_refusal=result.is_refusal,
+            input_tokens=result.input_tokens,
+            output_tokens=(
+                result.output_tokens
+            ),
+            total_tokens=(
+                result.total_tokens
+            ),
+            evidence_tokens=(
+                result.evidence_tokens
+            ),
+        )
+    )
+
+    return ChatTurnResponse(
+        conversation_id=conversation.id,
+        mode=conversation.mode,
+        user_message=user_message,
+        assistant_message=assistant_message,
     )
 
 
