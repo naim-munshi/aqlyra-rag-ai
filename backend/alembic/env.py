@@ -8,6 +8,8 @@ from app.database.base import Base
 from app.models import (
     Conversation,
     Document,
+    Memory,
+    MemoryEmbedding,
     Message,
     User,
 )
@@ -29,6 +31,8 @@ if config.config_file_name is not None:
 _ = (
     Conversation,
     Document,
+    Memory,
+    MemoryEmbedding,
     Message,
     User,
 )

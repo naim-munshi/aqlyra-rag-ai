@@ -41,6 +41,8 @@ from app.models import (
     DocumentChunk,
     DocumentUnit,
     EmbeddingRecord,
+    Memory,
+    MemoryEmbedding,
     Message,
     User,
 )
@@ -53,6 +55,8 @@ _REGISTERED_MODELS = (
     DocumentUnit,
     DocumentChunk,
     EmbeddingRecord,
+    Memory,
+    MemoryEmbedding,
 )
 
 test_engine = create_engine(

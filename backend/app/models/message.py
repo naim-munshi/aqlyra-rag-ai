@@ -25,6 +25,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
+    from app.models.memory import Memory
 
 
 class Message(Base):
@@ -151,4 +152,11 @@ class Message(Base):
 
     conversation: Mapped["Conversation"] = relationship(
         back_populates="messages",
+    )
+
+    extracted_memories: Mapped[
+        list["Memory"]
+    ] = relationship(
+        back_populates="source_message",
+        passive_deletes=True,
     )
