@@ -12,6 +12,9 @@ from app.api.documents import (
 from app.api.embedding_indexing import (
     router as embedding_indexing_router,
 )
+from app.api.memories import (
+    router as memories_router,
+)
 from app.api.rag import (
     router as rag_router,
 )
@@ -42,6 +45,10 @@ api_router.include_router(
 
 api_router.include_router(
     conversations_router
+)
+
+api_router.include_router(
+    memories_router
 )
 
 api_router.include_router(
