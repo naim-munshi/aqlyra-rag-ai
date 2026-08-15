@@ -121,6 +121,29 @@ def test_create_list_and_get_memory(
         "i prefer dark mode."
     )
 
+    embedding = db_session.scalar(
+        select(
+            MemoryEmbedding
+        ).where(
+            MemoryEmbedding.memory_id
+            == payload["id"]
+        )
+    )
+
+    assert embedding is not None
+    assert embedding.provider_name == (
+        "deterministic"
+    )
+    assert embedding.model_name == (
+        "deterministic-sha256-v1"
+    )
+    assert embedding.content_hash == (
+        hashlib.sha256(
+            payload["content"]
+            .encode("utf-8")
+        ).hexdigest()
+    )
+
     list_response = client.get(
         "/api/v1/memories"
     )
@@ -298,6 +321,29 @@ def test_content_update_invalidates_stale_embedding(
     assert memory is not None
     assert memory.normalized_content == (
         "i prefer rust."
+    )
+
+    replacement_embedding = (
+        db_session.scalar(
+            select(
+                MemoryEmbedding
+            ).where(
+                MemoryEmbedding.memory_id
+                == memory_id,
+                MemoryEmbedding.provider_name
+                == "deterministic",
+                MemoryEmbedding.model_name
+                == "deterministic-sha256-v1",
+            )
+        )
+    )
+
+    assert replacement_embedding is not None
+    assert (
+        replacement_embedding.content_hash
+        == hashlib.sha256(
+            b"I prefer Rust."
+        ).hexdigest()
     )
 
 

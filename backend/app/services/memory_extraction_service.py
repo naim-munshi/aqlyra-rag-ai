@@ -17,6 +17,9 @@ from app.schemas.memory_extraction import (
     MemoryCandidate,
     MemoryExtractionResponse,
 )
+from app.services.memory_embedding_service import (
+    index_memory_embeddings_best_effort,
+)
 from app.services.memory_service import (
     normalize_memory_content,
 )
@@ -294,7 +297,7 @@ def extract_memories_best_effort(
         return []
 
     try:
-        return extract_memories_for_message(
+        memories = extract_memories_for_message(
             db=db,
             user_id=user_id,
             source_message_id=(
@@ -302,6 +305,18 @@ def extract_memories_best_effort(
             ),
             provider=provider,
         )
+
+        if memories:
+            index_memory_embeddings_best_effort(
+                db=db,
+                user_id=user_id,
+                memory_ids=[
+                    memory.id
+                    for memory in memories
+                ],
+            )
+
+        return memories
 
     except Exception:
         db.rollback()

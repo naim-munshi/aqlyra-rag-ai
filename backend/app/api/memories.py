@@ -17,6 +17,9 @@ from app.schemas.memory import (
     MemoryResponse,
     MemoryUpdate,
 )
+from app.services.memory_embedding_service import (
+    index_memory_embeddings_best_effort,
+)
 from app.services.memory_service import (
     MemoryValidationError,
     create_memory,
@@ -53,7 +56,7 @@ def create_memory_endpoint(
     db: Session = Depends(get_db),
 ) -> MemoryResponse:
     try:
-        return create_memory(
+        memory = create_memory(
             db=db,
             user_id=str(current_user.id),
             kind=request.kind,
@@ -61,6 +64,14 @@ def create_memory_endpoint(
             importance=request.importance,
             confidence=request.confidence,
         )
+
+        index_memory_embeddings_best_effort(
+            db=db,
+            user_id=str(current_user.id),
+            memory_ids=[memory.id],
+        )
+
+        return memory
 
     except MemoryValidationError as exc:
         raise HTTPException(
@@ -151,8 +162,10 @@ def update_memory_endpoint(
     if memory is None:
         raise _memory_not_found()
 
+    previous_content = memory.content
+
     try:
-        return update_memory(
+        updated_memory = update_memory(
             db=db,
             memory=memory,
             kind=request.kind,
@@ -161,6 +174,21 @@ def update_memory_endpoint(
             confidence=request.confidence,
             is_active=request.is_active,
         )
+
+        if (
+            request.content is not None
+            and updated_memory.content
+            != previous_content
+        ):
+            index_memory_embeddings_best_effort(
+                db=db,
+                user_id=str(current_user.id),
+                memory_ids=[
+                    updated_memory.id
+                ],
+            )
+
+        return updated_memory
 
     except MemoryValidationError as exc:
         raise HTTPException(
