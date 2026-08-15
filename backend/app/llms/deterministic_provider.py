@@ -1,6 +1,9 @@
+from collections.abc import Iterator
+
 from app.llms.types import (
     LLMGeneration,
     LLMProviderInfo,
+    LLMStreamEvent,
     LLMValidationError,
 )
 
@@ -82,4 +85,25 @@ class DeterministicLLMProvider:
             model_name=(
                 self.info.model_name
             ),
+        )
+
+    def stream(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> Iterator[LLMStreamEvent]:
+        generation = self.generate(
+            instructions=instructions,
+            input_text=input_text,
+        )
+
+        yield LLMStreamEvent(
+            event_type="delta",
+            delta_text=generation.text,
+        )
+
+        yield LLMStreamEvent(
+            event_type="complete",
+            generation=generation,
         )

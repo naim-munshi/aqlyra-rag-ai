@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Any
 
 from openai import OpenAI
@@ -6,6 +7,7 @@ from app.llms.types import (
     LLMGeneration,
     LLMProviderInfo,
     LLMProviderRequestError,
+    LLMStreamEvent,
     LLMProviderResponseError,
     LLMValidationError,
 )
@@ -257,6 +259,182 @@ class OpenAILLMProvider:
         self,
     ) -> LLMProviderInfo:
         return self._info
+
+    def stream(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> Iterator[LLMStreamEvent]:
+        cleaned_instructions = (
+            instructions.strip()
+        )
+
+        cleaned_input = input_text.strip()
+
+        if not cleaned_instructions:
+            raise LLMValidationError(
+                "LLM instructions cannot be empty"
+            )
+
+        if not cleaned_input:
+            raise LLMValidationError(
+                "LLM input cannot be empty"
+            )
+
+        request: dict[str, Any] = {
+            "model": self.info.model_name,
+            "instructions": (
+                cleaned_instructions
+            ),
+            "input": cleaned_input,
+            "max_output_tokens": (
+                self.info
+                .max_output_tokens
+            ),
+            "stream": True,
+        }
+
+        if self._send_store:
+            request["store"] = False
+
+        if self._reasoning_effort is not None:
+            request["reasoning"] = {
+                "effort": self._reasoning_effort,
+            }
+
+        if self._text_format is not None:
+            request["text"] = {
+                "format": self._text_format,
+            }
+
+        try:
+            stream = (
+                self._client
+                .responses
+                .create(**request)
+            )
+        except Exception as exc:
+            raise LLMProviderRequestError(
+                f"{self._provider_label} "
+                "stream creation failed"
+            ) from exc
+
+        final_response: Any = None
+
+        try:
+            for event in stream:
+                event_type = _read_value(
+                    event,
+                    "type",
+                    "",
+                )
+
+                if event_type in {
+                    "response.output_text.delta",
+                    "response.refusal.delta",
+                }:
+                    delta = _read_value(
+                        event,
+                        "delta",
+                        "",
+                    )
+
+                    if (
+                        isinstance(delta, str)
+                        and delta
+                    ):
+                        yield LLMStreamEvent(
+                            event_type="delta",
+                            delta_text=delta,
+                        )
+
+                    continue
+
+                if (
+                    event_type
+                    == "response.completed"
+                ):
+                    final_response = (
+                        _read_value(
+                            event,
+                            "response",
+                        )
+                    )
+
+        except Exception as exc:
+            raise LLMProviderRequestError(
+                f"{self._provider_label} "
+                "response streaming failed"
+            ) from exc
+
+        if final_response is None:
+            raise LLMProviderResponseError(
+                f"{self._provider_label} "
+                "stream ended without "
+                "a completed response"
+            )
+
+        text = _extract_response_text(
+            final_response,
+            self._provider_label,
+        )
+
+        usage = _read_value(
+            final_response,
+            "usage",
+        )
+
+        response_id_value = _read_value(
+            final_response,
+            "id",
+        )
+
+        response_id = (
+            str(response_id_value)
+            if response_id_value is not None
+            else None
+        )
+
+        generation = LLMGeneration(
+            text=text,
+            provider_name=(
+                self.info.provider_name
+            ),
+            model_name=(
+                self.info.model_name
+            ),
+            response_id=response_id,
+            input_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "input_tokens",
+                    )
+                )
+            ),
+            output_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "output_tokens",
+                    )
+                )
+            ),
+            total_tokens=(
+                _optional_integer(
+                    _read_value(
+                        usage,
+                        "total_tokens",
+                    )
+                )
+            ),
+        )
+
+        yield LLMStreamEvent(
+            event_type="complete",
+            generation=generation,
+        )
 
     def generate(
         self,

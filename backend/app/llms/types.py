@@ -1,5 +1,6 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 class LLMError(Exception):
@@ -36,6 +37,19 @@ class LLMGeneration:
     total_tokens: int | None = None
 
 
+LLMStreamEventType = Literal[
+    "delta",
+    "complete",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class LLMStreamEvent:
+    event_type: LLMStreamEventType
+    delta_text: str = ""
+    generation: LLMGeneration | None = None
+
+
 class LLMProvider(Protocol):
     @property
     def info(self) -> LLMProviderInfo:
@@ -48,3 +62,11 @@ class LLMProvider(Protocol):
         input_text: str,
     ) -> LLMGeneration:
         """Generate one normalized text response."""
+
+    def stream(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> Iterator[LLMStreamEvent]:
+        """Yield normalized text deltas and one completion event."""
