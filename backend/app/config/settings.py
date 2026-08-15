@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     MEMORY_AUTO_EXTRACT_ENABLED: bool = False
     MEMORY_EXTRACTION_MAX_CANDIDATES: int = 4
 
+    # Personal memory chat context
+    MEMORY_CHAT_ENABLED: bool = False
+    MEMORY_CHAT_TOP_K: int = 5
+    MEMORY_CHAT_MIN_SIMILARITY: float = 0.35
+
     # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
@@ -257,6 +262,7 @@ class Settings(BaseSettings):
         "QUERY_REWRITER_MAX_CHARS",
         "QUERY_REWRITER_MAX_OUTPUT_TOKENS",
         "MEMORY_EXTRACTION_MAX_CANDIDATES",
+        "MEMORY_CHAT_TOP_K",
     )
     @classmethod
     def validate_positive_integer(
@@ -373,6 +379,31 @@ class Settings(BaseSettings):
                 "Automatic memory extraction "
                 "requires a non-deterministic "
                 "LLM provider"
+            )
+
+        if self.MEMORY_CHAT_TOP_K > 20:
+            raise ValueError(
+                "MEMORY_CHAT_TOP_K cannot exceed 20"
+            )
+
+        if not (
+            -1.0
+            <= self.MEMORY_CHAT_MIN_SIMILARITY
+            <= 1.0
+        ):
+            raise ValueError(
+                "MEMORY_CHAT_MIN_SIMILARITY must be "
+                "between -1.0 and 1.0"
+            )
+
+        if (
+            self.MEMORY_CHAT_ENABLED
+            and self.EMBEDDING_PROVIDER
+            == "deterministic"
+        ):
+            raise ValueError(
+                "Personal memory chat requires a "
+                "semantic embedding provider"
             )
 
         uses_openai = (
