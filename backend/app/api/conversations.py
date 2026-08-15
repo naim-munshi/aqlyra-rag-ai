@@ -1,3 +1,6 @@
+import json
+
+from fastapi.responses import StreamingResponse
 from fastapi import (
     APIRouter,
     Depends,
@@ -37,6 +40,7 @@ from app.schemas.conversation import (
 from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
+    stream_normal_chat_reply,
 )
 from app.services.memory_extraction_service import (
     extract_memories_best_effort,
@@ -294,6 +298,275 @@ def create_message_endpoint(
         mode=conversation.mode,
         user_message=user_message,
         assistant_message=assistant_message,
+    )
+
+
+
+def _encode_stream_event(
+    event_name: str,
+    payload: dict,
+) -> str:
+    data = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    return (
+        f"event: {event_name}\n"
+        f"data: {data}\n\n"
+    )
+
+
+@router.post(
+    "/{conversation_id}/messages/stream",
+)
+def create_message_stream_endpoint(
+    conversation_id: str,
+    request: ConversationMessageCreate,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    conversation = get_conversation_for_user(
+        db=db,
+        user_id=str(current_user.id),
+        conversation_id=conversation_id,
+    )
+
+    if conversation is None:
+        raise _conversation_not_found()
+
+    if conversation.mode != "normal":
+        raise HTTPException(
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
+            detail=(
+                "Streaming currently supports "
+                "normal conversations only"
+            ),
+        )
+
+    if request.document_ids:
+        raise HTTPException(
+            status_code=(
+                status
+                .HTTP_422_UNPROCESSABLE_CONTENT
+            ),
+            detail=(
+                "Document selection is only "
+                "supported in knowledge mode"
+            ),
+        )
+
+    user_id = str(current_user.id)
+    user_content = request.content
+
+    def event_stream():
+        yield _encode_stream_event(
+            "start",
+            {
+                "conversation_id": (
+                    conversation.id
+                ),
+                "mode": "normal",
+            },
+        )
+
+        try:
+            generation = None
+
+            for event in stream_normal_chat_reply(
+                db=db,
+                conversation=conversation,
+                message=user_content,
+            ):
+                if (
+                    event.event_type
+                    == "delta"
+                ):
+                    if event.delta_text:
+                        yield _encode_stream_event(
+                            "delta",
+                            {
+                                "text": (
+                                    event.delta_text
+                                ),
+                            },
+                        )
+
+                    continue
+
+                if (
+                    event.event_type
+                    == "complete"
+                ):
+                    generation = (
+                        event.generation
+                    )
+
+            if generation is None:
+                raise (
+                    LLMProviderResponseError(
+                        "Conversation stream "
+                        "ended without completion"
+                    )
+                )
+
+            (
+                user_message,
+                assistant_message,
+            ) = persist_chat_turn(
+                db=db,
+                conversation=conversation,
+                user_content=user_content,
+                assistant_content=(
+                    generation.text
+                ),
+                mode="normal",
+                provider_name=(
+                    generation.provider_name
+                ),
+                model_name=(
+                    generation.model_name
+                ),
+                response_id=(
+                    generation.response_id
+                ),
+                citations=[],
+                is_refusal=False,
+                input_tokens=(
+                    generation.input_tokens
+                ),
+                output_tokens=(
+                    generation.output_tokens
+                ),
+                total_tokens=(
+                    generation.total_tokens
+                ),
+                evidence_tokens=None,
+            )
+
+            extract_memories_best_effort(
+                db=db,
+                user_id=user_id,
+                source_message_id=(
+                    user_message.id
+                ),
+            )
+
+            completed = ChatTurnResponse(
+                conversation_id=(
+                    conversation.id
+                ),
+                mode="normal",
+                user_message=user_message,
+                assistant_message=(
+                    assistant_message
+                ),
+            )
+
+            yield _encode_stream_event(
+                "complete",
+                completed.model_dump(
+                    mode="json"
+                ),
+            )
+
+        except LLMValidationError:
+            app_logger.exception(
+                "Conversation stream provider "
+                "configuration failed: "
+                f"conversation_id="
+                f"{conversation.id}"
+            )
+
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 500,
+                    "code": (
+                        "provider_configuration_failed"
+                    ),
+                    "detail": (
+                        "Conversation provider "
+                        "configuration failed"
+                    ),
+                },
+            )
+
+        except LLMProviderRequestError:
+            app_logger.exception(
+                "Conversation stream provider "
+                "request failed: "
+                f"conversation_id="
+                f"{conversation.id}"
+            )
+
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 503,
+                    "code": (
+                        "provider_unavailable"
+                    ),
+                    "detail": (
+                        "Conversation provider "
+                        "service is unavailable"
+                    ),
+                },
+            )
+
+        except LLMProviderResponseError:
+            app_logger.exception(
+                "Conversation stream response "
+                "validation failed: "
+                f"conversation_id="
+                f"{conversation.id}"
+            )
+
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 502,
+                    "code": (
+                        "provider_response_invalid"
+                    ),
+                    "detail": (
+                        "The generated conversation "
+                        "answer failed validation"
+                    ),
+                },
+            )
+
+        except Exception:
+            app_logger.exception(
+                "Conversation stream failed: "
+                f"conversation_id="
+                f"{conversation.id}"
+            )
+
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 500,
+                    "code": "internal_error",
+                    "detail": (
+                        "Conversation streaming "
+                        "failed"
+                    ),
+                },
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

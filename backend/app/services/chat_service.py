@@ -320,13 +320,13 @@ def _citation_payload(
     }
 
 
-def generate_normal_chat_reply(
+def _prepare_normal_chat_generation(
     *,
     db: Session,
     conversation: Conversation,
     message: str,
     provider: LLMProvider | None = None,
-) -> ChatExecutionResult:
+) -> tuple[LLMProvider, str]:
     active_provider = (
         provider
         or create_configured_llm_provider()
@@ -346,15 +346,40 @@ def generate_normal_chat_reply(
         message=message,
     )
 
+    input_text = _normal_chat_input(
+        history=history,
+        current_message=message,
+        memories=memories,
+    )
+
+    return (
+        active_provider,
+        input_text,
+    )
+
+
+def generate_normal_chat_reply(
+    *,
+    db: Session,
+    conversation: Conversation,
+    message: str,
+    provider: LLMProvider | None = None,
+) -> ChatExecutionResult:
+    (
+        active_provider,
+        input_text,
+    ) = _prepare_normal_chat_generation(
+        db=db,
+        conversation=conversation,
+        message=message,
+        provider=provider,
+    )
+
     generation = active_provider.generate(
         instructions=(
             _NORMAL_CHAT_INSTRUCTIONS
         ),
-        input_text=_normal_chat_input(
-            history=history,
-            current_message=message,
-            memories=memories,
-        ),
+        input_text=input_text,
     )
 
     return ChatExecutionResult(
@@ -373,6 +398,31 @@ def generate_normal_chat_reply(
         ),
         total_tokens=generation.total_tokens,
         evidence_tokens=None,
+    )
+
+
+def stream_normal_chat_reply(
+    *,
+    db: Session,
+    conversation: Conversation,
+    message: str,
+    provider: LLMProvider | None = None,
+):
+    (
+        active_provider,
+        input_text,
+    ) = _prepare_normal_chat_generation(
+        db=db,
+        conversation=conversation,
+        message=message,
+        provider=provider,
+    )
+
+    yield from active_provider.stream(
+        instructions=(
+            _NORMAL_CHAT_INSTRUCTIONS
+        ),
+        input_text=input_text,
     )
 
 
