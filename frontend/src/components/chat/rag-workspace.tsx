@@ -22,6 +22,9 @@ import {
 
 import { DocumentPanel } from "@/components/documents/document-panel";
 import type {
+  ChatTurnResponse,
+} from "@/types/conversation";
+import type {
   DocumentListResponse,
   DocumentResponse,
 } from "@/types/document";
@@ -48,13 +51,129 @@ type UploadState =
   | "uploading"
   | "processing";
 
+type ChatMode =
+  | "normal"
+  | "knowledge";
+
 type ChatTurn = {
   id: string;
+  mode: ChatMode;
   question: string;
   loading: boolean;
+  streamedAnswer: string;
   result: RAGAnswerResponse | null;
   error: string;
 };
+
+type ParsedSseEvent = {
+  event: string;
+  data: unknown;
+};
+
+type NormalStreamStart = {
+  conversation_id?: string;
+  mode?: string;
+};
+
+type NormalStreamDelta = {
+  text?: string;
+};
+
+type NormalStreamError = {
+  status?: number;
+  code?: string;
+  detail?: string;
+};
+
+function parseSseFrame(
+  frame: string,
+): ParsedSseEvent | null {
+  const lines =
+    frame.split(/\r?\n/);
+
+  let eventName = "";
+
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (
+      line.startsWith("event: ")
+    ) {
+      eventName =
+        line.slice(7).trim();
+
+      continue;
+    }
+
+    if (
+      line.startsWith("data: ")
+    ) {
+      dataLines.push(
+        line.slice(6),
+      );
+    }
+  }
+
+  if (
+    !eventName ||
+    dataLines.length === 0
+  ) {
+    return null;
+  }
+
+  try {
+    return {
+      event: eventName,
+      data: JSON.parse(
+        dataLines.join("\n"),
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+function normalResultFromTurn(
+  question: string,
+  turn: ChatTurnResponse,
+): RAGAnswerResponse {
+  const assistant =
+    turn.assistant_message;
+
+  return {
+    question,
+    answer: assistant.content,
+    is_refusal:
+      assistant.is_refusal,
+    provider_name:
+      assistant.provider_name ??
+      "unknown",
+    model_name:
+      assistant.model_name ??
+      "unknown",
+    response_id:
+      assistant.response_id,
+    citations: [],
+    citation_count: 0,
+    retrieved_count: 0,
+    context_source_count: 0,
+    skipped_evidence_count: 0,
+    evidence_was_truncated: false,
+    usage: {
+      input_tokens:
+        assistant.input_tokens,
+      output_tokens:
+        assistant.output_tokens,
+      total_tokens:
+        assistant.total_tokens,
+      evidence_tokens:
+        assistant.evidence_tokens ??
+        0,
+    },
+  };
+}
+
 
 function getRagErrorMessage(
   data: RAGErrorResponse | null,
@@ -141,6 +260,20 @@ export function RAGWorkspace() {
     useState<ChatTurn[]>([]);
 
   const [
+    chatMode,
+    setChatMode,
+  ] = useState<ChatMode>(
+    "normal",
+  );
+
+  const [
+    normalConversationId,
+    setNormalConversationId,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const [
     attachedDocument,
     setAttachedDocument,
   ] = useState<DocumentResponse | null>(null);
@@ -205,12 +338,48 @@ export function RAGWorkspace() {
     selectedTurn?.result?.citations[0] ??
     null;
 
+  function switchChatMode(
+    nextMode: ChatMode,
+  ) {
+    if (
+      nextMode === chatMode ||
+      ragLoading
+    ) {
+      return;
+    }
+
+    abortRef.current?.abort();
+
+    setChatMode(nextMode);
+
+    setQuestion("");
+    setTurns([]);
+
+    setNormalConversationId(
+      null,
+    );
+
+    setAttachedDocument(null);
+    setAttachmentError("");
+    setUploadState("idle");
+
+    setDocumentDrawerOpen(false);
+    setEvidenceDrawerOpen(false);
+
+    setSelectedTurnId(null);
+    setSelectedCitationId(null);
+  }
+
+
   useEffect(() => {
     function resetChat() {
       abortRef.current?.abort();
 
       setQuestion("");
       setTurns([]);
+      setNormalConversationId(
+        null,
+      );
       setAttachedDocument(null);
       setAttachmentError("");
       setUploadState("idle");
@@ -452,16 +621,20 @@ export function RAGWorkspace() {
       question.trim();
 
     const effectiveQuestion =
-      cleanedQuestion ||
-      (attachedDocument
-        ? "Summarize this document clearly and explain the key points."
-        : "");
+      chatMode === "normal"
+        ? cleanedQuestion
+        : cleanedQuestion ||
+          (attachedDocument
+            ? "Summarize this document clearly and explain the key points."
+            : "");
 
     const displayQuestion =
-      cleanedQuestion ||
-      (attachedDocument
-        ? `Summarize ${attachedDocument.original_filename}`
-        : "");
+      chatMode === "normal"
+        ? cleanedQuestion
+        : cleanedQuestion ||
+          (attachedDocument
+            ? `Summarize ${attachedDocument.original_filename}`
+            : "");
 
     if (
       !effectiveQuestion ||
@@ -480,9 +653,11 @@ export function RAGWorkspace() {
       ...current,
       {
         id: turnId,
+        mode: chatMode,
         question:
           displayQuestion,
         loading: true,
+        streamedAnswer: "",
         result: null,
         error: "",
       },
@@ -497,6 +672,249 @@ export function RAGWorkspace() {
       controller;
 
     try {
+      if (chatMode === "normal") {
+        const response =
+          await fetch(
+            "/api/chat/normal/stream",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                content:
+                  effectiveQuestion,
+                ...(normalConversationId
+                  ? {
+                      conversation_id:
+                        normalConversationId,
+                    }
+                  : {}),
+              }),
+              signal:
+                controller.signal,
+            },
+          );
+
+        if (!response.ok) {
+          let data:
+            | RAGErrorResponse
+            | null = null;
+
+          try {
+            data =
+              (await response.json()) as
+                RAGErrorResponse;
+          } catch {
+            data = null;
+          }
+
+          throw new Error(
+            getRagErrorMessage(data),
+          );
+        }
+
+        if (!response.body) {
+          throw new Error(
+            "Conversation stream is unavailable.",
+          );
+        }
+
+        const reader =
+          response.body.getReader();
+
+        const decoder =
+          new TextDecoder();
+
+        let buffer = "";
+        let completed = false;
+
+        function handleFrame(
+          frame: string,
+        ) {
+          const parsed =
+            parseSseFrame(frame);
+
+          if (!parsed) {
+            return;
+          }
+
+          if (
+            parsed.event === "start"
+          ) {
+            const data =
+              parsed.data as
+                NormalStreamStart;
+
+            if (
+              typeof data
+                .conversation_id ===
+                "string"
+            ) {
+              setNormalConversationId(
+                data.conversation_id,
+              );
+            }
+
+            return;
+          }
+
+          if (
+            parsed.event === "delta"
+          ) {
+            const data =
+              parsed.data as
+                NormalStreamDelta;
+
+            if (
+              typeof data.text !==
+                "string" ||
+              !data.text
+            ) {
+              return;
+            }
+
+            setTurns((current) =>
+              current.map((turn) =>
+                turn.id === turnId
+                  ? {
+                      ...turn,
+                      streamedAnswer:
+                        turn.streamedAnswer +
+                        data.text,
+                    }
+                  : turn,
+              ),
+            );
+
+            return;
+          }
+
+          if (
+            parsed.event === "error"
+          ) {
+            const data =
+              parsed.data as
+                NormalStreamError;
+
+            throw new Error(
+              typeof data.detail ===
+                "string"
+                ? data.detail
+                : "Conversation streaming failed.",
+            );
+          }
+
+          if (
+            parsed.event ===
+            "complete"
+          ) {
+            const data =
+              parsed.data as
+                ChatTurnResponse;
+
+            if (
+              typeof data
+                .conversation_id ===
+                "string"
+            ) {
+              setNormalConversationId(
+                data.conversation_id,
+              );
+            }
+
+            const result =
+              normalResultFromTurn(
+                effectiveQuestion,
+                data,
+              );
+
+            setTurns((current) =>
+              current.map((turn) =>
+                turn.id === turnId
+                  ? {
+                      ...turn,
+                      loading: false,
+                      streamedAnswer:
+                        result.answer,
+                      result,
+                      error: "",
+                    }
+                  : turn,
+              ),
+            );
+
+            completed = true;
+          }
+        }
+
+        while (true) {
+          const {
+            value,
+            done,
+          } = await reader.read();
+
+          if (value) {
+            buffer +=
+              decoder.decode(
+                value,
+                {
+                  stream: !done,
+                },
+              );
+          }
+
+          if (done) {
+            buffer +=
+              decoder.decode();
+          }
+
+          let boundary =
+            buffer.indexOf(
+              "\n\n",
+            );
+
+          while (boundary >= 0) {
+            const frame =
+              buffer.slice(
+                0,
+                boundary,
+              );
+
+            buffer =
+              buffer.slice(
+                boundary + 2,
+              );
+
+            if (frame.trim()) {
+              handleFrame(frame);
+            }
+
+            boundary =
+              buffer.indexOf(
+                "\n\n",
+              );
+          }
+
+          if (done) {
+            break;
+          }
+        }
+
+        if (buffer.trim()) {
+          handleFrame(buffer);
+        }
+
+        if (!completed) {
+          throw new Error(
+            "Conversation stream ended before completion.",
+          );
+        }
+
+        return;
+      }
+
       const response =
         await fetch(
           "/api/rag/answer",
@@ -572,14 +990,27 @@ export function RAGWorkspace() {
         return;
       }
 
+      const fallback =
+        chatMode === "normal"
+          ? "Unable to connect to the conversation service."
+          : "Unable to connect to the RAG service.";
+
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : fallback;
+
       setTurns((current) =>
         current.map((turn) =>
           turn.id === turnId
             ? {
                 ...turn,
                 loading: false,
-                error:
-                  "Unable to connect to the RAG service.",
+                streamedAnswer:
+                  chatMode === "normal"
+                    ? ""
+                    : turn.streamedAnswer,
+                error: message,
               }
             : turn,
         ),
@@ -593,6 +1024,7 @@ export function RAGWorkspace() {
       }
     }
   }
+
 
   function openCitation(
     turnId: string,
@@ -707,7 +1139,11 @@ export function RAGWorkspace() {
                 ?.requestSubmit();
             }
           }}
-          placeholder="Ask Aqlyra about your documents..."
+          placeholder={
+            chatMode === "normal"
+              ? "Ask Aqlyra anything..."
+              : "Ask Aqlyra about your documents..."
+          }
           className="w-full resize-none bg-transparent text-sm leading-6 text-[var(--aq-text)] outline-none placeholder:text-[var(--aq-muted)]"
         />
 
@@ -716,7 +1152,13 @@ export function RAGWorkspace() {
             type="button"
             aria-label="Attach document"
             disabled={
+              chatMode === "normal" ||
               uploadState !== "idle"
+            }
+            title={
+              chatMode === "normal"
+                ? "Switch to Knowledge mode to attach documents"
+                : "Attach document"
             }
             onClick={() =>
               fileInputRef.current?.click()
@@ -846,9 +1288,43 @@ export function RAGWorkspace() {
             </span>
           </div>
 
-          <span className="ml-auto rounded-full bg-[var(--aq-card)] px-3 py-1 text-[10px] font-semibold text-[var(--aq-success)]">
-            Grounded RAG
-          </span>
+          <div className="ml-auto flex items-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] p-1">
+            <button
+              type="button"
+              disabled={ragLoading}
+              onClick={() =>
+                switchChatMode(
+                  "normal",
+                )
+              }
+              className={[
+                "rounded-full px-3 py-1 text-[10px] font-semibold transition",
+                chatMode === "normal"
+                  ? "bg-[var(--aq-blue)] text-white"
+                  : "text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
+              ].join(" ")}
+            >
+              Normal
+            </button>
+
+            <button
+              type="button"
+              disabled={ragLoading}
+              onClick={() =>
+                switchChatMode(
+                  "knowledge",
+                )
+              }
+              className={[
+                "rounded-full px-3 py-1 text-[10px] font-semibold transition",
+                chatMode === "knowledge"
+                  ? "bg-[var(--aq-blue)] text-white"
+                  : "text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
+              ].join(" ")}
+            >
+              Knowledge
+            </button>
+          </div>
         </div>
 
         {!hasConversation ? (
@@ -861,13 +1337,15 @@ export function RAGWorkspace() {
               </div>
 
               <h2 className="mt-5 text-xl font-semibold">
-                Ask your knowledge base
+                {chatMode === "normal"
+                  ? "Chat with Aqlyra"
+                  : "Ask your knowledge base"}
               </h2>
 
               <p className="mt-2 max-w-[500px] text-center text-sm leading-6 text-[var(--aq-muted)]">
-                Upload a document or ask a
-                grounded question across your
-                processed knowledge sources.
+                {chatMode === "normal"
+                  ? "Ask general questions and continue a memory-aware conversation."
+                  : "Upload a document or ask a grounded question across your processed knowledge sources."}
               </p>
 
               <div className="mt-7 w-full">
@@ -903,7 +1381,8 @@ export function RAGWorkspace() {
                           </span>
                         </div>
 
-                        {turn.loading && (
+                        {turn.loading &&
+                          !turn.streamedAnswer && (
                           <div className="flex items-center gap-3 rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
                             <LoaderCircle
                               size={17}
@@ -911,8 +1390,22 @@ export function RAGWorkspace() {
                             />
 
                             <span className="text-xs text-[var(--aq-muted)]">
-                              Retrieving evidence...
+                              {turn.mode === "normal"
+                                ? "Aqlyra is thinking..."
+                                : "Retrieving evidence..."}
                             </span>
+                          </div>
+                        )}
+
+                        {turn.streamedAnswer &&
+                          !turn.result && (
+                          <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
+                            <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--aq-text-soft)]">
+                              {turn.streamedAnswer}
+                              <span className="ml-1 animate-pulse text-[var(--aq-blue)]">
+                                ▋
+                              </span>
+                            </p>
                           </div>
                         )}
 
