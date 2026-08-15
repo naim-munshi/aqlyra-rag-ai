@@ -101,6 +101,37 @@ def _contains_sensitive_secret(
     return _contains_payment_card(value)
 
 
+def _normalize_and_validate_memory_text(
+    value: str,
+) -> str:
+    cleaned = " ".join(
+        value.split()
+    )
+
+    if not cleaned:
+        raise ValueError(
+            "Memory content cannot be empty"
+        )
+
+    if _CITATION_PATTERN.search(
+        cleaned
+    ):
+        raise ValueError(
+            "Personal memory cannot contain "
+            "document citation markers"
+        )
+
+    if _contains_sensitive_secret(
+        cleaned
+    ):
+        raise ValueError(
+            "Sensitive credentials or payment "
+            "data cannot be stored as memory"
+        )
+
+    return cleaned
+
+
 class MemoryCandidate(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -129,32 +160,44 @@ class MemoryCandidate(BaseModel):
         cls,
         value: str,
     ) -> str:
-        cleaned = " ".join(
-            value.split()
+        return _normalize_and_validate_memory_text(
+            value
         )
 
-        if not cleaned:
-            raise ValueError(
-                "Memory content cannot be empty"
-            )
 
-        if _CITATION_PATTERN.search(
-            cleaned
-        ):
-            raise ValueError(
-                "Personal memory cannot contain "
-                "document citation markers"
-            )
+class MemoryRetirementCandidate(BaseModel):
+    """
+    An explicitly revoked prior personal memory.
 
-        if _contains_sensitive_secret(
-            cleaned
-        ):
-            raise ValueError(
-                "Sensitive credentials or payment "
-                "data cannot be stored as memory"
-            )
+    The content describes the prior memory itself,
+    not the negated sentence.
+    """
 
-        return cleaned
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
+    kind: MemoryExtractionKind
+
+    content: str = Field(
+        min_length=1,
+        max_length=500,
+    )
+
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+    )
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(
+        cls,
+        value: str,
+    ) -> str:
+        return _normalize_and_validate_memory_text(
+            value
+        )
 
 
 class MemoryExtractionResponse(BaseModel):
@@ -163,6 +206,13 @@ class MemoryExtractionResponse(BaseModel):
     )
 
     memories: list[MemoryCandidate] = Field(
+        default_factory=list,
+        max_length=8,
+    )
+
+    retirements: list[
+        MemoryRetirementCandidate
+    ] = Field(
         default_factory=list,
         max_length=8,
     )

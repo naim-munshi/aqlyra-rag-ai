@@ -379,6 +379,12 @@ def test_reindex_failure_preserves_existing_index_and_text(
 
     original_id = original.id
 
+    # Force the persisted index to be stale so the
+    # service must attempt a replacement embedding.
+    original.content_hash = "0" * 64
+    db_session.add(original)
+    db_session.commit()
+
     class FailingProvider:
         @property
         def info(self) -> EmbeddingProviderInfo:
@@ -569,3 +575,56 @@ def test_best_effort_extraction_indexes_memory(
             .encode("utf-8")
         ).hexdigest()
     )
+
+
+def test_unchanged_memory_embedding_is_reused(
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="memory-vector-idempotent",
+    )
+
+    memory = create_test_memory(
+        db_session,
+        user=user,
+        content="I prefer Python.",
+    )
+
+    class CountingProvider(
+        DeterministicHashEmbeddingProvider
+    ):
+        def __init__(self) -> None:
+            super().__init__(
+                dimension=384
+            )
+            self.document_calls = 0
+
+        def embed_documents(
+            self,
+            texts,
+        ):
+            self.document_calls += 1
+
+            return super().embed_documents(
+                texts
+            )
+
+    provider = CountingProvider()
+
+    first = index_memory_embeddings(
+        db=db_session,
+        user_id=str(user.id),
+        memory_ids=[memory.id],
+        provider=provider,
+    )
+
+    second = index_memory_embeddings(
+        db=db_session,
+        user_id=str(user.id),
+        memory_ids=[memory.id],
+        provider=provider,
+    )
+
+    assert provider.document_calls == 1
+    assert first[0].id == second[0].id

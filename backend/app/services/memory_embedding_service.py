@@ -143,15 +143,66 @@ def index_memory_embeddings(
         for memory_id in cleaned_ids
     ]
 
+    expected_hashes = {
+        memory.id: _content_hash(
+            memory.content
+        )
+        for memory in memories
+    }
+
+    existing_records = list(
+        db.scalars(
+            select(
+                MemoryEmbedding
+            ).where(
+                MemoryEmbedding.memory_id.in_(
+                    cleaned_ids
+                ),
+                MemoryEmbedding.provider_name
+                == provider_info.provider_name,
+                MemoryEmbedding.model_name
+                == provider_info.model_name,
+                MemoryEmbedding.dimension
+                == provider_info.dimension,
+            )
+        ).all()
+    )
+
+    reusable_by_memory_id = {
+        record.memory_id: record
+        for record in existing_records
+        if (
+            record.content_hash
+            == expected_hashes[
+                record.memory_id
+            ]
+        )
+    }
+
+    pending_memories = [
+        memory
+        for memory in memories
+        if memory.id
+        not in reusable_by_memory_id
+    ]
+
+    if not pending_memories:
+        return [
+            reusable_by_memory_id[
+                memory_id
+            ]
+            for memory_id in cleaned_ids
+        ]
+
     try:
         prepared: list[
             tuple[Memory, list[float]]
         ] = []
 
-        # Generate and validate every vector before
-        # replacing any persisted vector index.
+        # Generate and validate every new vector
+        # before replacing any persisted index.
         for memory_batch in _batched(
-            memories=memories,
+            memories=pending_memories,
             batch_size=(
                 provider_info.max_batch_size
             ),
@@ -194,7 +245,7 @@ def index_memory_embeddings(
                     )
                 )
 
-        records = [
+        new_records = [
             MemoryEmbedding(
                 memory_id=memory.id,
                 provider_name=(
@@ -207,8 +258,10 @@ def index_memory_embeddings(
                     provider_info.dimension
                 ),
                 embedding=vector,
-                content_hash=_content_hash(
-                    memory.content
+                content_hash=(
+                    expected_hashes[
+                        memory.id
+                    ]
                 ),
                 input_token_count=0,
                 estimated_cost_usd=0.0,
@@ -226,12 +279,17 @@ def index_memory_embeddings(
             for memory, vector in prepared
         ]
 
+        pending_ids = [
+            memory.id
+            for memory in pending_memories
+        ]
+
         db.execute(
             delete(
                 MemoryEmbedding
             ).where(
                 MemoryEmbedding.memory_id.in_(
-                    cleaned_ids
+                    pending_ids
                 ),
                 MemoryEmbedding.provider_name
                 == provider_info.provider_name,
@@ -240,17 +298,30 @@ def index_memory_embeddings(
             )
         )
 
-        db.add_all(records)
+        db.add_all(new_records)
         db.commit()
 
     except Exception:
         db.rollback()
         raise
 
-    for record in records:
+    for record in new_records:
         db.refresh(record)
 
-    return records
+    new_by_memory_id = {
+        record.memory_id: record
+        for record in new_records
+    }
+
+    all_by_memory_id = {
+        **reusable_by_memory_id,
+        **new_by_memory_id,
+    }
+
+    return [
+        all_by_memory_id[memory_id]
+        for memory_id in cleaned_ids
+    ]
 
 
 def index_memory_embeddings_best_effort(

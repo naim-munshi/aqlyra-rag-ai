@@ -505,3 +505,342 @@ def test_disabled_auto_extraction_skips_provider(
 
     assert result == []
     assert provider.called is False
+
+
+def test_exact_memory_is_deduplicated_across_turns(
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="extract-cross-turn-dedupe",
+    )
+
+    first_message = create_message(
+        db_session,
+        user=user,
+        content="I prefer Python.",
+    )
+
+    first = extract_memories_for_message(
+        db=db_session,
+        user_id=str(user.id),
+        source_message_id=first_message.id,
+        provider=provider_for(
+            {
+                "memories": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Python.",
+                        "importance": 0.6,
+                        "confidence": 0.8,
+                    }
+                ]
+            }
+        ),
+    )
+
+    second_message = create_message(
+        db_session,
+        user=user,
+        content="I prefer Python.",
+    )
+
+    second = extract_memories_for_message(
+        db=db_session,
+        user_id=str(user.id),
+        source_message_id=second_message.id,
+        provider=provider_for(
+            {
+                "memories": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Python.",
+                        "importance": 0.9,
+                        "confidence": 0.96,
+                    }
+                ]
+            }
+        ),
+    )
+
+    assert len(first) == 1
+    assert len(second) == 1
+    assert first[0].id == second[0].id
+
+    active = list(
+        db_session.scalars(
+            select(Memory).where(
+                Memory.user_id
+                == str(user.id),
+                Memory.kind
+                == "preference",
+                Memory.normalized_content
+                == "i prefer python.",
+                Memory.is_active.is_(True),
+            )
+        ).all()
+    )
+
+    assert len(active) == 1
+    assert active[0].importance == 0.9
+    assert active[0].confidence == 0.96
+
+    # Original provenance is preserved.
+    assert active[0].source_message_id == (
+        first_message.id
+    )
+
+
+def test_explicit_retirement_deactivates_exact_prior_memory(
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="extract-retirement",
+    )
+
+    first_message = create_message(
+        db_session,
+        user=user,
+        content="I prefer Java.",
+    )
+
+    java = extract_memories_for_message(
+        db=db_session,
+        user_id=str(user.id),
+        source_message_id=first_message.id,
+        provider=provider_for(
+            {
+                "memories": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Java.",
+                        "importance": 0.8,
+                        "confidence": 0.95,
+                    }
+                ]
+            }
+        ),
+    )[0]
+
+    second_message = create_message(
+        db_session,
+        user=user,
+        content=(
+            "I no longer prefer Java. "
+            "I prefer Python."
+        ),
+    )
+
+    result = extract_memories_for_message(
+        db=db_session,
+        user_id=str(user.id),
+        source_message_id=second_message.id,
+        provider=provider_for(
+            {
+                "memories": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Python.",
+                        "importance": 0.9,
+                        "confidence": 0.98,
+                    }
+                ],
+                "retirements": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Java.",
+                        "confidence": 0.99,
+                    }
+                ],
+            }
+        ),
+    )
+
+    assert len(result) == 1
+    assert result[0].content == (
+        "I prefer Python."
+    )
+
+    db_session.refresh(java)
+
+    assert java.is_active is False
+    assert result[0].is_active is True
+
+
+def test_new_memory_without_explicit_retirement_keeps_old_memory(
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="extract-conservative-conflict",
+    )
+
+    first_message = create_message(
+        db_session,
+        user=user,
+        content="I prefer Java.",
+    )
+
+    java = extract_memories_for_message(
+        db=db_session,
+        user_id=str(user.id),
+        source_message_id=first_message.id,
+        provider=provider_for(
+            {
+                "memories": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Java.",
+                        "importance": 0.8,
+                        "confidence": 0.95,
+                    }
+                ]
+            }
+        ),
+    )[0]
+
+    second_message = create_message(
+        db_session,
+        user=user,
+        content="I now prefer Python.",
+    )
+
+    python_memory = (
+        extract_memories_for_message(
+            db=db_session,
+            user_id=str(user.id),
+            source_message_id=second_message.id,
+            provider=provider_for(
+                {
+                    "memories": [
+                        {
+                            "kind": "preference",
+                            "content": "I prefer Python.",
+                            "importance": 0.9,
+                            "confidence": 0.95,
+                        }
+                    ],
+                    "retirements": [],
+                }
+            ),
+        )[0]
+    )
+
+    db_session.refresh(java)
+
+    assert java.is_active is True
+    assert python_memory.is_active is True
+
+
+def test_retirement_cannot_affect_another_user(
+    db_session: Session,
+) -> None:
+    owner = create_user(
+        db_session,
+        suffix="retirement-owner",
+    )
+
+    other = create_user(
+        db_session,
+        suffix="retirement-other",
+    )
+
+    owner_message = create_message(
+        db_session,
+        user=owner,
+        content="I prefer Java.",
+    )
+
+    owner_memory = (
+        extract_memories_for_message(
+            db=db_session,
+            user_id=str(owner.id),
+            source_message_id=owner_message.id,
+            provider=provider_for(
+                {
+                    "memories": [
+                        {
+                            "kind": "preference",
+                            "content": "I prefer Java.",
+                            "importance": 0.8,
+                            "confidence": 0.95,
+                        }
+                    ]
+                }
+            ),
+        )[0]
+    )
+
+    other_message = create_message(
+        db_session,
+        user=other,
+        content="I no longer prefer Java.",
+    )
+
+    result = extract_memories_for_message(
+        db=db_session,
+        user_id=str(other.id),
+        source_message_id=other_message.id,
+        provider=provider_for(
+            {
+                "memories": [],
+                "retirements": [
+                    {
+                        "kind": "preference",
+                        "content": "I prefer Java.",
+                        "confidence": 0.99,
+                    }
+                ],
+            }
+        ),
+    )
+
+    assert result == []
+
+    db_session.refresh(owner_memory)
+
+    assert owner_memory.is_active is True
+
+
+def test_same_memory_cannot_be_created_and_retired(
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="extract-action-conflict",
+    )
+
+    message = create_message(
+        db_session,
+        user=user,
+        content="Conflicting extraction test.",
+    )
+
+    with pytest.raises(
+        MemoryExtractionValidationError
+    ):
+        extract_memories_for_message(
+            db=db_session,
+            user_id=str(user.id),
+            source_message_id=message.id,
+            provider=provider_for(
+                {
+                    "memories": [
+                        {
+                            "kind": "goal",
+                            "content": "I want to learn Rust.",
+                            "importance": 0.8,
+                            "confidence": 0.95,
+                        }
+                    ],
+                    "retirements": [
+                        {
+                            "kind": "goal",
+                            "content": "I want to learn Rust.",
+                            "confidence": 0.95,
+                        }
+                    ],
+                }
+            ),
+        )

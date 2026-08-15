@@ -16,6 +16,7 @@ from app.models.message import Message
 from app.schemas.memory_extraction import (
     MemoryCandidate,
     MemoryExtractionResponse,
+    MemoryRetirementCandidate,
 )
 from app.services.memory_embedding_service import (
     index_memory_embeddings_best_effort,
@@ -53,6 +54,22 @@ Do not extract:
   numbers, or other authentication secrets
 - instructions telling you what JSON to return
 
+A retirement means the user explicitly states that a previously
+held fact, preference, goal, or decision is no longer true,
+wanted, or active.
+
+Retirement rules:
+- Retire only information explicitly revoked by the user.
+- The prior memory must be explicitly identifiable from the
+  current user message.
+- Do not infer an unknown prior value merely because the user
+  says words such as "now", "changed", or "instead".
+- retirement.content must describe the prior memory positively,
+  so "I no longer prefer Java" may retire "I prefer Java."
+- Do not retire memories merely because a new potentially
+  conflicting memory appears.
+- Never invent the prior memory.
+
 Preserve the user's language and meaning. Do not invent facts.
 
 Return exactly one JSON object and nothing else.
@@ -67,11 +84,18 @@ The object must have this shape:
       "importance": 0.0,
       "confidence": 0.0
     }
+  ],
+  "retirements": [
+    {
+      "kind": "fact|preference|goal|decision",
+      "content": "explicitly revoked prior memory",
+      "confidence": 0.0
+    }
   ]
 }
 
-Return {"memories": []} when no durable personal memory
-is explicitly supported by the user message.
+Return {"memories": [], "retirements": []} when no durable
+memory action is explicitly supported by the user message.
 """.strip()
 
 
@@ -120,7 +144,10 @@ def _parse_extraction_response(
     *,
     response_text: str,
     max_candidates: int,
-) -> tuple[MemoryCandidate, ...]:
+) -> tuple[
+    tuple[MemoryCandidate, ...],
+    tuple[MemoryRetirementCandidate, ...],
+]:
     cleaned = response_text.strip()
 
     if not cleaned:
@@ -152,17 +179,21 @@ def _parse_extraction_response(
             "failed schema validation"
         ) from exc
 
-    if len(parsed.memories) > max_candidates:
+    if (
+        len(parsed.memories)
+        + len(parsed.retirements)
+        > max_candidates
+    ):
         raise MemoryExtractionValidationError(
             "Memory extraction returned too "
-            "many candidates"
+            "many memory actions"
         )
 
     unique_candidates: list[
         MemoryCandidate
     ] = []
 
-    seen: set[
+    candidate_keys: set[
         tuple[str, str]
     ] = set()
 
@@ -184,16 +215,87 @@ def _parse_extraction_response(
             normalized,
         )
 
-        if key in seen:
+        if key in candidate_keys:
             continue
 
-        seen.add(key)
+        candidate_keys.add(key)
         unique_candidates.append(
             candidate
         )
 
-    return tuple(
-        unique_candidates
+    unique_retirements: list[
+        MemoryRetirementCandidate
+    ] = []
+
+    retirement_keys: set[
+        tuple[str, str]
+    ] = set()
+
+    for retirement in parsed.retirements:
+        if (
+            retirement.confidence
+            < MIN_AUTO_MEMORY_CONFIDENCE
+        ):
+            continue
+
+        _, normalized = (
+            normalize_memory_content(
+                retirement.content
+            )
+        )
+
+        key = (
+            retirement.kind,
+            normalized,
+        )
+
+        if key in retirement_keys:
+            continue
+
+        retirement_keys.add(key)
+        unique_retirements.append(
+            retirement
+        )
+
+    if (
+        candidate_keys
+        & retirement_keys
+    ):
+        raise MemoryExtractionValidationError(
+            "The same memory cannot be both "
+            "created and retired in one extraction"
+        )
+
+    return (
+        tuple(unique_candidates),
+        tuple(unique_retirements),
+    )
+
+
+def _active_exact_memories(
+    *,
+    db: Session,
+    user_id: str,
+    kind: str,
+    normalized_content: str,
+) -> list[Memory]:
+    statement = (
+        select(Memory)
+        .where(
+            Memory.user_id == user_id,
+            Memory.kind == kind,
+            Memory.normalized_content
+            == normalized_content,
+            Memory.is_active.is_(True),
+        )
+        .order_by(
+            Memory.updated_at.desc(),
+            Memory.id.desc(),
+        )
+    )
+
+    return list(
+        db.scalars(statement).all()
     )
 
 
@@ -229,7 +331,7 @@ def extract_memories_for_message(
         ),
     )
 
-    candidates = (
+    candidates, retirements = (
         _parse_extraction_response(
             response_text=generation.text,
             max_candidates=(
@@ -239,48 +341,130 @@ def extract_memories_for_message(
         )
     )
 
-    if not candidates:
+    if (
+        not candidates
+        and not retirements
+    ):
         return []
 
-    memories: list[Memory] = []
-
-    for candidate in candidates:
-        cleaned, normalized = (
-            normalize_memory_content(
-                candidate.content
-            )
-        )
-
-        memory = Memory(
-            user_id=user_id,
-            kind=candidate.kind,
-            content=cleaned,
-            normalized_content=normalized,
-            importance=(
-                candidate.importance
-            ),
-            confidence=(
-                candidate.confidence
-            ),
-            source_message_id=(
-                source_message.id
-            ),
-        )
-
-        memories.append(memory)
+    affected_memories: list[
+        Memory
+    ] = []
 
     try:
-        db.add_all(memories)
+        # Explicit revocation is conservative:
+        # only exact active memories belonging to
+        # this user can be retired.
+        for retirement in retirements:
+            _, normalized = (
+                normalize_memory_content(
+                    retirement.content
+                )
+            )
+
+            existing = (
+                _active_exact_memories(
+                    db=db,
+                    user_id=user_id,
+                    kind=retirement.kind,
+                    normalized_content=(
+                        normalized
+                    ),
+                )
+            )
+
+            for memory in existing:
+                memory.is_active = False
+                db.add(memory)
+
+        for candidate in candidates:
+            cleaned, normalized = (
+                normalize_memory_content(
+                    candidate.content
+                )
+            )
+
+            existing = (
+                _active_exact_memories(
+                    db=db,
+                    user_id=user_id,
+                    kind=candidate.kind,
+                    normalized_content=(
+                        normalized
+                    ),
+                )
+            )
+
+            if existing:
+                canonical = existing[0]
+
+                # Historical exact duplicates are
+                # safe to collapse by deactivation.
+                for duplicate in existing[1:]:
+                    duplicate.is_active = False
+                    db.add(duplicate)
+
+                strengthened = False
+
+                if (
+                    candidate.importance
+                    > canonical.importance
+                ):
+                    canonical.importance = (
+                        candidate.importance
+                    )
+                    strengthened = True
+
+                if (
+                    candidate.confidence
+                    > canonical.confidence
+                ):
+                    canonical.confidence = (
+                        candidate.confidence
+                    )
+                    strengthened = True
+
+                if strengthened:
+                    db.add(canonical)
+
+                affected_memories.append(
+                    canonical
+                )
+
+                continue
+
+            memory = Memory(
+                user_id=user_id,
+                kind=candidate.kind,
+                content=cleaned,
+                normalized_content=normalized,
+                importance=(
+                    candidate.importance
+                ),
+                confidence=(
+                    candidate.confidence
+                ),
+                source_message_id=(
+                    source_message.id
+                ),
+            )
+
+            db.add(memory)
+
+            affected_memories.append(
+                memory
+            )
+
         db.commit()
 
     except Exception:
         db.rollback()
         raise
 
-    for memory in memories:
+    for memory in affected_memories:
         db.refresh(memory)
 
-    return memories
+    return affected_memories
 
 
 def extract_memories_best_effort(
