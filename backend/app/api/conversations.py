@@ -38,6 +38,9 @@ from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
 )
+from app.services.memory_extraction_service import (
+    extract_memories_best_effort,
+)
 from app.services.conversation_service import (
     create_conversation,
     delete_conversation,
@@ -278,6 +281,12 @@ def create_message_endpoint(
                 result.evidence_tokens
             ),
         )
+    )
+
+    extract_memories_best_effort(
+        db=db,
+        user_id=str(current_user.id),
+        source_message_id=user_message.id,
     )
 
     return ChatTurnResponse(

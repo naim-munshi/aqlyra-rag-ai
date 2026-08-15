@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     QUERY_REWRITER_MAX_OUTPUT_TOKENS: int = 256
     QUERY_REWRITER_REASONING_EFFORT: str = "low"
 
+    # Personal memory extraction
+    MEMORY_AUTO_EXTRACT_ENABLED: bool = False
+    MEMORY_EXTRACTION_MAX_CANDIDATES: int = 4
+
     # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
@@ -252,6 +256,7 @@ class Settings(BaseSettings):
         "RERANKER_MAX_OUTPUT_TOKENS",
         "QUERY_REWRITER_MAX_CHARS",
         "QUERY_REWRITER_MAX_OUTPUT_TOKENS",
+        "MEMORY_EXTRACTION_MAX_CANDIDATES",
     )
     @classmethod
     def validate_positive_integer(
@@ -348,6 +353,26 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LLM query rewriting requires a "
                 "non-deterministic LLM provider"
+            )
+
+        if (
+            self.MEMORY_EXTRACTION_MAX_CANDIDATES
+            > 8
+        ):
+            raise ValueError(
+                "MEMORY_EXTRACTION_MAX_CANDIDATES "
+                "cannot exceed 8"
+            )
+
+        if (
+            self.MEMORY_AUTO_EXTRACT_ENABLED
+            and self.LLM_PROVIDER
+            == "deterministic"
+        ):
+            raise ValueError(
+                "Automatic memory extraction "
+                "requires a non-deterministic "
+                "LLM provider"
             )
 
         uses_openai = (
