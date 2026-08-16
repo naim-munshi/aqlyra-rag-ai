@@ -619,6 +619,7 @@ def update_conversation_endpoint(
         conversation=conversation,
         title=request.title,
         mode=request.mode,
+        is_pinned=request.is_pinned,
     )
 
 

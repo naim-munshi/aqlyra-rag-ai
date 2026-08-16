@@ -60,6 +60,8 @@ class ConversationUpdate(BaseModel):
 
     mode: ConversationMode | None = None
 
+    is_pinned: bool | None = None
+
     @field_validator("title")
     @classmethod
     def normalize_title(
@@ -87,6 +89,7 @@ class ConversationUpdate(BaseModel):
         if (
             self.title is None
             and self.mode is None
+            and self.is_pinned is None
         ):
             raise ValueError(
                 "At least one field must be updated"
@@ -103,6 +106,7 @@ class ConversationResponse(BaseModel):
     id: str
     title: str
     mode: ConversationMode
+    is_pinned: bool
     created_at: datetime
     updated_at: datetime
 

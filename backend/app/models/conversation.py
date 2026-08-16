@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -36,6 +37,12 @@ class Conversation(Base):
             "user_id",
             "updated_at",
         ),
+        Index(
+            "ix_conversations_user_pinned_updated_at",
+            "user_id",
+            "is_pinned",
+            "updated_at",
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -65,6 +72,13 @@ class Conversation(Base):
         nullable=False,
         default="normal",
         server_default="normal",
+    )
+
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
 
     created_at: Mapped[datetime] = mapped_column(

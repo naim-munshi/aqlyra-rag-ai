@@ -56,6 +56,7 @@ def list_conversations_for_user(
             Conversation.user_id == user_id
         )
         .order_by(
+            Conversation.is_pinned.desc(),
             Conversation.updated_at.desc(),
             Conversation.id.desc(),
         )
@@ -74,12 +75,16 @@ def update_conversation(
     conversation: Conversation,
     title: str | None = None,
     mode: str | None = None,
+    is_pinned: bool | None = None,
 ) -> Conversation:
     if title is not None:
         conversation.title = title
 
     if mode is not None:
         conversation.mode = mode
+
+    if is_pinned is not None:
+        conversation.is_pinned = is_pinned
 
     conversation.updated_at = utc_now_naive()
 

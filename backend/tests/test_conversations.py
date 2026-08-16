@@ -220,3 +220,154 @@ def test_conversation_validation(
     )
 
     assert empty_update.status_code == 422
+
+
+def test_conversation_pin_unpin_and_ordering(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        email="pin-owner@example.com",
+        username="pin-owner",
+    )
+
+    authenticate_as(user)
+
+    first_response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Pinned conversation",
+            "mode": "normal",
+        },
+    )
+
+    assert first_response.status_code == 201
+
+    first = first_response.json()
+
+    assert first["is_pinned"] is False
+
+    first_id = first["id"]
+
+    pin_response = client.patch(
+        f"/api/v1/conversations/{first_id}",
+        json={
+            "is_pinned": True,
+        },
+    )
+
+    assert pin_response.status_code == 200
+    assert (
+        pin_response.json()["is_pinned"]
+        is True
+    )
+
+    second_response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Newer unpinned conversation",
+            "mode": "normal",
+        },
+    )
+
+    assert second_response.status_code == 201
+
+    second = second_response.json()
+
+    assert second["is_pinned"] is False
+
+    list_response = client.get(
+        "/api/v1/conversations"
+    )
+
+    assert list_response.status_code == 200
+
+    conversations = list_response.json()
+
+    assert len(conversations) == 2
+    assert conversations[0]["id"] == first_id
+    assert conversations[0]["is_pinned"] is True
+    assert (
+        conversations[1]["id"]
+        == second["id"]
+    )
+    assert (
+        conversations[1]["is_pinned"]
+        is False
+    )
+
+    rename_response = client.patch(
+        f"/api/v1/conversations/{first_id}",
+        json={
+            "title": "Renamed pinned chat",
+        },
+    )
+
+    assert rename_response.status_code == 200
+    assert (
+        rename_response.json()["title"]
+        == "Renamed pinned chat"
+    )
+    assert (
+        rename_response.json()["is_pinned"]
+        is True
+    )
+
+    unpin_response = client.patch(
+        f"/api/v1/conversations/{first_id}",
+        json={
+            "is_pinned": False,
+        },
+    )
+
+    assert unpin_response.status_code == 200
+    assert (
+        unpin_response.json()["is_pinned"]
+        is False
+    )
+
+
+def test_conversation_pin_owner_isolation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(
+        db_session,
+        email="pin-owner2@example.com",
+        username="pin-owner2",
+    )
+
+    other = create_user(
+        db_session,
+        email="pin-other@example.com",
+        username="pin-other",
+    )
+
+    authenticate_as(owner)
+
+    create_response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Owner pinned chat",
+            "mode": "normal",
+        },
+    )
+
+    assert create_response.status_code == 201
+
+    conversation_id = (
+        create_response.json()["id"]
+    )
+
+    authenticate_as(other)
+
+    response = client.patch(
+        f"/api/v1/conversations/"
+        f"{conversation_id}",
+        json={
+            "is_pinned": True,
+        },
+    )
+
+    assert response.status_code == 404
