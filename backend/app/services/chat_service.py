@@ -14,6 +14,13 @@ from app.llms import (
 )
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.product_identity import (
+    PRODUCT_IDENTITY_MODEL_NAME,
+    PRODUCT_IDENTITY_PROVIDER_NAME,
+    PRODUCT_IDENTITY_SYSTEM_CONTEXT,
+    ProductIdentityLLMProvider,
+    resolve_product_identity_answer,
+)
 from app.services.conversation_service import (
     get_recent_messages_for_conversation,
 )
@@ -59,8 +66,11 @@ Rules:
 - Return only the standalone retrieval question, with no explanation.
 """.strip()
 
-_NORMAL_CHAT_INSTRUCTIONS = """
+_NORMAL_CHAT_INSTRUCTIONS = f"""
 You are Aqlyra, a conversational AI assistant.
+
+Permanent product identity:
+{PRODUCT_IDENTITY_SYSTEM_CONTEXT}
 
 Answer the current user message naturally and directly.
 
@@ -327,6 +337,20 @@ def _prepare_normal_chat_generation(
     message: str,
     provider: LLMProvider | None = None,
 ) -> tuple[LLMProvider, str]:
+    identity_answer = (
+        resolve_product_identity_answer(
+            message
+        )
+    )
+
+    if identity_answer is not None:
+        return (
+            ProductIdentityLLMProvider(
+                identity_answer
+            ),
+            message,
+        )
+
     active_provider = (
         provider
         or create_configured_llm_provider()
@@ -435,6 +459,31 @@ def generate_knowledge_chat_reply(
     top_k: int = 8,
     provider: LLMProvider | None = None,
 ) -> ChatExecutionResult:
+    identity_answer = (
+        resolve_product_identity_answer(
+            message
+        )
+    )
+
+    if identity_answer is not None:
+        return ChatExecutionResult(
+            content=identity_answer,
+            mode="knowledge",
+            provider_name=(
+                PRODUCT_IDENTITY_PROVIDER_NAME
+            ),
+            model_name=(
+                PRODUCT_IDENTITY_MODEL_NAME
+            ),
+            response_id=None,
+            citations=(),
+            is_refusal=False,
+            input_tokens=None,
+            output_tokens=None,
+            total_tokens=None,
+            evidence_tokens=None,
+        )
+
     retrieval_question = (
         resolve_knowledge_retrieval_question(
             db=db,
