@@ -16,6 +16,7 @@ import {
 
 import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
 import { ThemeSettings } from "@/components/theme/theme-settings";
+import { ConversationHistory } from "@/components/workspace/conversation-history";
 import type { UserResponse } from "@/types/auth";
 
 type SidebarProps = {
@@ -117,6 +118,8 @@ export function Sidebar({
             New chat
           </button>
         </div>
+
+        <ConversationHistory />
 
         <nav className="mt-6 space-y-1">
           <button

@@ -1,0 +1,173 @@
+import { NextResponse } from "next/server";
+
+import {
+  backendUrl,
+  readJson,
+} from "@/lib/api/backend";
+import {
+  getAccessToken,
+} from "@/lib/auth/session";
+import type {
+  ConversationMode,
+  ConversationResponse,
+} from "@/types/conversation";
+
+type ApiError = {
+  detail?: unknown;
+};
+
+type ConversationCreateRequest = {
+  title?: string;
+  mode?: ConversationMode;
+};
+
+export async function GET() {
+  const accessToken =
+    await getAccessToken();
+
+  if (!accessToken) {
+    return NextResponse.json(
+      { detail: "Not authenticated" },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const response =
+      await fetch(
+        backendUrl(
+          "/conversations?limit=100&offset=0",
+        ),
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        },
+      );
+
+    const data =
+      await readJson<
+        ConversationResponse[] | ApiError
+      >(response);
+
+    return NextResponse.json(
+      data ?? {
+        detail:
+          "Backend returned an invalid response",
+      },
+      {
+        status: response.status,
+      },
+    );
+  } catch {
+    return NextResponse.json(
+      {
+        detail:
+          "Unable to connect to conversation service",
+      },
+      {
+        status: 502,
+      },
+    );
+  }
+}
+
+export async function POST(
+  request: Request,
+) {
+  const accessToken =
+    await getAccessToken();
+
+  if (!accessToken) {
+    return NextResponse.json(
+      { detail: "Not authenticated" },
+      { status: 401 },
+    );
+  }
+
+  let body: ConversationCreateRequest;
+
+  try {
+    body =
+      (await request.json()) as
+        ConversationCreateRequest;
+  } catch {
+    return NextResponse.json(
+      { detail: "Invalid request body" },
+      { status: 400 },
+    );
+  }
+
+  const title =
+    typeof body.title === "string"
+      ? body.title.trim()
+      : "";
+
+  if (
+    !title ||
+    (
+      body.mode !== "normal" &&
+      body.mode !== "knowledge"
+    )
+  ) {
+    return NextResponse.json(
+      {
+        detail:
+          "Valid title and mode are required",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  try {
+    const response =
+      await fetch(
+        backendUrl("/conversations"),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            title,
+            mode: body.mode,
+          }),
+          cache: "no-store",
+          signal: request.signal,
+        },
+      );
+
+    const data =
+      await readJson<
+        ConversationResponse | ApiError
+      >(response);
+
+    return NextResponse.json(
+      data ?? {
+        detail:
+          "Backend returned an invalid response",
+      },
+      {
+        status: response.status,
+      },
+    );
+  } catch {
+    return NextResponse.json(
+      {
+        detail:
+          "Unable to create conversation",
+      },
+      {
+        status: 502,
+      },
+    );
+  }
+}

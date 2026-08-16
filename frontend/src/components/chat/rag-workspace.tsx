@@ -21,8 +21,15 @@ import {
 } from "react";
 
 import { DocumentPanel } from "@/components/documents/document-panel";
+import {
+  buildConversationTitle,
+} from "@/lib/conversation/title";
+
 import type {
   ChatTurnResponse,
+  ConversationMessageResponse,
+  ConversationMode,
+  ConversationResponse,
 } from "@/types/conversation";
 import type {
   DocumentListResponse,
@@ -52,8 +59,7 @@ type UploadState =
   | "processing";
 
 type ChatMode =
-  | "normal"
-  | "knowledge";
+  ConversationMode;
 
 type ChatTurn = {
   id: string;
@@ -83,6 +89,12 @@ type NormalStreamError = {
   status?: number;
   code?: string;
   detail?: string;
+};
+
+type OpenConversationDetail = {
+  id?: string;
+  title?: string;
+  mode?: ConversationMode;
 };
 
 function parseSseFrame(
@@ -172,6 +184,97 @@ function normalResultFromTurn(
         0,
     },
   };
+}
+
+
+function persistedResultFromMessage(
+  question: string,
+  assistant: ConversationMessageResponse,
+): RAGAnswerResponse {
+  const citations =
+    assistant.citations ?? [];
+
+  return {
+    question,
+    answer: assistant.content,
+    is_refusal:
+      assistant.is_refusal,
+    provider_name:
+      assistant.provider_name ??
+      "unknown",
+    model_name:
+      assistant.model_name ??
+      "unknown",
+    response_id:
+      assistant.response_id,
+    citations,
+    citation_count:
+      citations.length,
+    retrieved_count:
+      citations.length,
+    context_source_count:
+      citations.length,
+    skipped_evidence_count: 0,
+    evidence_was_truncated: false,
+    usage: {
+      input_tokens:
+        assistant.input_tokens,
+      output_tokens:
+        assistant.output_tokens,
+      total_tokens:
+        assistant.total_tokens,
+      evidence_tokens:
+        assistant.evidence_tokens ??
+        0,
+    },
+  };
+}
+
+
+function turnsFromPersistedMessages(
+  messages: ConversationMessageResponse[],
+): ChatTurn[] {
+  const restored: ChatTurn[] = [];
+
+  for (
+    let index = 0;
+    index < messages.length;
+    index += 1
+  ) {
+    const userMessage =
+      messages[index];
+
+    const assistantMessage =
+      messages[index + 1];
+
+    if (
+      userMessage?.role !== "user" ||
+      assistantMessage?.role !==
+        "assistant"
+    ) {
+      continue;
+    }
+
+    restored.push({
+      id: assistantMessage.id,
+      mode: userMessage.mode,
+      question:
+        userMessage.content,
+      loading: false,
+      streamedAnswer:
+        assistantMessage.content,
+      result:
+        persistedResultFromMessage(
+          userMessage.content,
+          assistantMessage,
+        ),
+      error: "",
+    });
+
+    index += 1;
+  }
+
+  return restored;
 }
 
 
@@ -274,6 +377,13 @@ export function RAGWorkspace() {
   );
 
   const [
+    knowledgeConversationId,
+    setKnowledgeConversationId,
+  ] = useState<string | null>(
+    null,
+  );
+
+  const [
     attachedDocument,
     setAttachedDocument,
   ] = useState<DocumentResponse | null>(null);
@@ -352,10 +462,25 @@ export function RAGWorkspace() {
 
     setChatMode(nextMode);
 
+    window.dispatchEvent(
+      new CustomEvent(
+        "aqlyra:chat-mode-changed",
+        {
+          detail: {
+            mode: nextMode,
+          },
+        },
+      ),
+    );
+
     setQuestion("");
     setTurns([]);
 
     setNormalConversationId(
+      null,
+    );
+
+    setKnowledgeConversationId(
       null,
     );
 
@@ -380,6 +505,11 @@ export function RAGWorkspace() {
       setNormalConversationId(
         null,
       );
+
+      setKnowledgeConversationId(
+        null,
+      );
+
       setAttachedDocument(null);
       setAttachmentError("");
       setUploadState("idle");
@@ -431,6 +561,150 @@ export function RAGWorkspace() {
       );
     };
   }, []);
+
+  useEffect(() => {
+    function openConversation(
+      event: Event,
+    ) {
+      const detail =
+        (
+          event as CustomEvent<
+            OpenConversationDetail
+          >
+        ).detail;
+
+      if (
+        !detail ||
+        typeof detail.id !==
+          "string" ||
+        (
+          detail.mode !== "normal" &&
+          detail.mode !== "knowledge"
+        )
+      ) {
+        return;
+      }
+
+      abortRef.current?.abort();
+
+      const controller =
+        new AbortController();
+
+      abortRef.current =
+        controller;
+
+      void (async () => {
+        try {
+          const response =
+            await fetch(
+              `/api/conversations/${encodeURIComponent(
+                detail.id!,
+              )}/messages`,
+              {
+                cache: "no-store",
+                signal:
+                  controller.signal,
+              },
+            );
+
+          const data =
+            (await response.json()) as
+              | ConversationMessageResponse[]
+              | {
+                  detail?: unknown;
+                };
+
+          if (
+            !response.ok ||
+            !Array.isArray(data)
+          ) {
+            return;
+          }
+
+          setChatMode(
+            detail.mode!,
+          );
+
+          setNormalConversationId(
+            detail.mode === "normal"
+              ? detail.id!
+              : null,
+          );
+
+          setKnowledgeConversationId(
+            detail.mode === "knowledge"
+              ? detail.id!
+              : null,
+          );
+
+          window.dispatchEvent(
+            new CustomEvent(
+              "aqlyra:chat-mode-changed",
+              {
+                detail: {
+                  mode:
+                    detail.mode,
+                },
+              },
+            ),
+          );
+
+          setQuestion("");
+
+          setTurns(
+            turnsFromPersistedMessages(
+              data,
+            ),
+          );
+
+          setAttachedDocument(null);
+          setAttachmentError("");
+          setUploadState("idle");
+
+          setDocumentDrawerOpen(
+            false,
+          );
+
+          setEvidenceDrawerOpen(
+            false,
+          );
+
+          setSelectedTurnId(null);
+          setSelectedCitationId(null);
+        } catch (error) {
+          if (
+            error instanceof
+              DOMException &&
+            error.name ===
+              "AbortError"
+          ) {
+            return;
+          }
+        } finally {
+          if (
+            abortRef.current ===
+            controller
+          ) {
+            abortRef.current =
+              null;
+          }
+        }
+      })();
+    }
+
+    window.addEventListener(
+      "aqlyra:open-conversation",
+      openConversation,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "aqlyra:open-conversation",
+        openConversation,
+      );
+    };
+  }, []);
+
 
   useEffect(() => {
     if (!hasConversation) {
@@ -845,6 +1119,12 @@ export function RAGWorkspace() {
               ),
             );
 
+            window.dispatchEvent(
+              new Event(
+                "aqlyra:conversations-changed",
+              ),
+            );
+
             completed = true;
           }
         }
@@ -915,9 +1195,74 @@ export function RAGWorkspace() {
         return;
       }
 
+      let conversationId =
+        knowledgeConversationId;
+
+      if (!conversationId) {
+        const title =
+          attachedDocument
+            ? attachedDocument
+                .original_filename
+                .slice(0, 200)
+            : buildConversationTitle(
+                effectiveQuestion,
+              );
+
+        const createResponse =
+          await fetch(
+            "/api/conversations",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                title,
+                mode: "knowledge",
+              }),
+              signal:
+                controller.signal,
+            },
+          );
+
+        const createData =
+          (await createResponse.json()) as
+            | ConversationResponse
+            | RAGErrorResponse;
+
+        if (!createResponse.ok) {
+          throw new Error(
+            getRagErrorMessage(
+              createData as
+                RAGErrorResponse,
+            ),
+          );
+        }
+
+        if (
+          !("id" in createData) ||
+          typeof createData.id !==
+            "string"
+        ) {
+          throw new Error(
+            "Unable to create knowledge conversation.",
+          );
+        }
+
+        conversationId =
+          createData.id;
+
+        setKnowledgeConversationId(
+          conversationId,
+        );
+      }
+
       const response =
         await fetch(
-          "/api/rag/answer",
+          `/api/conversations/${encodeURIComponent(
+            conversationId,
+          )}/messages`,
           {
             method: "POST",
             headers: {
@@ -925,15 +1270,14 @@ export function RAGWorkspace() {
                 "application/json",
             },
             body: JSON.stringify({
-              question:
+              content:
                 effectiveQuestion,
-              ...(attachedDocument
-                ? {
-                    document_ids: [
+              document_ids:
+                attachedDocument
+                  ? [
                       attachedDocument.id,
-                    ],
-                  }
-                : {}),
+                    ]
+                  : [],
             }),
             signal:
               controller.signal,
@@ -942,7 +1286,7 @@ export function RAGWorkspace() {
 
       const data =
         (await response.json()) as
-          | RAGAnswerResponse
+          | ChatTurnResponse
           | RAGErrorResponse;
 
       if (!response.ok) {
@@ -966,8 +1310,14 @@ export function RAGWorkspace() {
         return;
       }
 
+      const chatTurn =
+        data as ChatTurnResponse;
+
       const result =
-        data as RAGAnswerResponse;
+        persistedResultFromMessage(
+          effectiveQuestion,
+          chatTurn.assistant_message,
+        );
 
       setTurns((current) =>
         current.map((turn) =>
@@ -975,9 +1325,18 @@ export function RAGWorkspace() {
             ? {
                 ...turn,
                 loading: false,
+                streamedAnswer:
+                  result.answer,
                 result,
+                error: "",
               }
             : turn,
+        ),
+      );
+
+      window.dispatchEvent(
+        new Event(
+          "aqlyra:conversations-changed",
         ),
       );
     } catch (requestError) {

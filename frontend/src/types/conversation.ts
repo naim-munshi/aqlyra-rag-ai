@@ -10,6 +10,7 @@ export type ConversationResponse = {
   id: string;
   title: string;
   mode: ConversationMode;
+  is_pinned: boolean;
   created_at: string;
   updated_at: string;
 };

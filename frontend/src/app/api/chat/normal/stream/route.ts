@@ -7,6 +7,9 @@ import {
 import {
   getAccessToken,
 } from "@/lib/auth/session";
+import {
+  buildConversationTitle,
+} from "@/lib/conversation/title";
 import type {
   ConversationResponse,
 } from "@/types/conversation";
@@ -89,7 +92,10 @@ export async function POST(
                 `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
-              title: "Normal chat",
+              title:
+                buildConversationTitle(
+                  content,
+                ),
               mode: "normal",
             }),
             cache: "no-store",
