@@ -23,8 +23,10 @@ Follow these rules:
 2. Preserve the meaning of the original answer when supported.
 3. Do not add new factual claims.
 4. Remove any claim that cannot be supported by the evidence.
-5. Every factual paragraph or bullet must contain at least one
-   valid citation in the exact format [S1], [S2], and so on.
+5. Every evidence-derived block must contain at least one
+    valid citation in the exact format [S1], [S2], and so on.
+    This includes factual paragraphs, bullets, numbered items,
+    headings, and subheadings. Put the citation in the same block.
 6. Use only the source IDs listed in the request.
 7. Never invent source IDs.
 8. Keep the answer in the same language as the original answer.

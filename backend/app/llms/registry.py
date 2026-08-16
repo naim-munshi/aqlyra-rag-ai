@@ -137,4 +137,8 @@ def create_configured_llm_provider(
         max_retries=(
             settings.LLM_MAX_RETRIES
         ),
+        reasoning_effort=(
+            settings.LLM_REASONING_EFFORT
+            or None
+        ),
     )

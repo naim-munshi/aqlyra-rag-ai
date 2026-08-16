@@ -3,7 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.api.rag as rag_api_module
+import app.services.rag_answer_service as rag_answer_service_module
 from app.llms import (
+    LLMGeneration,
+    LLMProviderInfo,
     LLMProviderRequestError,
 )
 from app.models.document_chunk import (
@@ -465,3 +468,223 @@ def test_rag_answer_maps_citation_failure(
         "The generated answer failed "
         "grounding validation"
     )
+
+
+class SequencedRAGLLMProvider:
+    def __init__(
+        self,
+        response_texts: tuple[str, ...],
+    ) -> None:
+        if not response_texts:
+            raise ValueError(
+                "At least one response is required"
+            )
+
+        self._response_texts = response_texts
+
+        self._info = LLMProviderInfo(
+            provider_name="sequenced-test",
+            model_name="sequenced-test-v1",
+            max_output_tokens=500,
+        )
+
+        self.calls: list[
+            tuple[str, str]
+        ] = []
+
+    @property
+    def info(self) -> LLMProviderInfo:
+        return self._info
+
+    def generate(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> LLMGeneration:
+        self.calls.append(
+            (
+                instructions,
+                input_text,
+            )
+        )
+
+        index = min(
+            len(self.calls) - 1,
+            len(self._response_texts) - 1,
+        )
+
+        return LLMGeneration(
+            text=self._response_texts[index],
+            provider_name=(
+                self.info.provider_name
+            ),
+            model_name=self.info.model_name,
+            response_id=(
+                f"sequenced-{len(self.calls)}"
+            ),
+            input_tokens=100,
+            output_tokens=20,
+            total_tokens=120,
+        )
+
+
+def test_rag_answer_uses_second_repair_when_needed(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    _, headers = create_user(
+        client,
+        username="ragsecondrepair",
+        email="ragsecondrepair@example.com",
+    )
+
+    document_id = upload_and_process(
+        client,
+        headers=headers,
+        filename="repair-security.md",
+        content=(
+            "# Authentication\n\n"
+            "JWT bearer tokens protect "
+            "private API routes."
+        ),
+    )
+
+    chunk = get_content_chunk(
+        db_session,
+        document_id=document_id,
+    )
+
+    provider = SequencedRAGLLMProvider(
+        (
+            (
+                "JWT bearer tokens protect "
+                "private API routes."
+            ),
+            (
+                "JWT bearer tokens protect "
+                "private API routes."
+            ),
+            (
+                "JWT bearer tokens protect "
+                "private API routes [S1]."
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        rag_answer_service_module,
+        "create_configured_llm_provider",
+        lambda: provider,
+    )
+
+    response = client.post(
+        "/api/v1/rag/answer",
+        headers=headers,
+        json={
+            "question":
+                chunk.embedding_content,
+            "top_k": 3,
+            "document_ids": [
+                document_id,
+            ],
+            "chunk_roles": [
+                "content",
+            ],
+            "min_similarity": 0.999,
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["is_refusal"] is False
+
+    assert (
+        "[S1]"
+        in payload["answer"]
+    )
+
+    assert payload["citation_count"] == 1
+
+    assert len(
+        payload["citations"]
+    ) == 1
+
+    assert len(provider.calls) == 3
+
+
+def test_rag_answer_safely_refuses_after_two_invalid_repairs(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    _, headers = create_user(
+        client,
+        username="ragsafefallback",
+        email="ragsafefallback@example.com",
+    )
+
+    document_id = upload_and_process(
+        client,
+        headers=headers,
+        filename="fallback-security.md",
+        content=(
+            "# Authentication\n\n"
+            "JWT bearer tokens protect "
+            "private API routes."
+        ),
+    )
+
+    chunk = get_content_chunk(
+        db_session,
+        document_id=document_id,
+    )
+
+    invalid_answer = (
+        "JWT bearer tokens protect "
+        "private API routes."
+    )
+
+    provider = SequencedRAGLLMProvider(
+        (
+            invalid_answer,
+            invalid_answer,
+            invalid_answer,
+        )
+    )
+
+    monkeypatch.setattr(
+        rag_answer_service_module,
+        "create_configured_llm_provider",
+        lambda: provider,
+    )
+
+    response = client.post(
+        "/api/v1/rag/answer",
+        headers=headers,
+        json={
+            "question":
+                chunk.embedding_content,
+            "top_k": 3,
+            "document_ids": [
+                document_id,
+            ],
+            "chunk_roles": [
+                "content",
+            ],
+            "min_similarity": 0.999,
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["is_refusal"] is True
+    assert payload["citations"] == []
+    assert payload["citation_count"] == 0
+
+    assert len(provider.calls) == 3

@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     LLM_MAX_OUTPUT_TOKENS: int = 800
     LLM_TIMEOUT_SECONDS: float = 60.0
     LLM_MAX_RETRIES: int = 2
+    LLM_REASONING_EFFORT: str = ""
 
     # RAG reranking
     RAG_RERANKER_ENABLED: bool = False

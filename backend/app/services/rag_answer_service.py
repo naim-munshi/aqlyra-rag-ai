@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass, replace
 
+from app.rag.answer_types import INSUFFICIENT_EVIDENCE_SENTINEL
+
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -312,11 +314,40 @@ def answer_question(
             provider=active_provider,
         )
 
-        validated = (
-            validate_grounded_answer_draft(
-                draft
+        try:
+            validated = (
+                validate_grounded_answer_draft(
+                    draft
+                )
             )
-        )
+
+        except CitationValidationError:
+            draft = repair_grounded_answer_draft(
+                draft=draft,
+                evidence_context=evidence_context,
+                provider=active_provider,
+            )
+
+            try:
+                validated = (
+                    validate_grounded_answer_draft(
+                        draft
+                    )
+                )
+
+            except CitationValidationError:
+                safe_refusal_draft = replace(
+                    draft,
+                    answer_text=(
+                        INSUFFICIENT_EVIDENCE_SENTINEL
+                    ),
+                )
+
+                validated = (
+                    validate_grounded_answer_draft(
+                        safe_refusal_draft
+                    )
+                )
 
     if validated.is_refusal:
         answer_text = (
