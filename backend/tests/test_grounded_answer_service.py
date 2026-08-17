@@ -362,3 +362,85 @@ def test_citation_repair_produces_valid_answer(
     assert validated.is_refusal is False
     assert validated.citation_ids == ("S1",)
     assert validated.citation_count == 1
+
+
+def test_generation_normalizes_unicode_citation_typography(
+) -> None:
+    provider = RecordingLLMProvider(
+        response_text=(
+            "JWT bearer tokens protect "
+            "private API routes 【S1】."
+        )
+    )
+
+    context = create_evidence_context()
+
+    draft = generate_grounded_answer_draft(
+        question=(
+            "How are private routes protected?"
+        ),
+        evidence_context=context,
+        provider=provider,
+    )
+
+    assert draft.answer_text == (
+        "JWT bearer tokens protect "
+        "private API routes [S1]."
+    )
+
+    validated = (
+        validate_grounded_answer_draft(
+            draft
+        )
+    )
+
+    assert validated.is_refusal is False
+    assert validated.citation_ids == ("S1",)
+    assert validated.citation_count == 1
+
+
+def test_repair_normalizes_unicode_citation_typography(
+) -> None:
+    provider = RecordingLLMProvider(
+        response_texts=(
+            (
+                "JWT bearer tokens protect "
+                "private API routes."
+            ),
+            (
+                "JWT bearer tokens protect "
+                "private API routes 【S1】."
+            ),
+        )
+    )
+
+    context = create_evidence_context()
+
+    draft = generate_grounded_answer_draft(
+        question=(
+            "How are private routes protected?"
+        ),
+        evidence_context=context,
+        provider=provider,
+    )
+
+    repaired = repair_grounded_answer_draft(
+        draft=draft,
+        evidence_context=context,
+        provider=provider,
+    )
+
+    assert repaired.answer_text == (
+        "JWT bearer tokens protect "
+        "private API routes [S1]."
+    )
+
+    validated = (
+        validate_grounded_answer_draft(
+            repaired
+        )
+    )
+
+    assert validated.is_refusal is False
+    assert validated.citation_ids == ("S1",)
+    assert validated.citation_count == 1

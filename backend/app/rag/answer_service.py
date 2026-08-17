@@ -1,3 +1,5 @@
+import re
+
 from app.llms import (
     LLMProvider,
     create_configured_llm_provider,
@@ -11,6 +13,29 @@ from app.rag.prompt_builder import (
     build_grounded_prompt,
 )
 from app.rag.types import EvidenceContext
+
+
+_CITATION_TYPOGRAPHY_PATTERN = re.compile(
+    r"【(S[1-9][0-9]*)】"
+)
+
+
+def _normalize_generated_citation_syntax(
+    text: str,
+) -> str:
+    """
+    Canonicalize a known LLM typography variant.
+
+    Validation remains strict after normalization.
+    Unknown source IDs are still rejected by the
+    citation validator.
+    """
+    return _CITATION_TYPOGRAPHY_PATTERN.sub(
+        lambda match: (
+            f"[{match.group(1)}]"
+        ),
+        text,
+    )
 
 
 CITATION_REPAIR_INSTRUCTIONS = f"""
@@ -69,7 +94,9 @@ def generate_grounded_answer_draft(
         input_text=prompt.input_text,
     )
 
-    answer_text = generation.text.strip()
+    answer_text = _normalize_generated_citation_syntax(
+        generation.text.strip()
+    )
 
     if not answer_text:
         raise GroundedAnswerGenerationError(
@@ -133,7 +160,9 @@ def repair_grounded_answer_draft(
         input_text=repair_input,
     )
 
-    repaired_text = generation.text.strip()
+    repaired_text = _normalize_generated_citation_syntax(
+        generation.text.strip()
+    )
 
     if not repaired_text:
         raise GroundedAnswerGenerationError(
