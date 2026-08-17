@@ -444,3 +444,41 @@ def test_repair_normalizes_unicode_citation_typography(
     assert validated.is_refusal is False
     assert validated.citation_ids == ("S1",)
     assert validated.citation_count == 1
+
+
+def test_generation_adds_space_before_citation(
+) -> None:
+    provider = RecordingLLMProvider(
+        response_text=(
+            "The code is **CYAN-5814**[S1]."
+        )
+    )
+
+    draft = generate_grounded_answer_draft(
+        question="What is the code?",
+        evidence_context=create_evidence_context(),
+        provider=provider,
+    )
+
+    assert draft.answer_text == (
+        "The code is **CYAN-5814** [S1]."
+    )
+
+
+def test_generation_adds_space_after_sentence_before_citation(
+) -> None:
+    provider = RecordingLLMProvider(
+        response_text=(
+            "The codename is Quartz Harbor.[S1]"
+        )
+    )
+
+    draft = generate_grounded_answer_draft(
+        question="What is the codename?",
+        evidence_context=create_evidence_context(),
+        provider=provider,
+    )
+
+    assert draft.answer_text == (
+        "The codename is Quartz Harbor. [S1]"
+    )

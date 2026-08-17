@@ -19,6 +19,10 @@ _CITATION_TYPOGRAPHY_PATTERN = re.compile(
     r"【(S[1-9][0-9]*)】"
 )
 
+_CITATION_SPACING_PATTERN = re.compile(
+    r"(?<!\\s)(\\[S[1-9][0-9]*\\])"
+)
+
 
 def _normalize_generated_citation_syntax(
     text: str,
@@ -30,11 +34,18 @@ def _normalize_generated_citation_syntax(
     Unknown source IDs are still rejected by the
     citation validator.
     """
-    return _CITATION_TYPOGRAPHY_PATTERN.sub(
-        lambda match: (
-            f"[{match.group(1)}]"
-        ),
-        text,
+    normalized = (
+        _CITATION_TYPOGRAPHY_PATTERN.sub(
+            lambda match: (
+                f"[{match.group(1)}]"
+            ),
+            text,
+        )
+    )
+
+    return _CITATION_SPACING_PATTERN.sub(
+        r" \\1",
+        normalized,
     )
 
 
