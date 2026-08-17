@@ -20,7 +20,7 @@ _CITATION_TYPOGRAPHY_PATTERN = re.compile(
 )
 
 _CITATION_SPACING_PATTERN = re.compile(
-    r"(?<!\\s)(\\[S[1-9][0-9]*\\])"
+    r"(?<=\S)(\[S[1-9][0-9]*\])"
 )
 
 
@@ -44,7 +44,7 @@ def _normalize_generated_citation_syntax(
     )
 
     return _CITATION_SPACING_PATTERN.sub(
-        r" \\1",
+        r" \1",
         normalized,
     )
 
