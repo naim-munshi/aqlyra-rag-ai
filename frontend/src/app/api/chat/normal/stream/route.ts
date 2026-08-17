@@ -17,6 +17,7 @@ import type {
 type NormalChatStreamRequest = {
   content?: string;
   conversation_id?: string | null;
+  document_ids?: string[];
 };
 
 type ApiError = {
@@ -72,6 +73,35 @@ export async function POST(
       },
     );
   }
+
+  if (
+    body.document_ids !== undefined &&
+    (
+      !Array.isArray(
+        body.document_ids,
+      ) ||
+      body.document_ids.some(
+        (value) =>
+          typeof value !== "string" ||
+          !value.trim(),
+      )
+    )
+  ) {
+    return NextResponse.json(
+      {
+        detail:
+          "Invalid document IDs",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const documentIds =
+    (body.document_ids ?? []).map(
+      (value) => value.trim(),
+    );
 
   let conversationId =
     typeof body.conversation_id === "string"
@@ -139,6 +169,92 @@ export async function POST(
 
       conversationId =
         createData.id;
+    }
+
+    if (documentIds.length > 0) {
+      const backendResponse =
+        await fetch(
+          backendUrl(
+            `/conversations/${encodeURIComponent(
+              conversationId,
+            )}/messages`,
+          ),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              content,
+              document_ids:
+                documentIds,
+            }),
+            cache: "no-store",
+            signal: request.signal,
+          },
+        );
+
+      const data =
+        await readJson<
+          Record<string, unknown> |
+          ApiError
+        >(backendResponse);
+
+      if (!backendResponse.ok) {
+        return NextResponse.json(
+          data ?? {
+            detail:
+              "Unable to process attachment",
+          },
+          {
+            status:
+              backendResponse.status,
+          },
+        );
+      }
+
+      if (!data) {
+        return NextResponse.json(
+          {
+            detail:
+              "Backend returned an invalid response",
+          },
+          {
+            status: 502,
+          },
+        );
+      }
+
+      const streamBody = [
+        "event: start\n",
+        `data: ${JSON.stringify({
+          conversation_id:
+            conversationId,
+          mode: "normal",
+        })}\n\n`,
+        "event: complete\n",
+        `data: ${JSON.stringify(
+          data,
+        )}\n\n`,
+      ].join("");
+
+      return new Response(
+        streamBody,
+        {
+          status: 200,
+          headers: {
+            "Content-Type":
+              "text/event-stream; charset=utf-8",
+            "Cache-Control":
+              "no-cache, no-transform",
+            "X-Accel-Buffering":
+              "no",
+          },
+        },
+      );
     }
 
     const backendResponse =

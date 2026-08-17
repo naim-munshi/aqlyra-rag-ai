@@ -153,6 +153,9 @@ function normalResultFromTurn(
   const assistant =
     turn.assistant_message;
 
+  const citations =
+    assistant.citations ?? [];
+
   return {
     question,
     answer: assistant.content,
@@ -166,10 +169,13 @@ function normalResultFromTurn(
       "unknown",
     response_id:
       assistant.response_id,
-    citations: [],
-    citation_count: 0,
-    retrieved_count: 0,
-    context_source_count: 0,
+    citations,
+    citation_count:
+      citations.length,
+    retrieved_count:
+      citations.length,
+    context_source_count:
+      citations.length,
     skipped_evidence_count: 0,
     evidence_was_truncated: false,
     usage: {
@@ -895,20 +901,16 @@ export function RAGWorkspace() {
       question.trim();
 
     const effectiveQuestion =
-      chatMode === "normal"
-        ? cleanedQuestion
-        : cleanedQuestion ||
-          (attachedDocument
-            ? "Summarize this document clearly and explain the key points."
-            : "");
+      cleanedQuestion ||
+      (attachedDocument
+        ? "Summarize this document clearly and explain the key points."
+        : "");
 
     const displayQuestion =
-      chatMode === "normal"
-        ? cleanedQuestion
-        : cleanedQuestion ||
-          (attachedDocument
-            ? `Summarize ${attachedDocument.original_filename}`
-            : "");
+      cleanedQuestion ||
+      (attachedDocument
+        ? `Summarize ${attachedDocument.original_filename}`
+        : "");
 
     if (
       !effectiveQuestion ||
@@ -963,6 +965,13 @@ export function RAGWorkspace() {
                   ? {
                       conversation_id:
                         normalConversationId,
+                    }
+                  : {}),
+                ...(attachedDocument
+                  ? {
+                      document_ids: [
+                        attachedDocument.id,
+                      ],
                     }
                   : {}),
               }),
@@ -1124,6 +1133,12 @@ export function RAGWorkspace() {
                 "aqlyra:conversations-changed",
               ),
             );
+
+            if (attachedDocument) {
+              setAttachedDocument(
+                null,
+              );
+            }
 
             completed = true;
           }
@@ -1511,14 +1526,9 @@ export function RAGWorkspace() {
             type="button"
             aria-label="Attach document"
             disabled={
-              chatMode === "normal" ||
               uploadState !== "idle"
             }
-            title={
-              chatMode === "normal"
-                ? "Switch to Knowledge mode to attach documents"
-                : "Attach document"
-            }
+            title="Attach document"
             onClick={() =>
               fileInputRef.current?.click()
             }

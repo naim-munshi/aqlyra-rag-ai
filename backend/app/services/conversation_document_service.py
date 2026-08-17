@@ -59,44 +59,42 @@ def resolve_conversation_document_scope(
     requested_document_ids: tuple[str, ...],
 ) -> ConversationDocumentScope:
     if conversation.mode == "normal":
-        if requested_document_ids:
-            raise ConversationDocumentScopeError(
-                "Document selection is only "
-                "supported in knowledge mode"
-            )
+        # Normal-chat attachments are valid only for
+        # the current turn. They are never persisted
+        # into conversation_documents.
+        effective_document_ids = (
+            requested_document_ids
+        )
+        new_document_ids = ()
 
-        return ConversationDocumentScope(
-            effective_document_ids=(),
-            new_document_ids=(),
+    elif conversation.mode == "knowledge":
+        existing_document_ids = (
+            list_conversation_document_ids(
+                db=db,
+                conversation_id=conversation.id,
+            )
         )
 
-    if conversation.mode != "knowledge":
+        existing_set = set(
+            existing_document_ids
+        )
+
+        new_document_ids = tuple(
+            document_id
+            for document_id
+            in requested_document_ids
+            if document_id not in existing_set
+        )
+
+        effective_document_ids = (
+            existing_document_ids
+            + new_document_ids
+        )
+
+    else:
         raise ConversationDocumentScopeError(
             "Unsupported conversation mode"
         )
-
-    existing_document_ids = (
-        list_conversation_document_ids(
-            db=db,
-            conversation_id=conversation.id,
-        )
-    )
-
-    existing_set = set(
-        existing_document_ids
-    )
-
-    new_document_ids = tuple(
-        document_id
-        for document_id
-        in requested_document_ids
-        if document_id not in existing_set
-    )
-
-    effective_document_ids = (
-        existing_document_ids
-        + new_document_ids
-    )
 
     if (
         len(effective_document_ids)

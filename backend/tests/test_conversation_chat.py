@@ -13,6 +13,7 @@ from app.llms import (
     LLMProviderInfo,
 )
 from app.main import app
+from app.models.conversation_document import ConversationDocument
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.user import User
@@ -690,16 +691,79 @@ def test_retrieval_validation_failure_returns_422_and_persists_nothing(
     assert history.json() == []
 
 
-def test_normal_chat_rejects_document_selection(
+def test_normal_chat_uses_turn_scoped_document(
     client: TestClient,
     db_session: Session,
+    monkeypatch,
 ) -> None:
     user = create_user(
         db_session,
-        suffix="normal-document-boundary",
+        suffix="normal-document-turn",
     )
 
+    document = Document(
+        id="normal-doc-1",
+        user_id=str(user.id),
+        original_filename="normal-policy.md",
+        stored_filename="normal-policy.md",
+        storage_path="tests/normal-policy.md",
+        content_type="text/markdown",
+        file_extension=".md",
+        file_size=64,
+        checksum_sha256="2" * 64,
+        status="ready",
+    )
+
+    db_session.add(document)
+    db_session.commit()
+
     authenticate_as(user)
+
+    captured = {}
+
+    source = SimpleNamespace(
+        source_id="S1",
+        chunk_id="normal-chunk-1",
+        document_id=document.id,
+        parent_chunk_id=None,
+        original_filename=(
+            document.original_filename
+        ),
+        chunk_role="content",
+        chunk_level=0,
+        chunk_index=0,
+        source_label="Normal attachment",
+        section_path=(),
+        start_page=None,
+        end_page=None,
+        similarity_score=0.95,
+        content="Attached document evidence.",
+        was_truncated=False,
+    )
+
+    def fake_answer_question(**kwargs):
+        captured.update(kwargs)
+
+        return SimpleNamespace(
+            answer_text=(
+                "Attached document answer [S1]."
+            ),
+            provider_name="fake-rag",
+            model_name="fake-rag-v1",
+            response_id="normal-rag-response",
+            citations=(source,),
+            is_refusal=False,
+            input_tokens=20,
+            output_tokens=8,
+            total_tokens=28,
+            evidence_tokens=12,
+        )
+
+    monkeypatch.setattr(
+        chat_module,
+        "answer_question",
+        fake_answer_question,
+    )
 
     conversation_id = create_conversation(
         client,
@@ -712,27 +776,54 @@ def test_normal_chat_rejects_document_selection(
             f"{conversation_id}/messages"
         ),
         json={
-            "content": "Use this document",
-            "document_ids": ["document-1"],
+            "content": "Read this document",
+            "document_ids": [
+                document.id,
+            ],
+            "top_k": 5,
         },
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 200
 
-    assert response.json()["detail"] == (
-        "Document selection is only "
-        "supported in knowledge mode"
+    payload = response.json()
+
+    assert payload["mode"] == "normal"
+
+    assistant = payload[
+        "assistant_message"
+    ]
+
+    assert assistant["mode"] == "normal"
+
+    assert assistant["content"] == (
+        "Attached document answer [S1]."
     )
 
-    history = client.get(
-        (
-            "/api/v1/conversations/"
-            f"{conversation_id}/messages"
-        )
+    assert assistant["citations"][0][
+        "source_id"
+    ] == "S1"
+
+    assert captured["document_ids"] == (
+        document.id,
     )
 
-    assert history.status_code == 200
-    assert history.json() == []
+    assert captured["top_k"] == 5
+
+    persisted_scope = list(
+        db_session.scalars(
+            select(ConversationDocument)
+            .where(
+                ConversationDocument
+                .conversation_id
+                == conversation_id
+            )
+        ).all()
+    )
+
+    # Normal-chat attachment must remain
+    # turn-scoped, not Knowledge scope.
+    assert persisted_scope == []
 
 
 def test_real_knowledge_chat_persists_grounded_citation(

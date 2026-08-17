@@ -425,6 +425,47 @@ def generate_normal_chat_reply(
     )
 
 
+def generate_normal_document_chat_reply(
+    *,
+    db: Session,
+    conversation: Conversation,
+    message: str,
+    document_ids: tuple[str, ...],
+    top_k: int = 8,
+    provider: LLMProvider | None = None,
+) -> ChatExecutionResult:
+    result = answer_question(
+        db=db,
+        user_id=conversation.user_id,
+        question=message,
+        retrieval_question=message,
+        top_k=top_k,
+        document_ids=document_ids,
+        provider=provider,
+    )
+
+    citations = tuple(
+        _citation_payload(source)
+        for source in result.citations
+    )
+
+    return ChatExecutionResult(
+        content=result.answer_text,
+        mode="normal",
+        provider_name=result.provider_name,
+        model_name=result.model_name,
+        response_id=result.response_id,
+        citations=citations,
+        is_refusal=result.is_refusal,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        total_tokens=result.total_tokens,
+        evidence_tokens=(
+            result.evidence_tokens
+        ),
+    )
+
+
 def stream_normal_chat_reply(
     *,
     db: Session,
@@ -545,9 +586,15 @@ def execute_chat_turn(
 
     if conversation.mode == "normal":
         if document_ids:
-            raise ChatValidationError(
-                "Document selection is only "
-                "supported in knowledge mode"
+            return (
+                generate_normal_document_chat_reply(
+                    db=db,
+                    conversation=conversation,
+                    message=cleaned,
+                    document_ids=document_ids,
+                    top_k=top_k,
+                    provider=provider,
+                )
             )
 
         return generate_normal_chat_reply(
