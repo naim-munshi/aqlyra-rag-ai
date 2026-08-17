@@ -45,6 +45,10 @@ from app.services.chat_service import (
 from app.services.memory_extraction_service import (
     extract_memories_best_effort,
 )
+from app.services.conversation_document_service import (
+    ConversationDocumentScopeError,
+    resolve_conversation_document_scope,
+)
 from app.services.conversation_service import (
     create_conversation,
     delete_conversation,
@@ -175,12 +179,23 @@ def create_message_endpoint(
         raise _conversation_not_found()
 
     try:
+        document_scope = (
+            resolve_conversation_document_scope(
+                db=db,
+                conversation=conversation,
+                requested_document_ids=tuple(
+                    request.document_ids
+                ),
+            )
+        )
+
         result = execute_chat_turn(
             db=db,
             conversation=conversation,
             message=request.content,
-            document_ids=tuple(
-                request.document_ids
+            document_ids=(
+                document_scope
+                .effective_document_ids
             ),
             top_k=request.top_k,
         )
@@ -188,6 +203,7 @@ def create_message_endpoint(
     except (
         RetrievalValidationError,
         ChatValidationError,
+        ConversationDocumentScopeError,
     ) as exc:
         raise HTTPException(
             status_code=(
@@ -283,6 +299,10 @@ def create_message_endpoint(
             ),
             evidence_tokens=(
                 result.evidence_tokens
+            ),
+            scope_document_ids=(
+                document_scope
+                .new_document_ids
             ),
         )
     )

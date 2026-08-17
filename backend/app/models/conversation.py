@@ -20,6 +20,7 @@ from app.core.datetime_utils import utc_now_naive
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.conversation_document import ConversationDocument
     from app.models.message import Message
     from app.models.user import User
 
@@ -96,6 +97,18 @@ class Conversation(Base):
 
     owner: Mapped["User"] = relationship(
         back_populates="conversations",
+    )
+
+
+    document_links: Mapped[
+        list["ConversationDocument"]
+    ] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by=(
+            "ConversationDocument.created_at"
+        ),
     )
 
     messages: Mapped[list["Message"]] = relationship(

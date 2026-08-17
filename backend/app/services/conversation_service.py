@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.core.datetime_utils import utc_now_naive
 from app.models.conversation import Conversation
+from app.models.conversation_document import (
+    ConversationDocument,
+)
 from app.models.message import Message
 
 
@@ -174,6 +177,7 @@ def persist_chat_turn(
     output_tokens: int | None,
     total_tokens: int | None,
     evidence_tokens: int | None,
+    scope_document_ids: tuple[str, ...] = (),
 ) -> tuple[Message, Message]:
     user_message = Message(
         conversation_id=conversation.id,
@@ -200,6 +204,14 @@ def persist_chat_turn(
         evidence_tokens=evidence_tokens,
     )
 
+    scope_links = [
+        ConversationDocument(
+            conversation_id=conversation.id,
+            document_id=document_id,
+        )
+        for document_id in scope_document_ids
+    ]
+
     conversation.updated_at = utc_now_naive()
 
     try:
@@ -208,6 +220,7 @@ def persist_chat_turn(
                 user_message,
                 assistant_message,
                 conversation,
+                *scope_links,
             ]
         )
         db.commit()

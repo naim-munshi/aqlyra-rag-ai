@@ -13,6 +13,7 @@ from app.llms import (
     LLMProviderInfo,
 )
 from app.main import app
+from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.user import User
 
@@ -259,6 +260,22 @@ def test_knowledge_chat_routes_through_rag(
         db_session,
         suffix="knowledge-chat",
     )
+
+    db_session.add(
+        Document(
+            id="doc-1",
+            user_id=str(user.id),
+            original_filename="policy.md",
+            stored_filename="policy.md",
+            storage_path="tests/policy.md",
+            content_type="text/markdown",
+            file_extension=".md",
+            file_size=64,
+            checksum_sha256="1" * 64,
+            status="ready",
+        )
+    )
+    db_session.commit()
 
     authenticate_as(user)
 
