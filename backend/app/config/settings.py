@@ -42,13 +42,14 @@ class Settings(BaseSettings):
     # Provider credentials
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    HF_TOKEN: str = ""
 
     # Embeddings
     EMBEDDING_PROVIDER: str = (
         "deterministic"
     )
     EMBEDDING_MODEL: str = (
-        "text-embedding-3-small"
+        "deterministic-sha256-v1"
     )
     EMBEDDING_DIMENSION: int = 384
     EMBEDDING_MAX_BATCH_SIZE: (
@@ -132,12 +133,13 @@ class Settings(BaseSettings):
 
         if normalized not in {
             "deterministic",
+            "huggingface",
             "openai",
         }:
             raise ValueError(
-                "EMBEDDING_PROVIDER "
-                "must be 'deterministic' "
-                "or 'openai'"
+                "EMBEDDING_PROVIDER must be "
+                "'deterministic', "
+                "'huggingface', or 'openai'"
             )
 
         return normalized
@@ -405,6 +407,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Personal memory chat requires a "
                 "semantic embedding provider"
+            )
+
+        if (
+            self.EMBEDDING_PROVIDER
+            == "huggingface"
+            and not self.HF_TOKEN.strip()
+        ):
+            raise ValueError(
+                "HF_TOKEN is required when the "
+                "Hugging Face embedding provider "
+                "is enabled"
             )
 
         uses_openai = (

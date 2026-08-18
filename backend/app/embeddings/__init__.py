@@ -4,6 +4,10 @@ from app.embeddings.deterministic import (
 from app.embeddings.openai_provider import (
     OpenAIEmbeddingProvider,
 )
+from app.embeddings.huggingface_provider import (
+    DEFAULT_HF_EMBEDDING_MODEL,
+    HuggingFaceEmbeddingProvider,
+)
 from app.embeddings.registry import (
     create_configured_embedding_provider,
     create_embedding_provider,
@@ -23,6 +27,7 @@ from app.embeddings.validation import (
 )
 
 __all__ = [
+    "DEFAULT_HF_EMBEDDING_MODEL",
     "DeterministicHashEmbeddingProvider",
     "EmbeddingError",
     "EmbeddingProvider",
@@ -30,6 +35,7 @@ __all__ = [
     "EmbeddingProviderNotFoundError",
     "EmbeddingProviderRequestError",
     "EmbeddingValidationError",
+    "HuggingFaceEmbeddingProvider",
     "OpenAIEmbeddingProvider",
     "create_configured_embedding_provider",
     "create_embedding_provider",

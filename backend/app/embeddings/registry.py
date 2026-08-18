@@ -7,6 +7,10 @@ from app.embeddings.deterministic import (
 from app.embeddings.openai_provider import (
     OpenAIEmbeddingProvider,
 )
+from app.embeddings.huggingface_provider import (
+    DEFAULT_HF_EMBEDDING_MODEL,
+    HuggingFaceEmbeddingProvider,
+)
 from app.embeddings.types import (
     EmbeddingProvider,
     EmbeddingProviderNotFoundError,
@@ -20,6 +24,7 @@ def create_embedding_provider(
     *,
     model_name: str | None = None,
     api_key: str = "",
+    hf_token: str = "",
     timeout_seconds: float = 30.0,
     max_retries: int = 3,
     client: Any | None = None,
@@ -36,6 +41,19 @@ def create_embedding_provider(
                 dimension=dimension,
                 max_batch_size=max_batch_size,
             )
+        )
+
+    if normalized_name == "huggingface":
+        return HuggingFaceEmbeddingProvider(
+            token=hf_token,
+            model_name=(
+                model_name
+                or DEFAULT_HF_EMBEDDING_MODEL
+            ),
+            dimension=dimension,
+            max_batch_size=max_batch_size,
+            timeout_seconds=timeout_seconds,
+            client=client,
         )
 
     if normalized_name == "openai":
@@ -74,6 +92,7 @@ def create_configured_embedding_provider(
             settings.EMBEDDING_MAX_BATCH_SIZE
         ),
         api_key=settings.OPENAI_API_KEY,
+        hf_token=settings.HF_TOKEN,
         timeout_seconds=(
             settings.EMBEDDING_TIMEOUT_SECONDS
         ),
