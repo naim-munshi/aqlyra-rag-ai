@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  Copy,
   MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
+  Trash2,
 } from "lucide-react";
 import {
   useCallback,
@@ -13,6 +15,7 @@ import {
 } from "react";
 
 import type {
+  ConversationMessageResponse,
   ConversationMode,
   ConversationResponse,
 } from "@/types/conversation";
@@ -259,6 +262,126 @@ export function ConversationHistory() {
     );
   }
 
+
+  async function copyConversation(
+    conversation: ConversationResponse,
+  ) {
+    setMenuConversationId(null);
+
+    try {
+      const response =
+        await fetch(
+          `/api/conversations/${encodeURIComponent(
+            conversation.id,
+          )}/messages`,
+          {
+            cache: "no-store",
+          },
+        );
+
+      const data =
+        (await response.json()) as
+          | ConversationMessageResponse[]
+          | ApiError;
+
+      if (
+        !response.ok ||
+        !Array.isArray(data)
+      ) {
+        return;
+      }
+
+      const transcript =
+        data
+          .map((message) => {
+            const speaker =
+              message.role === "user"
+                ? "You"
+                : "Aqlyra";
+
+            return (
+              `${speaker}:\n` +
+              message.content
+            );
+          })
+          .join("\n\n");
+
+      if (!transcript) {
+        return;
+      }
+
+      await navigator.clipboard
+        .writeText(transcript);
+    } catch {
+      // Clipboard/history failure is non-destructive.
+    }
+  }
+
+
+  async function deleteConversation(
+    conversation: ConversationResponse,
+  ) {
+    setMenuConversationId(null);
+
+    const confirmed =
+      window.confirm(
+        `Delete "${conversation.title}"?\n\n` +
+        "This conversation and its messages " +
+        "will be permanently deleted.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response =
+        await fetch(
+          `/api/conversations/${encodeURIComponent(
+            conversation.id,
+          )}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+      if (!response.ok) {
+        return;
+      }
+
+      setConversations(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              conversation.id,
+          ),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "aqlyra:conversation-deleted",
+          {
+            detail: {
+              id: conversation.id,
+            },
+          },
+        ),
+      );
+
+      window.dispatchEvent(
+        new Event(
+          "aqlyra:conversations-changed",
+        ),
+      );
+
+      await loadConversations();
+    } catch {
+      // Leave current history unchanged on failure.
+    }
+  }
+
+
   const visibleConversations =
     conversations.filter(
       (conversation) =>
@@ -321,7 +444,20 @@ export function ConversationHistory() {
         </button>
 
         {menuOpen && (
-          <div className="absolute right-1 top-9 z-50 w-36 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-1.5 shadow-2xl">
+          <div className="absolute right-1 top-9 z-50 w-44 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-1.5 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                void copyConversation(
+                  conversation,
+                );
+              }}
+              className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[10px] transition hover:bg-[var(--aq-control)]"
+            >
+              <Copy size={13} />
+              Copy conversation
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -353,6 +489,21 @@ export function ConversationHistory() {
               {conversation.is_pinned
                 ? "Unpin"
                 : "Pin"}
+            </button>
+
+            <div className="my-1 border-t border-[var(--aq-border)]" />
+
+            <button
+              type="button"
+              onClick={() => {
+                void deleteConversation(
+                  conversation,
+                );
+              }}
+              className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[10px] text-red-400 transition hover:bg-red-500/10"
+            >
+              <Trash2 size={13} />
+              Delete
             </button>
           </div>
         )}

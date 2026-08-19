@@ -102,3 +102,75 @@ export async function PATCH(
     );
   }
 }
+
+
+
+export async function DELETE(
+  _request: Request,
+  context: RouteContext,
+) {
+  const accessToken =
+    await getAccessToken();
+
+  if (!accessToken) {
+    return NextResponse.json(
+      { detail: "Not authenticated" },
+      { status: 401 },
+    );
+  }
+
+  const { conversationId } =
+    await context.params;
+
+  try {
+    const response = await fetch(
+      backendUrl(
+        `/conversations/${encodeURIComponent(
+          conversationId,
+        )}`,
+      ),
+      {
+        method: "DELETE",
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (response.status === 204) {
+      return new Response(
+        null,
+        {
+          status: 204,
+        },
+      );
+    }
+
+    const data =
+      await readJson<ApiError>(
+        response,
+      );
+
+    return NextResponse.json(
+      data ?? {
+        detail:
+          "Backend returned an invalid response",
+      },
+      {
+        status: response.status,
+      },
+    );
+  } catch {
+    return NextResponse.json(
+      {
+        detail:
+          "Unable to delete conversation",
+      },
+      {
+        status: 502,
+      },
+    );
+  }
+}

@@ -5,7 +5,6 @@ import {
   Copy,
   FileText,
   LoaderCircle,
-  Mic,
   PanelLeft,
   Paperclip,
   Send,
@@ -21,6 +20,7 @@ import {
 } from "react";
 
 import { DocumentPanel } from "@/components/documents/document-panel";
+import { VoiceCallButton } from "@/components/voice/voice-call-button";
 import {
   buildConversationTitle,
 } from "@/lib/conversation/title";
@@ -96,6 +96,19 @@ type OpenConversationDetail = {
   title?: string;
   mode?: ConversationMode;
 };
+
+type DeletedConversationDetail = {
+  id?: string;
+};
+
+type PersistedWorkspaceState = {
+  mode: ChatMode;
+  conversationId: string | null;
+  draft: string;
+};
+
+const WORKSPACE_STORAGE_KEY =
+  "aqlyra:active-workspace:v1";
 
 function parseSseFrame(
   frame: string,
@@ -362,8 +375,21 @@ export function RAGWorkspace() {
   const abortRef =
     useRef<AbortController | null>(null);
 
+  const voiceConversationIdRef =
+    useRef<string | null>(null);
+
   const [question, setQuestion] =
     useState("");
+
+  const [
+    workspaceHydrated,
+    setWorkspaceHydrated,
+  ] = useState(false);
+
+  const [
+    copiedAnswerId,
+    setCopiedAnswerId,
+  ] = useState<string | null>(null);
 
   const [turns, setTurns] =
     useState<ChatTurn[]>([]);
@@ -535,9 +561,43 @@ export function RAGWorkspace() {
       setEvidenceDrawerOpen(false);
     }
 
+    function handleConversationDeleted(
+      event: Event,
+    ) {
+      const detail =
+        (
+          event as CustomEvent<
+            DeletedConversationDetail
+          >
+        ).detail;
+
+      if (
+        !detail ||
+        typeof detail.id !== "string"
+      ) {
+        return;
+      }
+
+      if (
+        detail.id !==
+          normalConversationId &&
+        detail.id !==
+          knowledgeConversationId
+      ) {
+        return;
+      }
+
+      resetChat();
+    }
+
     window.addEventListener(
       "aqlyra:new-chat",
       resetChat,
+    );
+
+    window.addEventListener(
+      "aqlyra:conversation-deleted",
+      handleConversationDeleted,
     );
 
     window.addEventListener(
@@ -557,6 +617,11 @@ export function RAGWorkspace() {
       );
 
       window.removeEventListener(
+        "aqlyra:conversation-deleted",
+        handleConversationDeleted,
+      );
+
+      window.removeEventListener(
         "aqlyra:open-documents",
         openDocuments,
       );
@@ -566,7 +631,10 @@ export function RAGWorkspace() {
         focusChat,
       );
     };
-  }, []);
+  }, [
+    normalConversationId,
+    knowledgeConversationId,
+  ]);
 
   useEffect(() => {
     function openConversation(
@@ -710,6 +778,157 @@ export function RAGWorkspace() {
       );
     };
   }, []);
+
+
+  useEffect(() => {
+    let restoredMode: ChatMode =
+      "normal";
+
+    let restoredConversationId:
+      string | null = null;
+
+    let restoredDraft = "";
+
+    try {
+      const raw =
+        window.localStorage.getItem(
+          WORKSPACE_STORAGE_KEY,
+        );
+
+      if (raw) {
+        const parsed =
+          JSON.parse(raw) as
+            Partial<
+              PersistedWorkspaceState
+            >;
+
+        if (
+          parsed.mode === "normal" ||
+          parsed.mode === "knowledge"
+        ) {
+          restoredMode =
+            parsed.mode;
+        }
+
+        if (
+          typeof
+            parsed.conversationId ===
+            "string" &&
+          parsed.conversationId.trim()
+        ) {
+          restoredConversationId =
+            parsed.conversationId.trim();
+        }
+
+        if (
+          typeof parsed.draft ===
+          "string"
+        ) {
+          restoredDraft =
+            parsed.draft;
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(
+        WORKSPACE_STORAGE_KEY,
+      );
+    }
+
+    const restoreTimer =
+      window.setTimeout(() => {
+        setChatMode(restoredMode);
+        setQuestion(restoredDraft);
+
+        if (
+          restoredMode === "normal"
+        ) {
+          setNormalConversationId(
+            restoredConversationId,
+          );
+
+          setKnowledgeConversationId(
+            null,
+          );
+        } else {
+          setKnowledgeConversationId(
+            restoredConversationId,
+          );
+
+          setNormalConversationId(
+            null,
+          );
+        }
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "aqlyra:chat-mode-changed",
+            {
+              detail: {
+                mode: restoredMode,
+              },
+            },
+          ),
+        );
+
+        if (restoredConversationId) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "aqlyra:open-conversation",
+              {
+                detail: {
+                  id:
+                    restoredConversationId,
+                  mode:
+                    restoredMode,
+                },
+              },
+            ),
+          );
+        }
+
+        setWorkspaceHydrated(true);
+      }, 0);
+
+    return () => {
+      window.clearTimeout(
+        restoreTimer,
+      );
+    };
+  }, []);
+
+
+  useEffect(() => {
+    if (!workspaceHydrated) {
+      return;
+    }
+
+    const conversationId =
+      chatMode === "normal"
+        ? normalConversationId
+        : knowledgeConversationId;
+
+    const state:
+      PersistedWorkspaceState = {
+        mode: chatMode,
+        conversationId,
+        draft: question,
+      };
+
+    try {
+      window.localStorage.setItem(
+        WORKSPACE_STORAGE_KEY,
+        JSON.stringify(state),
+      );
+    } catch {
+      // Workspace persistence is best effort.
+    }
+  }, [
+    workspaceHydrated,
+    chatMode,
+    normalConversationId,
+    knowledgeConversationId,
+    question,
+  ]);
 
 
   useEffect(() => {
@@ -891,6 +1110,62 @@ export function RAGWorkspace() {
       setUploadState("idle");
     }
   }
+
+  async function refreshVoiceConversation(
+    conversationId: string,
+  ) {
+    try {
+      const response =
+        await fetch(
+          `/api/conversations/${encodeURIComponent(
+            conversationId,
+          )}/messages`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+
+      const data =
+        (await response.json()) as
+          | ConversationMessageResponse[]
+          | RAGErrorResponse;
+
+      if (
+        !response.ok ||
+        !Array.isArray(data)
+      ) {
+        return;
+      }
+
+      setTurns(
+        turnsFromPersistedMessages(
+          data,
+        ),
+      );
+
+      setQuestion("");
+
+      window.dispatchEvent(
+        new Event(
+          "aqlyra:conversations-changed",
+        ),
+      );
+
+      if (
+        chatMode === "normal" &&
+        attachedDocument
+      ) {
+        setAttachedDocument(
+          null,
+        );
+      }
+    } catch {
+      // Live transcript remains visible in the
+      // voice panel if history refresh fails.
+    }
+  }
+
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
@@ -1417,12 +1692,81 @@ export function RAGWorkspace() {
     setEvidenceDrawerOpen(true);
   }
 
+  async function copyTextToClipboard(
+    text: string,
+  ): Promise<boolean> {
+    if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText ===
+        "function"
+    ) {
+      try {
+        await navigator.clipboard.writeText(
+          text,
+        );
+
+        return true;
+      } catch {
+        // Fall through to legacy browser fallback.
+      }
+    }
+
+    const textarea =
+      document.createElement("textarea");
+
+    textarea.value = text;
+    textarea.setAttribute(
+      "readonly",
+      "",
+    );
+
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+
+    document.body.appendChild(
+      textarea,
+    );
+
+    textarea.focus();
+    textarea.select();
+
+    let copied = false;
+
+    try {
+      copied =
+        document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
+
+    return copied;
+  }
+
+
   async function copyAnswer(
+    turnId: string,
     answer: string,
   ) {
-    await navigator.clipboard.writeText(
-      answer,
-    );
+    const copied =
+      await copyTextToClipboard(
+        answer,
+      );
+
+    if (!copied) {
+      return;
+    }
+
+    setCopiedAnswerId(turnId);
+
+    window.setTimeout(() => {
+      setCopiedAnswerId(
+        (current) =>
+          current === turnId
+            ? null
+            : current,
+      );
+    }, 1500);
   }
 
   async function copyEvidence() {
@@ -1569,14 +1913,78 @@ export function RAGWorkspace() {
               Upgrade
             </button>
 
-            <button
-              type="button"
-              disabled
-              aria-label="Voice coming later"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)]"
-            >
-              <Mic size={18} />
-            </button>
+            <VoiceCallButton
+              mode={chatMode}
+              conversationId={
+                chatMode === "normal"
+                  ? normalConversationId
+                  : knowledgeConversationId
+              }
+              documentIds={
+                attachedDocument
+                  ? [
+                      attachedDocument.id,
+                    ]
+                  : []
+              }
+              disabled={
+                ragLoading ||
+                uploadState !== "idle"
+              }
+              onConversationStarted={(
+                conversationId,
+              ) => {
+                voiceConversationIdRef
+                  .current =
+                    conversationId;
+
+                if (
+                  chatMode ===
+                  "normal"
+                ) {
+                  setNormalConversationId(
+                    conversationId,
+                  );
+                } else {
+                  setKnowledgeConversationId(
+                    conversationId,
+                  );
+                }
+
+                window.dispatchEvent(
+                  new Event(
+                    "aqlyra:conversations-changed",
+                  ),
+                );
+              }}
+              onUserTranscript={(
+                text,
+              ) => {
+                setQuestion(
+                  text,
+                );
+              }}
+              onAgentTranscript={(
+                _text,
+                isFinal,
+              ) => {
+                if (!isFinal) {
+                  return;
+                }
+
+                const conversationId =
+                  voiceConversationIdRef
+                    .current;
+
+                if (!conversationId) {
+                  return;
+                }
+
+                void refreshVoiceConversation(
+                  conversationId,
+                );
+              }}
+            />
 
             <button
               type="submit"
@@ -1673,7 +2081,7 @@ export function RAGWorkspace() {
                   : "text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
               ].join(" ")}
             >
-              Normal
+              Converse
             </button>
 
             <button
@@ -1851,6 +2259,7 @@ export function RAGWorkspace() {
                                 type="button"
                                 onClick={() => {
                                   void copyAnswer(
+                                    turn.id,
                                     turn.result!
                                       .answer,
                                   );
@@ -1861,7 +2270,10 @@ export function RAGWorkspace() {
                                   size={12}
                                 />
 
-                                Copy
+                                {copiedAnswerId ===
+                                turn.id
+                                  ? "Copied"
+                                  : "Copy"}
                               </button>
                             </div>
                           </div>
