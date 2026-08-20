@@ -124,6 +124,44 @@ if (
     )
 
 
+domain = require("APP_DOMAIN")
+domain_lower = domain.casefold()
+
+if (
+    "://" in domain
+    or "/" in domain
+    or domain_lower == "localhost"
+    or domain_lower == "example.com"
+    or domain_lower.endswith(".example.com")
+):
+    errors.append(
+        "APP_DOMAIN must be a real "
+        "production hostname"
+    )
+
+if (
+    domain
+    and f"https://{domain}" not in cors
+):
+    errors.append(
+        "CORS_ORIGINS must include "
+        "https://APP_DOMAIN"
+    )
+
+
+caddy_email = require("CADDY_EMAIL")
+
+if (
+    "@" not in caddy_email
+    or caddy_email.startswith("@")
+    or caddy_email.endswith("@")
+):
+    errors.append(
+        "CADDY_EMAIL must be a valid "
+        "contact email"
+    )
+
+
 secret = require("SECRET_KEY")
 
 if len(secret) < 32:
@@ -226,6 +264,8 @@ if errors:
 print("APP_ENV=PASS")
 print("DEBUG=PASS")
 print("CORS=PASS")
+print("APP_DOMAIN=PASS")
+print("CADDY_EMAIL=PASS")
 print("SECRET_KEY=PASS")
 print("POSTGRES_CREDENTIALS=PASS")
 print("DATABASE_URL_DOCKER=PASS")
