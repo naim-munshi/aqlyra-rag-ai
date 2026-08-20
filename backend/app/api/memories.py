@@ -71,7 +71,9 @@ def create_memory_endpoint(
             memory_ids=[memory.id],
         )
 
-        return memory
+        return MemoryResponse.model_validate(
+            memory
+        )
 
     except MemoryValidationError as exc:
         raise HTTPException(
@@ -108,7 +110,7 @@ def list_memories_endpoint(
     ),
     db: Session = Depends(get_db),
 ) -> list[MemoryResponse]:
-    return list_memories_for_user(
+    memories = list_memories_for_user(
         db=db,
         user_id=str(current_user.id),
         kind=kind,
@@ -116,6 +118,11 @@ def list_memories_endpoint(
         limit=limit,
         offset=offset,
     )
+
+    return [
+        MemoryResponse.model_validate(memory)
+        for memory in memories
+    ]
 
 
 @router.get(
@@ -138,7 +145,9 @@ def get_memory_endpoint(
     if memory is None:
         raise _memory_not_found()
 
-    return memory
+    return MemoryResponse.model_validate(
+        memory
+    )
 
 
 @router.patch(
@@ -188,7 +197,9 @@ def update_memory_endpoint(
                 ],
             )
 
-        return updated_memory
+        return MemoryResponse.model_validate(
+            updated_memory
+        )
 
     except MemoryValidationError as exc:
         raise HTTPException(
