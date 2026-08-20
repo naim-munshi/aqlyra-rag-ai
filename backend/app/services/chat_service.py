@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -13,7 +14,13 @@ from app.llms import (
     create_configured_llm_provider,
 )
 from app.models.conversation import Conversation
+from app.models.document import Document
+from app.models.document_unit import DocumentUnit
 from app.models.message import Message
+from app.services.converse_vision_service import (
+    generate_converse_image_reply,
+    is_converse_vision_document,
+)
 from app.product_identity import (
     PRODUCT_IDENTITY_MODEL_NAME,
     PRODUCT_IDENTITY_PROVIDER_NAME,
@@ -382,6 +389,175 @@ def _prepare_normal_chat_generation(
     )
 
 
+
+_NORMAL_ATTACHMENT_CONTEXT_MAX_CHARS = 24_000
+
+_NORMAL_ATTACHMENT_INSTRUCTIONS = """
+You are Aqlyra in Converse mode.
+
+Converse is a general AI conversation experience.
+Uploaded files are contextual material for the conversation,
+not a citation-gated knowledge base.
+
+Use the uploaded content together with normal reasoning to
+answer the user's request naturally.
+
+Important behavior:
+- Do not apply strict RAG refusal rules.
+- Do not generate [S1]-style citations.
+- Do not claim file-specific facts that are not supported by
+  the supplied attachment context.
+- If the uploaded item is an image, the supplied context may
+  contain OCR text rather than complete visual understanding.
+  Do not invent unseen visual details.
+- If visual information cannot be determined from the
+  available context, say so briefly instead of guessing.
+
+When the user uploads something without a specific question:
+1. Give a concise, useful explanation of what the uploaded
+   content appears to contain.
+2. Mention the most relevant observations or themes.
+3. End with exactly one useful follow-up question tailored
+   to that specific upload.
+
+Examples of useful follow-ups include asking whether the user
+wants deeper analysis, extraction, comparison, improvement,
+planning, or another action that makes sense for the content.
+
+When the user asks a specific question:
+- Answer that question directly.
+- A follow-up question is optional and should only be added
+  when genuinely useful.
+
+Keep the response conversational and practical.
+""".strip()
+
+
+def _load_normal_attachment_context(
+    *,
+    db: Session,
+    user_id: str,
+    document_ids: tuple[str, ...],
+) -> str:
+    documents = list(
+        db.scalars(
+            select(Document).where(
+                Document.user_id == user_id,
+                Document.id.in_(
+                    document_ids
+                ),
+                Document.status == "ready",
+            )
+        ).all()
+    )
+
+    documents_by_id = {
+        document.id: document
+        for document in documents
+    }
+
+    missing_ids = [
+        document_id
+        for document_id in document_ids
+        if document_id
+        not in documents_by_id
+    ]
+
+    if missing_ids:
+        raise ChatValidationError(
+            "One or more uploaded files "
+            "are unavailable"
+        )
+
+    remaining_chars = (
+        _NORMAL_ATTACHMENT_CONTEXT_MAX_CHARS
+    )
+
+    sections: list[str] = []
+
+    for document_id in document_ids:
+        if remaining_chars <= 0:
+            break
+
+        document = documents_by_id[
+            document_id
+        ]
+
+        units = list(
+            db.scalars(
+                select(DocumentUnit)
+                .where(
+                    DocumentUnit.document_id
+                    == document.id
+                )
+                .order_by(
+                    DocumentUnit.unit_index.asc()
+                )
+            ).all()
+        )
+
+        header = (
+            "File: "
+            f"{document.original_filename}\n"
+            "Type: "
+            f"{document.content_type}\n"
+            "Extension: "
+            f"{document.file_extension}\n"
+        )
+
+        content_parts: list[str] = []
+
+        for unit in units:
+            cleaned = (
+                unit.content or ""
+            ).strip()
+
+            if not cleaned:
+                continue
+
+            if remaining_chars <= 0:
+                break
+
+            clipped = cleaned[
+                :remaining_chars
+            ]
+
+            content_parts.append(
+                (
+                    f"[{unit.source_label}]\n"
+                    f"{clipped}"
+                )
+            )
+
+            remaining_chars -= len(
+                clipped
+            )
+
+        if content_parts:
+            body = "\n\n".join(
+                content_parts
+            )
+        else:
+            body = (
+                "[No readable text was "
+                "extracted from this file.]"
+            )
+
+        sections.append(
+            f"{header}\n{body}"
+        )
+
+    if not sections:
+        raise ChatValidationError(
+            "No usable uploaded content "
+            "is available"
+        )
+
+    return "\n\n---\n\n".join(
+        sections
+    )
+
+
 def generate_normal_chat_reply(
     *,
     db: Session,
@@ -434,37 +610,145 @@ def generate_normal_document_chat_reply(
     top_k: int = 8,
     provider: LLMProvider | None = None,
 ) -> ChatExecutionResult:
-    result = answer_question(
+    # Converse attachments intentionally do not
+    # use the strict Knowledge/RAG evidence path.
+    _ = top_k
+
+    # Runtime image attachments use true
+    # multimodal vision. An explicitly injected
+    # provider still follows the text path so unit
+    # tests can remain deterministic.
+    if (
+        provider is None
+        and len(document_ids) == 1
+    ):
+        image_document = db.scalar(
+            select(Document).where(
+                Document.id
+                == document_ids[0],
+                Document.user_id
+                == conversation.user_id,
+                Document.status
+                == "ready",
+            )
+        )
+
+        if (
+            image_document is not None
+            and is_converse_vision_document(
+                image_document
+            )
+        ):
+            (
+                _unused_provider,
+                normal_input,
+            ) = _prepare_normal_chat_generation(
+                db=db,
+                conversation=conversation,
+                message=message,
+                provider=None,
+            )
+
+            extracted_context = (
+                _load_normal_attachment_context(
+                    db=db,
+                    user_id=(
+                        conversation.user_id
+                    ),
+                    document_ids=document_ids,
+                )
+            )
+
+            generation = (
+                generate_converse_image_reply(
+                    document=image_document,
+                    conversation_input=(
+                        normal_input
+                    ),
+                    extracted_context=(
+                        extracted_context
+                    ),
+                )
+            )
+
+            return ChatExecutionResult(
+                content=generation.text,
+                mode="normal",
+                provider_name=(
+                    generation.provider_name
+                ),
+                model_name=(
+                    generation.model_name
+                ),
+                response_id=(
+                    generation.response_id
+                ),
+                citations=(),
+                is_refusal=False,
+                input_tokens=(
+                    generation.input_tokens
+                ),
+                output_tokens=(
+                    generation.output_tokens
+                ),
+                total_tokens=(
+                    generation.total_tokens
+                ),
+                evidence_tokens=None,
+            )
+
+    # PDFs, DOCX, TXT, CSV, XLSX, PPTX and
+    # deterministic test providers stay on the
+    # normal contextual Converse path.
+    (
+        active_provider,
+        normal_input,
+    ) = _prepare_normal_chat_generation(
         db=db,
-        user_id=conversation.user_id,
-        question=message,
-        retrieval_question=message,
-        top_k=top_k,
-        document_ids=document_ids,
+        conversation=conversation,
+        message=message,
         provider=provider,
     )
 
-    citations = tuple(
-        _citation_payload(source)
-        for source in result.citations
+    attachment_context = (
+        _load_normal_attachment_context(
+            db=db,
+            user_id=conversation.user_id,
+            document_ids=document_ids,
+        )
+    )
+
+    input_text = (
+        f"{normal_input}\n\n"
+        "=== UPLOADED CONTENT ===\n"
+        f"{attachment_context}\n"
+        "=== END UPLOADED CONTENT ==="
+    )
+
+    generation = active_provider.generate(
+        instructions=(
+            _NORMAL_ATTACHMENT_INSTRUCTIONS
+        ),
+        input_text=input_text,
     )
 
     return ChatExecutionResult(
-        content=result.answer_text,
+        content=generation.text,
         mode="normal",
-        provider_name=result.provider_name,
-        model_name=result.model_name,
-        response_id=result.response_id,
-        citations=citations,
-        is_refusal=result.is_refusal,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        total_tokens=result.total_tokens,
-        evidence_tokens=(
-            result.evidence_tokens
+        provider_name=(
+            generation.provider_name
         ),
+        model_name=generation.model_name,
+        response_id=generation.response_id,
+        citations=(),
+        is_refusal=False,
+        input_tokens=generation.input_tokens,
+        output_tokens=(
+            generation.output_tokens
+        ),
+        total_tokens=generation.total_tokens,
+        evidence_tokens=None,
     )
-
 
 def stream_normal_chat_reply(
     *,

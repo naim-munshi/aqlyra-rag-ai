@@ -16,13 +16,14 @@ RUN python -m venv "$VIRTUAL_ENV"
 WORKDIR /build
 
 COPY requirements.txt ./requirements.txt
+COPY requirements-voice.txt ./requirements-voice.txt
 
 RUN python -m pip install \
         --no-cache-dir \
         --upgrade pip setuptools wheel \
     && python -m pip install \
         --no-cache-dir \
-        -r requirements.txt \
+        -r requirements-voice.txt \
     && python -m pip check
 
 
@@ -43,27 +44,25 @@ RUN apt-get update \
         tesseract-ocr-ben \
     && rm -rf /var/lib/apt/lists/*
 
+ARG UID=10001
+
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home /app \
+    --shell /usr/sbin/nologin \
+    --uid "${UID}" \
+    appuser
+
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 
-COPY alembic.ini ./alembic.ini
-COPY alembic ./alembic
 COPY app ./app
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
-RUN chmod +x ./docker-entrypoint.sh \
-    && mkdir -p /app/uploads
+RUN mkdir -p /app/uploads \
+    && chown -R appuser:appuser /app
 
-EXPOSE 8000
+USER appuser
 
-HEALTHCHECK \
-    --interval=30s \
-    --timeout=5s \
-    --start-period=30s \
-    --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
-
-ENTRYPOINT ["./docker-entrypoint.sh"]
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "app.voice.worker", "start"]

@@ -3,7 +3,6 @@
 import {
   AlertCircle,
   Copy,
-  FileText,
   LoaderCircle,
   PanelLeft,
   Paperclip,
@@ -19,6 +18,7 @@ import {
   useState,
 } from "react";
 
+import { AttachmentPreview } from "@/components/chat/attachment-preview";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
 import {
@@ -65,6 +65,10 @@ type ChatTurn = {
   id: string;
   mode: ChatMode;
   question: string;
+  attachment?: {
+    document: DocumentResponse;
+    previewUrl: string | null;
+  } | null;
   loading: boolean;
   streamedAnswer: string;
   result: RAGAnswerResponse | null;
@@ -274,11 +278,26 @@ function turnsFromPersistedMessages(
       continue;
     }
 
+    const persistedAttachment =
+      userMessage.attachments?.[0];
+
     restored.push({
       id: assistantMessage.id,
       mode: userMessage.mode,
       question:
         userMessage.content,
+      attachment:
+        persistedAttachment
+          ? {
+              document:
+                persistedAttachment.document,
+              previewUrl:
+                `/api/documents/${encodeURIComponent(
+                  persistedAttachment
+                    .document_id,
+                )}/content`,
+            }
+          : null,
       loading: false,
       streamedAnswer:
         assistantMessage.content,
@@ -419,6 +438,16 @@ export function RAGWorkspace() {
     attachedDocument,
     setAttachedDocument,
   ] = useState<DocumentResponse | null>(null);
+
+  const [
+    attachmentPreviewUrl,
+    setAttachmentPreviewUrl,
+  ] = useState<string | null>(null);
+
+  const attachmentObjectUrlsRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
 
   const [
     uploadState,
@@ -1027,6 +1056,26 @@ export function RAGWorkspace() {
     setAttachmentError("");
     setUploadState("uploading");
 
+    let localPreviewUrl:
+      string | null = null;
+
+    if (
+      file.type.startsWith(
+        "image/",
+      )
+    ) {
+      localPreviewUrl =
+        URL.createObjectURL(file);
+
+      attachmentObjectUrlsRef
+        .current
+        .add(localPreviewUrl);
+    }
+
+    setAttachmentPreviewUrl(
+      localPreviewUrl,
+    );
+
     try {
       const formData =
         new FormData();
@@ -1101,6 +1150,10 @@ export function RAGWorkspace() {
         (current) => current + 1,
       );
     } catch (uploadError) {
+      setAttachmentPreviewUrl(
+        null,
+      );
+
       setAttachmentError(
         uploadError instanceof Error
           ? uploadError.message
@@ -1178,14 +1231,24 @@ export function RAGWorkspace() {
     const effectiveQuestion =
       cleanedQuestion ||
       (attachedDocument
-        ? "Summarize this document clearly and explain the key points."
+        ? chatMode === "normal"
+          ? (
+              "Briefly explain this upload, "
+              + "highlight the most useful "
+              + "details you can determine, "
+              + "then ask one specific "
+              + "follow-up question that "
+              + "makes sense for this content."
+            )
+          : (
+              "Summarize this document "
+              + "clearly and explain the "
+              + "key points."
+            )
         : "");
 
     const displayQuestion =
-      cleanedQuestion ||
-      (attachedDocument
-        ? `Summarize ${attachedDocument.original_filename}`
-        : "");
+      cleanedQuestion;
 
     if (
       !effectiveQuestion ||
@@ -1207,12 +1270,24 @@ export function RAGWorkspace() {
         mode: chatMode,
         question:
           displayQuestion,
+        attachment:
+          attachedDocument
+            ? {
+                document:
+                  attachedDocument,
+                previewUrl:
+                  attachmentPreviewUrl,
+              }
+            : null,
         loading: true,
         streamedAnswer: "",
         result: null,
         error: "",
       },
     ]);
+
+    setAttachedDocument(null);
+    setAttachmentPreviewUrl(null);
 
     setEvidenceDrawerOpen(false);
 
@@ -1236,6 +1311,8 @@ export function RAGWorkspace() {
               body: JSON.stringify({
                 content:
                   effectiveQuestion,
+                display_content:
+                  displayQuestion,
                 ...(normalConversationId
                   ? {
                       conversation_id:
@@ -1562,6 +1639,8 @@ export function RAGWorkspace() {
             body: JSON.stringify({
               content:
                 effectiveQuestion,
+              display_content:
+                displayQuestion,
               document_ids:
                 attachedDocument
                   ? [
@@ -1793,36 +1872,25 @@ export function RAGWorkspace() {
         ].join(" ")}
       >
         {attachedDocument && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="flex max-w-full items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 py-2">
-              <FileText
-                size={14}
-                className="shrink-0 text-[var(--aq-blue)]"
-              />
+          <div className="mb-3">
+            <AttachmentPreview
+              document={
+                attachedDocument
+              }
+              previewUrl={
+                attachmentPreviewUrl
+              }
+              removable
+              onRemove={() => {
+                setAttachedDocument(
+                  null,
+                );
 
-              <span className="max-w-[320px] truncate text-[11px] font-semibold">
-                {
-                  attachedDocument.original_filename
-                }
-              </span>
-
-              <span className="text-[9px] font-semibold text-[var(--aq-success)]">
-                Ready
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setAttachedDocument(
-                    null,
-                  )
-                }
-                aria-label="Remove attached document"
-                className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]"
-              >
-                <X size={13} />
-              </button>
-            </div>
+                setAttachmentPreviewUrl(
+                  null,
+                );
+              }}
+            />
           </div>
         )}
 
@@ -2141,10 +2209,30 @@ export function RAGWorkspace() {
                     <div
                       key={turn.id}
                     >
-                      <div className="ml-auto max-w-[560px] rounded-2xl bg-[var(--aq-blue)] px-5 py-4 text-sm leading-6 text-white">
-                        {
-                          turn.question
-                        }
+                      <div className="ml-auto flex max-w-[560px] flex-col items-end gap-2">
+                        {turn.attachment && (
+                          <AttachmentPreview
+                            document={
+                              turn
+                                .attachment
+                                .document
+                            }
+                            previewUrl={
+                              turn
+                                .attachment
+                                .previewUrl
+                            }
+                            compact
+                          />
+                        )}
+
+                        {turn.question && (
+                          <div className="max-w-full rounded-2xl bg-[var(--aq-blue)] px-5 py-4 text-sm leading-6 text-white">
+                            {
+                              turn.question
+                            }
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-7">

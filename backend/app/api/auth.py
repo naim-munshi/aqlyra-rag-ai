@@ -27,10 +27,15 @@ def register_user(
     db: Session = Depends(get_db),
 ) -> UserResponse:
     try:
-        return create_user(
+        user = create_user(
             db=db,
             user_data=user_data,
         )
+
+        return UserResponse.model_validate(
+            user
+        )
+
     except DuplicateUserError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -57,7 +62,9 @@ def login_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer",
+            },
         )
 
     if not user.is_active:

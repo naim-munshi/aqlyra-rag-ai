@@ -26,6 +26,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
     from app.models.memory import Memory
+    from app.models.message_attachment import MessageAttachment
 
 
 class Message(Base):
@@ -152,6 +153,15 @@ class Message(Base):
 
     conversation: Mapped["Conversation"] = relationship(
         back_populates="messages",
+    )
+
+    attachments: Mapped[
+        list["MessageAttachment"]
+    ] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="MessageAttachment.position",
     )
 
     extracted_memories: Mapped[

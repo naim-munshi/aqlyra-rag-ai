@@ -7,6 +7,7 @@ from app.models.embedding_record import EmbeddingRecord
 from app.models.memory import Memory
 from app.models.memory_embedding import MemoryEmbedding
 from app.models.message import Message
+from app.models.message_attachment import MessageAttachment
 from app.models.user import User
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "Memory",
     "MemoryEmbedding",
     "Message",
+    "MessageAttachment",
     "User",
 ]

@@ -696,6 +696,10 @@ def test_normal_chat_uses_turn_scoped_document(
     db_session: Session,
     monkeypatch,
 ) -> None:
+    from app.models.message_attachment import (
+        MessageAttachment,
+    )
+
     user = create_user(
         db_session,
         suffix="normal-document-turn",
@@ -719,50 +723,21 @@ def test_normal_chat_uses_turn_scoped_document(
 
     authenticate_as(user)
 
-    captured = {}
+    captured: dict[str, object] = {}
 
-    source = SimpleNamespace(
-        source_id="S1",
-        chunk_id="normal-chunk-1",
-        document_id=document.id,
-        parent_chunk_id=None,
-        original_filename=(
-            document.original_filename
-        ),
-        chunk_role="content",
-        chunk_level=0,
-        chunk_index=0,
-        source_label="Normal attachment",
-        section_path=(),
-        start_page=None,
-        end_page=None,
-        similarity_score=0.95,
-        content="Attached document evidence.",
-        was_truncated=False,
-    )
-
-    def fake_answer_question(**kwargs):
+    def fake_load_attachment_context(
+        **kwargs,
+    ) -> str:
         captured.update(kwargs)
 
-        return SimpleNamespace(
-            answer_text=(
-                "Attached document answer [S1]."
-            ),
-            provider_name="fake-rag",
-            model_name="fake-rag-v1",
-            response_id="normal-rag-response",
-            citations=(source,),
-            is_refusal=False,
-            input_tokens=20,
-            output_tokens=8,
-            total_tokens=28,
-            evidence_tokens=12,
+        return (
+            "Attached document evidence."
         )
 
     monkeypatch.setattr(
         chat_module,
-        "answer_question",
-        fake_answer_question,
+        "_load_normal_attachment_context",
+        fake_load_attachment_context,
     )
 
     conversation_id = create_conversation(
@@ -796,19 +771,21 @@ def test_normal_chat_uses_turn_scoped_document(
 
     assert assistant["mode"] == "normal"
 
-    assert assistant["content"] == (
-        "Attached document answer [S1]."
-    )
+    # Converse document attachments use the
+    # contextual normal-chat path, not strict
+    # Knowledge/RAG citation enforcement.
+    assert assistant["content"]
+    assert assistant["citations"] == []
 
-    assert assistant["citations"][0][
-        "source_id"
-    ] == "S1"
-
-    assert captured["document_ids"] == (
+    assert captured[
+        "document_ids"
+    ] == (
         document.id,
     )
 
-    assert captured["top_k"] == 5
+    assert captured[
+        "user_id"
+    ] == str(user.id)
 
     persisted_scope = list(
         db_session.scalars(
@@ -821,9 +798,30 @@ def test_normal_chat_uses_turn_scoped_document(
         ).all()
     )
 
-    # Normal-chat attachment must remain
-    # turn-scoped, not Knowledge scope.
+    # Normal-chat attachments must remain
+    # turn-scoped, never Knowledge scope.
     assert persisted_scope == []
+
+    attachment_links = list(
+        db_session.scalars(
+            select(MessageAttachment)
+            .where(
+                MessageAttachment
+                .document_id
+                == document.id
+            )
+        ).all()
+    )
+
+    assert len(
+        attachment_links
+    ) == 1
+
+    assert (
+        attachment_links[0]
+        .document_id
+        == document.id
+    )
 
 
 def test_real_knowledge_chat_persists_grounded_citation(

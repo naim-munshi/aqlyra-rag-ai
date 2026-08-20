@@ -2,12 +2,15 @@ from datetime import datetime
 from typing import Literal, Self
 
 from pydantic import (
+
     BaseModel,
     ConfigDict,
     Field,
     field_validator,
     model_validator,
 )
+
+from app.schemas.document import DocumentResponse
 
 
 ConversationMode = Literal[
@@ -121,6 +124,11 @@ class ConversationMessageCreate(BaseModel):
         max_length=4_000,
     )
 
+    display_content: str | None = Field(
+        default=None,
+        max_length=4_000,
+    )
+
     document_ids: list[str] = Field(
         default_factory=list,
         max_length=50,
@@ -146,6 +154,17 @@ class ConversationMessageCreate(BaseModel):
             )
 
         return cleaned
+
+    @field_validator("display_content")
+    @classmethod
+    def normalize_display_content(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        return value.strip()
 
     @field_validator("document_ids")
     @classmethod
@@ -174,6 +193,18 @@ class ConversationMessageCreate(BaseModel):
             )
 
         return cleaned
+
+
+class MessageAttachmentResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
+
+    id: str
+    document_id: str
+    position: int
+    document: DocumentResponse
+    created_at: datetime
 
 
 class MessageResponse(BaseModel):
@@ -205,6 +236,12 @@ class MessageResponse(BaseModel):
     output_tokens: int | None
     total_tokens: int | None
     evidence_tokens: int | None
+
+    attachments: list[
+        MessageAttachmentResponse
+    ] = Field(
+        default_factory=list,
+    )
 
     created_at: datetime
 

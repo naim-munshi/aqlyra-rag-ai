@@ -278,7 +278,12 @@ def create_message_endpoint(
         persist_chat_turn(
             db=db,
             conversation=conversation,
-            user_content=request.content,
+            user_content=(
+                request.display_content
+                if request.display_content
+                is not None
+                else request.content
+            ),
             assistant_content=result.content,
             mode=result.mode,
             provider_name=(
@@ -303,6 +308,9 @@ def create_message_endpoint(
             scope_document_ids=(
                 document_scope
                 .new_document_ids
+            ),
+            attachment_document_ids=tuple(
+                request.document_ids
             ),
         )
     )
@@ -369,20 +377,14 @@ def create_message_stream_endpoint(
             ),
         )
 
-    if request.document_ids:
-        raise HTTPException(
-            status_code=(
-                status
-                .HTTP_422_UNPROCESSABLE_CONTENT
-            ),
-            detail=(
-                "Document selection is only "
-                "supported in knowledge mode"
-            ),
-        )
-
     user_id = str(current_user.id)
     user_content = request.content
+    user_display_content = (
+        request.display_content
+        if request.display_content
+        is not None
+        else request.content
+    )
 
     def event_stream():
         yield _encode_stream_event(
@@ -397,6 +399,99 @@ def create_message_stream_endpoint(
 
         try:
             generation = None
+
+            if request.document_ids:
+                result = execute_chat_turn(
+                    db=db,
+                    conversation=conversation,
+                    message=user_content,
+                    document_ids=tuple(
+                        request.document_ids
+                    ),
+                    top_k=request.top_k,
+                )
+
+                if result.content:
+                    yield _encode_stream_event(
+                        "delta",
+                        {
+                            "text": result.content,
+                        },
+                    )
+
+                (
+                    user_message,
+                    assistant_message,
+                ) = persist_chat_turn(
+                    db=db,
+                    conversation=conversation,
+                    user_content=(
+                        user_display_content
+                    ),
+                    assistant_content=(
+                        result.content
+                    ),
+                    mode=result.mode,
+                    provider_name=(
+                        result.provider_name
+                    ),
+                    model_name=(
+                        result.model_name
+                    ),
+                    response_id=(
+                        result.response_id
+                    ),
+                    citations=list(
+                        result.citations
+                    ),
+                    is_refusal=(
+                        result.is_refusal
+                    ),
+                    input_tokens=(
+                        result.input_tokens
+                    ),
+                    output_tokens=(
+                        result.output_tokens
+                    ),
+                    total_tokens=(
+                        result.total_tokens
+                    ),
+                    evidence_tokens=(
+                        result.evidence_tokens
+                    ),
+                    attachment_document_ids=tuple(
+                        request.document_ids
+                    ),
+                )
+
+                if user_display_content:
+                    extract_memories_best_effort(
+                        db=db,
+                        user_id=user_id,
+                        source_message_id=(
+                            user_message.id
+                        ),
+                    )
+
+                completed = ChatTurnResponse(
+                    conversation_id=(
+                        conversation.id
+                    ),
+                    mode="normal",
+                    user_message=user_message,
+                    assistant_message=(
+                        assistant_message
+                    ),
+                )
+
+                yield _encode_stream_event(
+                    "complete",
+                    completed.model_dump(
+                        mode="json"
+                    ),
+                )
+
+                return
 
             for event in stream_normal_chat_reply(
                 db=db,
@@ -441,7 +536,9 @@ def create_message_stream_endpoint(
             ) = persist_chat_turn(
                 db=db,
                 conversation=conversation,
-                user_content=user_content,
+                user_content=(
+                    user_display_content
+                ),
                 assistant_content=(
                     generation.text
                 ),
@@ -493,6 +590,25 @@ def create_message_stream_endpoint(
                 completed.model_dump(
                     mode="json"
                 ),
+            )
+
+        except ChatValidationError as exc:
+            app_logger.info(
+                "Conversation attachment "
+                "validation failed: "
+                f"conversation_id="
+                f"{conversation.id}"
+            )
+
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 422,
+                    "code": (
+                        "conversation_validation_error"
+                    ),
+                    "detail": str(exc),
+                },
             )
 
         except LLMValidationError:

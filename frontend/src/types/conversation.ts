@@ -1,4 +1,8 @@
 import type {
+  DocumentResponse,
+} from "@/types/document";
+
+import type {
   RAGCitationResponse,
 } from "@/types/rag";
 
@@ -13,6 +17,14 @@ export type ConversationResponse = {
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type MessageAttachmentResponse = {
+  id: string;
+  document_id: string;
+  position: number;
+  document: DocumentResponse;
+  created_at: string;
 };
 
 export type ConversationMessageResponse = {
@@ -39,6 +51,9 @@ export type ConversationMessageResponse = {
   output_tokens: number | null;
   total_tokens: number | null;
   evidence_tokens: number | null;
+
+  attachments:
+    MessageAttachmentResponse[];
 
   created_at: string;
 };

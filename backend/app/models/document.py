@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.conversation_document import ConversationDocument
     from app.models.document_chunk import DocumentChunk
     from app.models.document_unit import DocumentUnit
+    from app.models.message_attachment import MessageAttachment
     from app.models.user import User
 
 
@@ -163,6 +164,13 @@ class Document(Base):
     ] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    message_attachment_links: Mapped[
+        list["MessageAttachment"]
+    ] = relationship(
+        back_populates="document",
         passive_deletes=True,
     )
 

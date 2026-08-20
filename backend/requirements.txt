@@ -65,7 +65,7 @@ multiprocess==0.70.19
 nest-asyncio==1.6.0
 networkx==3.6.1
 numpy==2.5.1
-openai==2.49.0
+openai==2.54.0
 openpyxl==3.1.5
 orjson==3.11.9
 ormsgpack==1.12.2
@@ -127,3 +127,4 @@ yarl==1.24.5
 zstandard==0.25.0
 Pillow==12.3.0
 pytesseract==0.3.13
+livekit-api==1.2.0

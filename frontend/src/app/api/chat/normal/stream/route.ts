@@ -16,6 +16,7 @@ import type {
 
 type NormalChatStreamRequest = {
   content?: string;
+  display_content?: string;
   conversation_id?: string | null;
   document_ids?: string[];
 };
@@ -97,6 +98,12 @@ export async function POST(
       },
     );
   }
+
+  const displayContent =
+    typeof body.display_content ===
+      "string"
+      ? body.display_content
+      : undefined;
 
   const documentIds =
     (body.document_ids ?? []).map(
@@ -189,6 +196,13 @@ export async function POST(
             },
             body: JSON.stringify({
               content,
+              ...(displayContent !==
+              undefined
+                ? {
+                    display_content:
+                      displayContent,
+                  }
+                : {}),
               document_ids:
                 documentIds,
             }),
@@ -274,6 +288,15 @@ export async function POST(
           },
           body: JSON.stringify({
             content,
+            ...(displayContent !==
+            undefined
+              ? {
+                  display_content:
+                    displayContent,
+                }
+              : {}),
+            document_ids:
+              documentIds,
           }),
           cache: "no-store",
           signal: request.signal,

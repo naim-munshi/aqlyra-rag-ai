@@ -95,6 +95,48 @@ services:
       retries: 3
       start_period: 30s
 
+  voice-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.voice
+
+    env_file:
+      - ./backend/.env
+
+    container_name: aqlyra-voice-worker
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      PROJECT_NAME: Aqlyra RAG AI
+      VERSION: 1.0.0
+      DEBUG: "false"
+
+      DATABASE_URL: >-
+        postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai
+
+      HF_TOKEN: ${HF_TOKEN:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-deterministic-sha256-v1}
+      EMBEDDING_DIMENSION: "384"
+      EMBEDDING_MAX_BATCH_SIZE: "128"
+      EMBEDDING_TIMEOUT_SECONDS: "30"
+      EMBEDDING_MAX_RETRIES: "3"
+
+      LLM_TIMEOUT_SECONDS: "60"
+      LLM_MAX_RETRIES: "2"
+
+      UPLOAD_DIR: /app/uploads
+      LOG_LEVEL: INFO
+
+    volumes:
+      - uploads_data:/app/uploads
+
+
 volumes:
   postgres_data:
   uploads_data:

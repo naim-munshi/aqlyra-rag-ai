@@ -24,6 +24,9 @@ from app.api.retrieval import (
 from app.api.users import (
     router as users_router,
 )
+from app.api.voice import (
+    router as voice_router,
+)
 from app.api.v1.health import (
     router as health_router,
 )
@@ -65,4 +68,8 @@ api_router.include_router(
 
 api_router.include_router(
     rag_router
+)
+
+api_router.include_router(
+    voice_router
 )

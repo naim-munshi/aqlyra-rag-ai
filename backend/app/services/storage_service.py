@@ -469,3 +469,35 @@ def delete_stored_file(
 
         except OSError:
             pass
+
+class StoredFileNotFoundError(Exception):
+    """Raised when a persisted upload cannot be resolved."""
+
+
+def resolve_stored_file_path(
+    relative_storage_path: str,
+) -> Path:
+    root = _upload_root()
+
+    file_path = (
+        root
+        / relative_storage_path
+    ).resolve()
+
+    try:
+        file_path.relative_to(root)
+
+    except ValueError as exc:
+        raise StoredFileNotFoundError(
+            "Unsafe stored file path"
+        ) from exc
+
+    if (
+        not file_path.exists()
+        or not file_path.is_file()
+    ):
+        raise StoredFileNotFoundError(
+            "Stored file does not exist"
+        )
+
+    return file_path

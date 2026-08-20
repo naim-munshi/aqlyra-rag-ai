@@ -7,6 +7,7 @@ from app.models.conversation_document import (
     ConversationDocument,
 )
 from app.models.message import Message
+from app.models.message_attachment import MessageAttachment
 
 
 def create_conversation(
@@ -178,6 +179,7 @@ def persist_chat_turn(
     total_tokens: int | None,
     evidence_tokens: int | None,
     scope_document_ids: tuple[str, ...] = (),
+    attachment_document_ids: tuple[str, ...] = (),
 ) -> tuple[Message, Message]:
     user_message = Message(
         conversation_id=conversation.id,
@@ -212,6 +214,18 @@ def persist_chat_turn(
         for document_id in scope_document_ids
     ]
 
+    attachment_links = [
+        MessageAttachment(
+            message=user_message,
+            document_id=document_id,
+            position=position,
+        )
+        for position, document_id
+        in enumerate(
+            attachment_document_ids
+        )
+    ]
+
     conversation.updated_at = utc_now_naive()
 
     try:
@@ -221,6 +235,7 @@ def persist_chat_turn(
                 assistant_message,
                 conversation,
                 *scope_links,
+                *attachment_links,
             ]
         )
         db.commit()

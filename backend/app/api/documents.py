@@ -10,6 +10,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -45,6 +46,11 @@ from app.services.storage_service import (
     discard_pending_upload,
     finalize_pending_upload,
     save_upload_to_temporary_storage,
+)
+
+from app.services.storage_service import (
+    StoredFileNotFoundError,
+    resolve_stored_file_path,
 )
 
 
@@ -328,6 +334,69 @@ def read_document_units(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/{document_id}/content",
+    response_class=FileResponse,
+)
+def read_document_content(
+    document_id: str,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    document = get_user_document(
+        db=db,
+        user_id=str(current_user.id),
+        document_id=document_id,
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
+            detail="Document not found",
+        )
+
+    try:
+        file_path = (
+            resolve_stored_file_path(
+                document.storage_path
+            )
+        )
+
+    except StoredFileNotFoundError as exc:
+        app_logger.warning(
+            "Stored document content missing: "
+            f"document_id={document.id}"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
+            detail=(
+                "Document content not found"
+            ),
+        ) from exc
+
+    return FileResponse(
+        path=file_path,
+        media_type=document.content_type,
+        filename=document.original_filename,
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": (
+                "private, no-store"
+            ),
+            "X-Content-Type-Options": (
+                "nosniff"
+            ),
+        },
     )
 
 
