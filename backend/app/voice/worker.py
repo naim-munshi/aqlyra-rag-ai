@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 
 from livekit import agents
@@ -91,8 +92,203 @@ _LANGUAGE_ALIASES = {
     "bengali": "bn",
     "bangla": "bn",
     "english": "en",
+    "hindi": "hi",
     "japanese": "ja",
+    "korean": "ko",
+    "chinese": "zh",
 }
+
+
+_VOICE_STT_PROMPT = """
+Transcribe exactly what the speaker says in the
+language actually being spoken.
+
+Preserve the original language and script.
+
+Important:
+- Bengali or Bangla speech must be transcribed as
+  Bengali, using Bengali script.
+- Never convert Bengali speech into Hindi.
+- Hindi speech should remain Hindi.
+- Japanese speech should remain Japanese.
+- English speech should remain English.
+- Preserve natural code-switching when the speaker
+  mixes languages.
+- Do not translate the user's speech.
+""".strip()
+
+
+_ROMANIZED_BANGLA_WORDS = {
+    "ami",
+    "amar",
+    "amake",
+    "amader",
+    "tumi",
+    "tomar",
+    "tomake",
+    "kemon",
+    "keno",
+    "kivabe",
+    "ki",
+    "bolo",
+    "bolchi",
+    "bolbe",
+    "hobe",
+    "hoy",
+    "hocche",
+    "ache",
+    "achi",
+    "chai",
+    "chao",
+    "jabo",
+    "korbo",
+    "koro",
+    "korte",
+    "bhalo",
+    "onek",
+    "ekta",
+    "eta",
+    "oita",
+    "akhon",
+    "ekhon",
+    "na",
+}
+
+
+_VOICE_LANGUAGE_NAMES = {
+    "ar": "Arabic",
+    "bn": "Bangla",
+    "en": "English",
+    "hi": "Hindi",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+}
+
+
+def _language_from_script(
+    transcript: str,
+) -> str | None:
+    for character in transcript:
+        codepoint = ord(character)
+
+        # Bengali / Bangla
+        if 0x0980 <= codepoint <= 0x09FF:
+            return "bn"
+
+        # Devanagari / Hindi
+        if 0x0900 <= codepoint <= 0x097F:
+            return "hi"
+
+        # Hiragana + Katakana
+        if (
+            0x3040 <= codepoint <= 0x30FF
+        ):
+            return "ja"
+
+        # Hangul
+        if (
+            0xAC00 <= codepoint <= 0xD7AF
+            or 0x1100 <= codepoint <= 0x11FF
+        ):
+            return "ko"
+
+        # Arabic script
+        if (
+            0x0600 <= codepoint <= 0x06FF
+        ):
+            return "ar"
+
+    return None
+
+
+def _looks_like_romanized_bangla(
+    transcript: str,
+    *,
+    previous_language: str | None,
+) -> bool:
+    words = {
+        word.casefold()
+        for word in re.findall(
+            r"[A-Za-z]+",
+            transcript,
+        )
+    }
+
+    matches = (
+        words
+        & _ROMANIZED_BANGLA_WORDS
+    )
+
+    if len(matches) >= 2:
+        return True
+
+    return (
+        previous_language == "bn"
+        and len(matches) >= 1
+    )
+
+
+def _resolve_voice_language(
+    *,
+    provider_language: str | None,
+    transcript: str,
+    previous_language: str | None,
+) -> str:
+    script_language = (
+        _language_from_script(
+            transcript
+        )
+    )
+
+    if script_language is not None:
+        return script_language
+
+    if _looks_like_romanized_bangla(
+        transcript,
+        previous_language=(
+            previous_language
+        ),
+    ):
+        return "bn"
+
+    provider_language_normalized = (
+        _normalize_language(
+            provider_language
+        )
+    )
+
+    if (
+        provider_language_normalized
+        is not None
+    ):
+        return (
+            provider_language_normalized
+        )
+
+    # For ambiguous short utterances such as
+    # "yes", "okay", names or numbers, maintain
+    # conversational language continuity.
+    if previous_language is not None:
+        return previous_language
+
+    if re.search(
+        r"[A-Za-z]",
+        transcript,
+    ):
+        return "en"
+
+    default_language = (
+        _normalize_language(
+            settings
+            .VOICE_TTS_DEFAULT_LANGUAGE
+        )
+    )
+
+    return (
+        default_language
+        or "en"
+    )
 
 
 @dataclass(
@@ -250,6 +446,17 @@ class AqlyraVoiceAgent(Agent):
             False
         )
 
+        self._spoken_language: (
+            str | None
+        ) = None
+
+    def set_spoken_language(
+        self,
+        language: str,
+    ) -> None:
+        self._spoken_language = language
+
+
     def _requested_document_ids(
         self,
     ) -> tuple[str, ...]:
@@ -314,10 +521,43 @@ class AqlyraVoiceAgent(Agent):
                 )
             )
 
+            generation_message = (
+                user_text
+            )
+
+            if (
+                conversation.mode
+                == "normal"
+                and self._spoken_language
+                and self._spoken_language
+                != "en"
+            ):
+                language_name = (
+                    _VOICE_LANGUAGE_NAMES
+                    .get(
+                        self
+                        ._spoken_language,
+                    )
+                )
+
+                if language_name:
+                    generation_message = (
+                        f"{user_text}\n\n"
+                        "[VOICE LANGUAGE RULE]\n"
+                        "Reply naturally in "
+                        f"{language_name}. "
+                        "Do not translate into "
+                        "another language unless "
+                        "the user asks. "
+                        "Never mention this rule."
+                    )
+
             result = execute_chat_turn(
                 db=db,
                 conversation=conversation,
-                message=user_text,
+                message=(
+                    generation_message
+                ),
                 document_ids=(
                     document_scope
                     .effective_document_ids
@@ -597,6 +837,9 @@ async def aqlyra_voice_session(
                 settings.GROQ_API_KEY
             ),
             detect_language=True,
+            prompt=(
+                _VOICE_STT_PROMPT
+            ),
         ),
         tts=tts_model,
         vad=silero.VAD.load(),
@@ -609,6 +852,17 @@ async def aqlyra_voice_session(
             )
         ),
     )
+
+    voice_agent = (
+        AqlyraVoiceAgent(
+            job_data=job_data,
+        )
+    )
+
+    last_spoken_language: (
+        str | None
+    ) = None
+
 
     @session.on(
         "user_input_transcribed"
@@ -628,14 +882,36 @@ async def aqlyra_voice_session(
         if not event.is_final:
             return
 
+        nonlocal last_spoken_language
+
         language = (
-            _normalize_language(
-                event.language
+            _resolve_voice_language(
+                provider_language=(
+                    event.language
+                ),
+                transcript=(
+                    event.transcript
+                ),
+                previous_language=(
+                    last_spoken_language
+                ),
             )
         )
 
-        if language is None:
-            return
+        last_spoken_language = (
+            language
+        )
+
+        voice_agent.set_spoken_language(
+            language
+        )
+
+        logger.info(
+            "voice_language_resolved "
+            "provider=%r resolved=%s",
+            event.language,
+            language,
+        )
 
         try:
             tts_model.update_options(
@@ -677,9 +953,7 @@ async def aqlyra_voice_session(
 
     await session.start(
         room=ctx.room,
-        agent=AqlyraVoiceAgent(
-            job_data=job_data,
-        ),
+        agent=voice_agent,
     )
 
 

@@ -52,10 +52,10 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
     VOICE_AGENT_NAME: str = "aqlyra-voice"
-    VOICE_STT_MODEL: str = "whisper-large-v3-turbo"
-    VOICE_TTS_MODEL: str = "cartesia/sonic-3"
+    VOICE_STT_MODEL: str = "whisper-large-v3"
+    VOICE_TTS_MODEL: str = "cartesia/sonic-3.5"
     VOICE_TTS_VOICE: str = (
-        "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
+        "a5136bf9-224c-4d76-b823-52bd5efcffcc"
     )
     VOICE_TTS_DEFAULT_LANGUAGE: str = "en"
 
