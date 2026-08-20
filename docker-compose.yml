@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
 
     env_file:
-      - ./backend/.env
+      - ${BACKEND_ENV_FILE:-./backend/.env}
 
     container_name: aqlyra-backend
 
@@ -104,7 +104,7 @@ services:
       dockerfile: Dockerfile.voice
 
     env_file:
-      - ./backend/.env
+      - ${BACKEND_ENV_FILE:-./backend/.env}
 
     container_name: aqlyra-voice-worker
 
