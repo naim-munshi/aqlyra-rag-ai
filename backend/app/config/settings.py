@@ -13,6 +13,7 @@ from pydantic_settings import (
 
 class Settings(BaseSettings):
     # Project
+    APP_ENV: str = "development"
     PROJECT_NAME: str = (
         "Aqlyra RAG AI"
     )
@@ -466,6 +467,95 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @field_validator("APP_ENV")
+    @classmethod
+    def validate_app_env(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "development",
+            "test",
+            "production",
+        }:
+            raise ValueError(
+                "APP_ENV must be development, "
+                "test, or production"
+            )
+
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_production_security(
+        self,
+    ) -> Self:
+        if self.APP_ENV != "production":
+            return self
+
+        if self.DEBUG:
+            raise ValueError(
+                "DEBUG must be false in production"
+            )
+
+        origins = {
+            origin.strip()
+            for origin
+            in self.CORS_ORIGINS.split(",")
+            if origin.strip()
+        }
+
+        if not origins:
+            raise ValueError(
+                "CORS_ORIGINS must be configured "
+                "in production"
+            )
+
+        unsafe_origins = (
+            "*",
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "::1",
+        )
+
+        for origin in origins:
+            lowered = origin.casefold()
+
+            if any(
+                unsafe in lowered
+                for unsafe in unsafe_origins
+            ):
+                raise ValueError(
+                    "Production CORS_ORIGINS "
+                    "cannot contain wildcard or "
+                    "localhost origins"
+                )
+
+        secret = self.SECRET_KEY.strip()
+        lowered_secret = secret.casefold()
+
+        if (
+            len(secret) < 32
+            or "replace-with" in lowered_secret
+            or "changeme" in lowered_secret
+            or "placeholder" in lowered_secret
+        ):
+            raise ValueError(
+                "Production SECRET_KEY must be "
+                "a strong secret of at least "
+                "32 characters"
+            )
+
+        return self
+
+    @property
+    def is_production(
+        self,
+    ) -> bool:
+        return self.APP_ENV == "production"
 
     @property
     def max_upload_size_bytes(

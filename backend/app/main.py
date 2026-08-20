@@ -9,6 +9,21 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Production Grade RAG Platform",
+    docs_url=(
+        None
+        if settings.is_production
+        else "/docs"
+    ),
+    redoc_url=(
+        None
+        if settings.is_production
+        else "/redoc"
+    ),
+    openapi_url=(
+        None
+        if settings.is_production
+        else "/openapi.json"
+    ),
 )
 
 setup_cors(app)
