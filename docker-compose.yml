@@ -6,12 +6,12 @@ services:
     restart: unless-stopped
 
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: aqlyra_rag_ai
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-aqlyra_rag_ai}
 
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -19,7 +19,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U postgres -d aqlyra_rag_ai
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 10
@@ -54,7 +54,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
 
       DATABASE_URL: >-
-        postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai
+        ${DATABASE_URL_DOCKER:-postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai}
 
       REDIS_URL: redis://localhost:6379/0
 
@@ -120,7 +120,7 @@ services:
       DEBUG: "false"
 
       DATABASE_URL: >-
-        postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai
+        ${DATABASE_URL_DOCKER:-postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai}
 
       HF_TOKEN: ${HF_TOKEN:-}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}

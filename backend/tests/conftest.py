@@ -92,6 +92,14 @@ def prepare_test_database() -> Generator[
     None,
     None,
 ]:
+    # Fresh PostgreSQL test databases do not enable
+    # pgvector automatically, even when using the pgvector
+    # Docker image. The schema contains VECTOR columns.
+    with test_engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE EXTENSION IF NOT EXISTS vector"
+        )
+
     Base.metadata.drop_all(
         bind=test_engine
     )

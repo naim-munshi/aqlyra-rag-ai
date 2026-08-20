@@ -8,6 +8,21 @@ ROOT_DIR="$(
 
 cd "$ROOT_DIR"
 
+PYTHON_BIN="${AQ_PYTHON_BIN:-}"
+
+if [ -z "$PYTHON_BIN" ]; then
+  if [ -x "$ROOT_DIR/backend/.venv/bin/python" ]; then
+    PYTHON_BIN="$ROOT_DIR/backend/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python)"
+  else
+    echo "STOP: Python 3 interpreter not found"
+    exit 1
+  fi
+fi
+
 ENV_FILE="${AQ_ENV_FILE:-$ROOT_DIR/backend/.env}"
 BACKUP_ROOT="${AQ_BACKUP_ROOT:-$ROOT_DIR/backups}"
 
@@ -218,7 +233,7 @@ export AQ_DATABASE_NAME="$database_name"
 export AQ_ALEMBIC_REVISION="$alembic_revision"
 export AQ_GIT_COMMIT="$git_commit"
 
-python - <<'PY2'
+"$PYTHON_BIN" - <<'PY2'
 import hashlib
 import json
 import os

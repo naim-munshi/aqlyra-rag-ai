@@ -11,6 +11,9 @@ from pydantic_settings import (
 )
 
 
+from sqlalchemy.engine import make_url
+
+
 class Settings(BaseSettings):
     # Project
     APP_ENV: str = "development"
@@ -547,6 +550,40 @@ class Settings(BaseSettings):
                 "Production SECRET_KEY must be "
                 "a strong secret of at least "
                 "32 characters"
+            )
+
+        try:
+            database_url = make_url(
+                self.DATABASE_URL
+            )
+        except Exception as exc:
+            raise ValueError(
+                "Production DATABASE_URL is invalid"
+            ) from exc
+
+        database_password = (
+            database_url.password or ""
+        ).strip()
+
+        weak_database_passwords = {
+            "postgres",
+            "password",
+            "changeme",
+            "change-me",
+            "replace-me",
+            "placeholder",
+        }
+
+        if (
+            not database_password
+            or len(database_password) < 16
+            or database_password.casefold()
+            in weak_database_passwords
+        ):
+            raise ValueError(
+                "Production DATABASE_URL must use "
+                "a non-default database password "
+                "of at least 16 characters"
             )
 
         return self

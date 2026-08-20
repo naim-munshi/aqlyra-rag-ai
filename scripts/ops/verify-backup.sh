@@ -8,6 +8,21 @@ ROOT_DIR="$(
 
 cd "$ROOT_DIR"
 
+PYTHON_BIN="${AQ_PYTHON_BIN:-}"
+
+if [ -z "$PYTHON_BIN" ]; then
+  if [ -x "$ROOT_DIR/backend/.venv/bin/python" ]; then
+    PYTHON_BIN="$ROOT_DIR/backend/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python)"
+  else
+    echo "STOP: Python 3 interpreter not found"
+    exit 1
+  fi
+fi
+
 if [ "$#" -ne 1 ]; then
   echo "Usage:"
   echo "  $0 backups/<timestamp>"
@@ -46,7 +61,7 @@ done
 
 echo "===== CHECKSUM VERIFICATION ====="
 
-python - "$BACKUP_DIR" <<'PY2'
+"$PYTHON_BIN" - "$BACKUP_DIR" <<'PY2'
 import hashlib
 import json
 import sys
@@ -186,7 +201,7 @@ RESTORED_REVISION="$(
 )"
 
 EXPECTED_REVISION="$(
-  python - "$MANIFEST" <<'PY2'
+  "$PYTHON_BIN" - "$MANIFEST" <<'PY2'
 import json
 import sys
 from pathlib import Path
