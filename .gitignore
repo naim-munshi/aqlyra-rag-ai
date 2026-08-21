@@ -31,3 +31,7 @@ backups/
 .env.production.local
 backend/.env.production
 backend/.env.production.local
+.github/copilot-instructions.md
+.github/instructions/mermaid.instructions.md
+frontend/AGENTS.md
+frontend/CLAUDE.md
