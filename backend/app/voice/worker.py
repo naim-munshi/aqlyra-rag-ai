@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from app.core.logging import configure_logging
 import os
 import re
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from app.services.memory_extraction_service import (
 )
 
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 

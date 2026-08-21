@@ -256,6 +256,18 @@ def enforce_rate_limit(
         ),
     )
 
+    app_logger.warning(
+        "rate_limit_exceeded",
+        bucket=bucket,
+        limit=limit,
+        window_seconds=(
+            window_seconds
+        ),
+        retry_after=(
+            retry_after
+        ),
+    )
+
     raise HTTPException(
         status_code=(
             status.HTTP_429_TOO_MANY_REQUESTS

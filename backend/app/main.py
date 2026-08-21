@@ -2,8 +2,10 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
-from app.core.logging import app_logger
 from app.middleware.cors import setup_cors
+from app.middleware.observability import (
+    setup_request_observability,
+)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,6 +28,7 @@ app = FastAPI(
     ),
 )
 
+setup_request_observability(app)
 setup_cors(app)
 
 app.include_router(
@@ -36,8 +39,6 @@ app.include_router(
 
 @app.get("/")
 async def root():
-    app_logger.info("Root endpoint accessed")
-
     return {
         "project": settings.PROJECT_NAME,
         "status": "running",
