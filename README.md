@@ -1,341 +1,332 @@
 # Aqlyra RAG AI
 
-I built this project to understand what a RAG system needs beyond a notebook demo.
+Aqlyra is an AI knowledge system for working with private documents and general conversations.
 
-It is currently a backend-only FastAPI application for private document question answering. A signed-in user can upload documents, process them into structured chunks, store embeddings in PostgreSQL, search only their own data, and request an answer with validated source references.
+It has two main modes:
 
-The frontend is not part of the repository yet. My current focus is the backend pipeline and the boundaries between document processing, retrieval, generation, and validation.
+- **Converse** is the general chat experience. It supports streaming replies, conversation history, memory, file attachments, image understanding, and voice integration.
+- **Knowledge** is the document-grounded mode. It searches the user's selected documents, retrieves relevant evidence, generates an answer with citations, checks whether the citations are valid, and refuses when the evidence is not strong enough.
 
-## Current status
+The project keeps the main AI stages separate so they can be tested and debugged independently: ingestion, retrieval, evidence selection, generation, citation validation, grounding, persistence, and operations.
 
-| Area | State |
-|---|---|
-| Authentication and user isolation | Implemented |
-| Document ingestion and parsing | Implemented |
-| Hierarchical chunking | Implemented |
-| Embedding storage and vector retrieval | Implemented |
-| Grounded answer generation | Implemented |
-| Citation reference validation | Implemented |
-| Dockerized local runtime | Implemented |
-| GitHub Actions CI | Implemented |
-| Frontend | Not started |
-| Cloud deployment | Not started |
-| Latest test checkpoint | 87 passed |
+## Core capabilities
 
-The automated suite runs with deterministic embedding and LLM providers, both locally and in GitHub Actions.
+- Next.js 16, React 19, and TypeScript frontend
+- FastAPI backend
+- JWT authentication
+- User-scoped documents, conversations, and memory
+- PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
+- OCR for PNG, JPG, JPEG, and WEBP images
+- IBM Granite multilingual embeddings
+- PostgreSQL with pgvector
+- PostgreSQL full-text search
+- Hybrid dense + lexical retrieval
+- Reciprocal Rank Fusion (RRF)
+- `[S1]`-style source citations
+- Citation validation
+- Semantic grounding checks
+- Answer repair and safe refusal
+- Streaming chat
+- Conversation history
+- Personal memory
+- Turn-scoped attachments
+- Multimodal image understanding
+- Voice integration
+- Redis-backed rate limiting
+- Structured JSON logs
+- Request IDs
+- Prometheus-compatible metrics
+- Health and readiness checks
+- Internal alerting
+- Backup and restore tooling
+- Docker Compose deployment profile
+- Caddy reverse proxy configuration
 
-## What works
-
-- JWT-based registration, login, and protected routes
-- Per-user document ownership and retrieval isolation
-- Upload and processing for PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV
-- Structured parsing into pages, slides, sheets, sections, or text units
-- Deterministic hierarchical chunking with parent and child relationships
-- Deterministic embeddings for tests and OpenAI embeddings for semantic search
-- PostgreSQL vector storage with pgvector
-- HNSW cosine-similarity search with document, role, and score filters
-- Safe embedding rebuild without parsing the document again
-- Evidence deduplication and context budgeting before generation
-- Deterministic and OpenAI LLM providers behind a shared interface
-- Grounded answer generation with `[S1]`, `[S2]` style source references
-- Validation for missing, malformed, unknown, and uncited references
-- Refusal when retrieval returns no usable evidence
-
-## Request flow
+## How the system is structured
 
 ```mermaid
 flowchart LR
-    U[Authenticated user] --> API[FastAPI]
-    API --> D[Document ingestion]
-    D --> P[Parsing]
-    P --> C[Hierarchical chunking]
-    C --> E[Embedding provider]
-    E --> DB[(PostgreSQL + pgvector)]
+    U[User] --> C[Caddy]
+    C --> F[Next.js]
+    F --> B[FastAPI]
 
-    U --> Q[Question]
-    Q --> R[Tenant-scoped retrieval]
-    R --> DB
-    DB --> X[Evidence context]
-    X --> L[LLM provider]
-    L --> V[Citation validation]
-    V --> A[Answer and sources]
+    B --> PG[(PostgreSQL + pgvector)]
+    B --> R[(Redis)]
+    B --> L[LLM Provider]
+    B --> E[Embedding Provider]
+
+    D[Documents / Images] --> P[Parsing + OCR]
+    P --> CH[Chunking]
+    CH --> E
+    E --> PG
+
+    Q[Knowledge Query] --> DR[Dense Retrieval]
+    Q --> LR[Lexical Retrieval]
+    DR --> RF[RRF]
+    LR --> RF
+    RF --> CTX[Evidence Context]
+    CTX --> L
+    L --> CV[Citation Validation]
+    CV --> GV[Grounding Check]
+    GV --> A[Answer]
 ```
 
-The user ID comes from the JWT token. It is not accepted as a search or answer field. Document IDs can narrow a query, but they do not bypass ownership checks.
+## Converse
 
-## Main design choices
+Converse is the general chat path.
 
-### PostgreSQL is also the vector store
+It uses conversation history, saved memory, and any files attached to the current turn to build context for the model.
 
-The project uses pgvector instead of adding a second database. Users, documents, chunks, metadata, and embeddings stay in PostgreSQL, which keeps ownership filtering and transaction handling in one place.
+It also supports image input and the voice worker.
 
-Embeddings are stored in a `VECTOR(384)` column and searched with cosine distance through an HNSW index.
+Converse is intentionally more flexible than Knowledge mode because it is not limited to document evidence.
 
-### Retrieval is separate from answer generation
+## Knowledge
 
-The retrieval endpoint can be called without an LLM. This makes it possible to inspect ranked chunks and debug the search stage before checking the final answer.
+Knowledge is the strict RAG path.
 
-The answer endpoint reuses the same retrieval service and adds:
+A Knowledge request goes through these steps:
 
-1. duplicate and redundant evidence removal;
-2. global and per-source context limits;
-3. stable source IDs;
-4. LLM generation;
-5. citation validation.
+1. Check which documents the user is allowed to search.
+2. Run dense semantic retrieval.
+3. Run lexical full-text retrieval.
+4. Merge both rankings with RRF.
+5. Remove duplicates and build a bounded evidence set.
+6. Send the evidence to the LLM.
+7. Validate the returned citations.
+8. Check whether the cited evidence actually supports the claims.
+9. Repair the answer when possible.
+10. Refuse the answer when the evidence is not sufficient.
 
-### Tests do not require external APIs
+The point of keeping these stages separate is simple: if an answer is wrong, it is possible to tell whether the problem came from retrieval, evidence selection, generation, citation handling, or grounding.
 
-The automated suite uses deterministic embedding and LLM providers. This keeps tests reproducible and avoids network calls or API charges. OpenAI providers can be enabled through environment settings for real semantic embeddings and generation.
+## Retrieval and grounding
 
-### Re-embedding reuses stored chunks
+The current embedding model is:
 
-Changing an embedding configuration should not require parsing and chunking the source file again. The rebuild endpoint loads the existing chunks and replaces only the matching provider/model records inside a transaction.
+```text
+ibm-granite/granite-embedding-97m-multilingual-r2
+```
 
-## Technology
+Embedding dimension:
 
-| Area | Technology |
+```text
+384
+```
+
+The current configuration keeps query rewriting and the general LLM reranker disabled:
+
+```text
+RAG_QUERY_REWRITE_ENABLED=false
+RAG_RERANKER_ENABLED=false
+```
+
+Both pieces still exist in the architecture, but they are not part of the default path.
+
+## Security and isolation
+
+Aqlyra checks ownership before returning user data.
+
+That applies to:
+
+- documents;
+- document content;
+- conversations;
+- messages;
+- memory;
+- Knowledge document scopes.
+
+Other controls include:
+
+- JWT authentication;
+- upload validation;
+- filename sanitization;
+- production CORS validation;
+- production secret validation;
+- Redis-backed rate limiting;
+- fail-closed behavior when the required rate-limit backend is unavailable;
+- log redaction;
+- generic responses for unhandled errors;
+- disabled OpenAPI/docs in production;
+- localhost-only backend and database bindings in the intended deployment layout.
+
+See [Security and Testing](docs/SECURITY_TESTING.md).
+
+## Observability
+
+Operational endpoints:
+
+```text
+GET /api/v1/health
+GET /api/v1/readiness
+GET /api/v1/metrics
+```
+
+The backend records structured JSON logs with request IDs and timing data.
+
+The metrics endpoint exposes request counts, status codes, latency histograms, unhandled exception counts, rate-limit rejections, and rate-limit backend failures.
+
+The alert worker checks readiness and metrics and can report firing and resolved states for service failures, 5xx spikes, latency spikes, unhandled exceptions, Redis failures, and unusual rate-limit activity.
+
+## Technology stack
+
+| Layer | Technology |
 |---|---|
-| API | FastAPI |
-| Validation and settings | Pydantic, pydantic-settings |
-| Database access | SQLAlchemy |
+| Frontend | Next.js 16, React 19, TypeScript |
+| Backend | FastAPI, Python |
+| Validation | Pydantic |
+| ORM | SQLAlchemy |
 | Database | PostgreSQL |
-| Vector search | pgvector, HNSW, cosine distance |
+| Vector search | pgvector |
+| Lexical retrieval | PostgreSQL full-text search |
+| Rank fusion | Reciprocal Rank Fusion |
 | Migrations | Alembic |
-| Authentication | JWT, bcrypt |
-| Document parsing | pypdf, python-docx, python-pptx, openpyxl |
-| LLM and embeddings | OpenAI SDK, deterministic test providers |
-| Local infrastructure | Docker Compose |
-| Tests and CI | pytest, FastAPI TestClient, GitHub Actions |
+| Rate limiting | Redis |
+| Embeddings | IBM Granite multilingual via Hugging Face |
+| LLM adapters | Groq / OpenAI-compatible providers |
+| OCR | Tesseract / pytesseract |
+| Voice | LiveKit architecture |
+| Reverse proxy | Caddy |
+| Containers | Docker Compose |
+| Tests | pytest, FastAPI TestClient |
+| CI | GitHub Actions |
 
 ## Repository structure
-
-The tree below shows the repository at a folder level. Generated folders such as `.venv`, `__pycache__`, test caches, and local uploads are intentionally left out.
 
 ```text
 aqlyra-rag-ai/
 ├── backend/
 │   ├── alembic/
-│   │   └── versions/
+│   │   └── versions/              # database migrations
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   ├── auth/
-│   │   ├── config/
-│   │   ├── core/
-│   │   ├── database/
-│   │   ├── embeddings/
-│   │   ├── llms/
-│   │   ├── middleware/
-│   │   ├── models/
-│   │   ├── parsers/
-│   │   ├── rag/
-│   │   ├── retrieval/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   └── main.py
+│   │   ├── alerting/              # alert checks and webhook delivery
+│   │   ├── api/                   # FastAPI routes
+│   │   ├── auth/                  # authentication and JWT handling
+│   │   ├── chunking/              # document chunking
+│   │   ├── config/                # application settings
+│   │   ├── core/                  # logging, monitoring, rate limiting
+│   │   ├── database/              # database engine and sessions
+│   │   ├── embeddings/            # embedding providers
+│   │   ├── llms/                  # LLM provider adapters
+│   │   ├── middleware/            # request middleware
+│   │   ├── models/                # ORM models
+│   │   ├── parsers/               # document parsing
+│   │   ├── product_identity/      # product identity settings
+│   │   ├── prompts/               # prompt definitions
+│   │   ├── query_rewriting/       # optional query rewrite layer
+│   │   ├── rag/                   # context, citations, grounding
+│   │   ├── reranking/             # optional reranking layer
+│   │   ├── retrieval/             # retrieval and rank fusion
+│   │   ├── schemas/               # request/response models
+│   │   ├── services/              # application services
+│   │   ├── voice/                 # voice worker
+│   │   ├── websocket/             # realtime support
+│   │   └── main.py                # FastAPI entry point
 │   ├── tests/
-│   ├── .dockerignore
-│   ├── .env.example
-│   ├── alembic.ini
-│   ├── docker-entrypoint.sh
 │   ├── Dockerfile
+│   ├── Dockerfile.voice
 │   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   └── app/
+│   │       ├── api/
+│   │       ├── login/
+│   │       ├── register/
+│   │       └── page.tsx
+│   ├── Dockerfile
+│   └── package.json
 ├── docs/
 │   ├── ARCHITECTURE.md
-│   └── RAG_PIPELINE.md
-├── .github/
-│   └── workflows/
-│       └── backend-tests.yml
-├── .gitignore
+│   ├── RAG_PIPELINE.md
+│   ├── SECURITY_TESTING.md
+│   ├── SETUP.md
+├── scripts/
+│   └── ops/
+├── Caddyfile
 ├── docker-compose.yml
 ├── LICENSE
 └── README.md
 ```
 
-### Folder guide
+## Testing
 
-| Path | Purpose |
-|---|---|
-| `backend/app/api/` | HTTP routes and API router composition |
-| `backend/app/auth/` | Password hashing, JWT creation, and token validation |
-| `backend/app/config/` | Environment-based application settings |
-| `backend/app/database/` | SQLAlchemy engine, session handling, and declarative base |
-| `backend/app/embeddings/` | Embedding interfaces and provider implementations |
-| `backend/app/llms/` | LLM interfaces and provider implementations |
-| `backend/app/models/` | SQLAlchemy models for users, documents, chunks, and embeddings |
-| `backend/app/parsers/` | File parsing and normalized document-unit extraction |
-| `backend/app/rag/` | Context building, grounded prompting, and citation validation |
-| `backend/app/retrieval/` | Retrieval request and result contracts |
-| `backend/app/schemas/` | Pydantic request and response models |
-| `backend/app/services/` | Document processing, retrieval, re-embedding, and RAG orchestration |
-| `backend/alembic/versions/` | Database migration history |
-| `backend/tests/` | Unit and integration tests |
-| `docs/` | Detailed architecture and RAG pipeline notes |
-| `.github/workflows/backend-tests.yml` | Runs database migrations and backend tests in GitHub Actions |
+The backend currently has 70 `test_*.py` modules.
 
-## Where the main logic lives
+The tests cover:
 
-| Path | Responsibility |
-|---|---|
-| `backend/app/api/rag.py` | HTTP endpoint for grounded answers |
-| `backend/app/services/rag_answer_service.py` | End-to-end RAG orchestration |
-| `backend/app/services/retrieval_service.py` | Tenant-scoped pgvector search |
-| `backend/app/services/document_processing_service.py` | Parsing, chunking, and indexing workflow |
-| `backend/app/rag/context_builder.py` | Evidence deduplication and budgeting |
-| `backend/app/rag/prompt_builder.py` | Grounded prompt construction |
-| `backend/app/rag/citation_validator.py` | Citation reference validation |
-| `backend/app/llms/` | Deterministic and OpenAI LLM adapters |
-| `backend/app/embeddings/` | Deterministic and OpenAI embedding adapters |
-| `backend/app/models/` | Users, documents, units, chunks, and embeddings |
-| `backend/tests/` | Authentication, ingestion, retrieval, and RAG tests |
+- authentication;
+- cross-user isolation;
+- document ingestion;
+- OCR;
+- chunking;
+- embeddings;
+- dense retrieval;
+- lexical retrieval;
+- hybrid retrieval;
+- RRF;
+- retrieval evaluation;
+- RAG context building;
+- citation validation;
+- semantic grounding edge cases;
+- provider failures;
+- streaming conversations;
+- memory;
+- voice session APIs;
+- production configuration;
+- rate limiting;
+- observability;
+- monitoring;
+- Redis readiness;
+- alerting.
 
-## Run locally
+Tests use a separate PostgreSQL test database instead of the normal development database.
 
-### Requirements
+## Local development
 
-- Git
-- Docker Desktop
-- Python 3.14 for direct local backend development
-
-### Docker quick start
+Start the backend services:
 
 ```bash
-git clone https://github.com/naim-munshi/aqlyra-rag-ai.git
-cd aqlyra-rag-ai
-
-docker compose up --build -d
+docker compose up -d --build
 docker compose ps
 ```
 
-The backend entrypoint waits for PostgreSQL, enables pgvector, applies Alembic migrations, and then starts FastAPI.
-
-Verify the runtime:
+Check the backend:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/api/v1/health
-curl -fsS http://127.0.0.1:8000/
+curl -fsS http://127.0.0.1:8000/api/v1/readiness
 ```
 
-Swagger UI is available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Stop the services without deleting the database and upload volumes:
+Run the frontend:
 
 ```bash
-docker compose down
+cd frontend
+npm install
+npm run dev
 ```
 
-### Local backend development
-
-The backend can also run directly while PostgreSQL remains in Docker:
+Run backend tests from `backend/`:
 
 ```bash
-docker compose up -d postgres
-
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-
-cp .env.example .env
-alembic upgrade head
-
-python -m uvicorn app.main:app --reload
+TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5433/aqlyra_rag_ai_test' python -m pytest -q
 ```
 
-The checked-in environment example uses deterministic providers. OpenAI providers require an API key in the private `.env` file. The real `.env` file must not be committed.
-
-
-## API endpoints
-
-### Authentication
-
-```http
-POST /api/v1/auth/register
-POST /api/v1/auth/login
-GET  /api/v1/users/me
-```
-
-### Documents
-
-```http
-POST   /api/v1/documents/upload
-GET    /api/v1/documents
-GET    /api/v1/documents/{document_id}
-DELETE /api/v1/documents/{document_id}
-POST   /api/v1/documents/{document_id}/process
-GET    /api/v1/documents/{document_id}/units
-POST   /api/v1/documents/{document_id}/embeddings/rebuild
-```
-
-### Retrieval and RAG
-
-```http
-POST /api/v1/retrieval/search
-POST /api/v1/rag/answer
-```
-
-Example answer request:
-
-```json
-{
-  "question": "How are private API routes protected?",
-  "top_k": 8,
-  "document_ids": [],
-  "chunk_roles": ["content", "summary"],
-  "min_similarity": null,
-  "max_context_tokens": 2400,
-  "max_source_tokens": 700,
-  "max_sources": 8
-}
-```
-
-A successful response includes the answer, provider information, cited chunks, filename and page metadata, retrieval counts, and token usage when the provider reports it.
-
-## Tests
-
-From the backend directory:
+Run frontend checks:
 
 ```bash
-python -m pytest
+cd frontend
+npm run lint
+npm run build
 ```
 
-The current checkpoint is `87 passed`. GitHub Actions runs the same suite for relevant pushes and pull requests to `main`.
-
-The suite currently covers:
-
-- registration, login, and protected routes;
-- upload validation and duplicate handling;
-- document parsing and chunk persistence;
-- embedding persistence and transactional rebuilds;
-- vector retrieval and tenant isolation;
-- context limits and duplicate evidence removal;
-- LLM provider normalization;
-- grounded prompt construction;
-- missing, malformed, unknown, and uncited references;
-- end-to-end `/api/v1/rag/answer` behavior.
-
-## Current limitations
-
-- Document processing runs synchronously; a queue and worker are not connected.
-- Uploaded files use local storage rather than object storage.
-- The parser can flag a likely OCR requirement, but OCR execution is not implemented.
-- Parent summaries are extractive, not LLM-generated RAPTOR summaries.
-- The chunk schema supports a `proposition` role, but proposition extraction is not implemented.
-- Retrieval is dense vector search only; BM25, hybrid fusion, and reranking are not implemented.
-- Citation validation checks reference structure and uncited blocks, but it does not prove that every cited passage semantically supports the claim.
-- Automated tests use deterministic providers; a live OpenAI end-to-end run remains a manual check.
-- There is no frontend, streaming, conversation memory, voice interface, rate limiting, monitoring, or deployment pipeline yet.
-
-These limitations are listed deliberately. The repository should describe what is implemented, not present planned work as completed work.
+For the full setup, see [docs/SETUP.md](docs/SETUP.md).
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [RAG pipeline](docs/RAG_PIPELINE.md)
+- [RAG Pipeline](docs/RAG_PIPELINE.md)
+- [Security and Testing](docs/SECURITY_TESTING.md)
+- [Setup](docs/SETUP.md)
 
 ## License
 
