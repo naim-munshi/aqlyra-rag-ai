@@ -10,6 +10,12 @@ from app.core.logging import (
     reset_request_id,
     set_request_id,
 )
+from app.core.monitoring import (
+    record_http_request,
+    record_unhandled_exception,
+    request_route_label,
+    should_record_http_metrics,
+)
 
 
 _REQUEST_ID_PATTERN = re.compile(
@@ -20,6 +26,7 @@ _REQUEST_ID_PATTERN = re.compile(
 _QUIET_SUCCESS_PATHS = {
     "/api/v1/health",
     "/api/v1/readiness",
+    "/api/v1/metrics",
 }
 
 
@@ -91,10 +98,19 @@ def setup_request_observability(
                     2,
                 )
 
+                route = request_route_label(
+                    request
+                )
+
+                record_unhandled_exception(
+                    method=method,
+                    route=route,
+                )
+
                 app_logger.exception(
                     "http_request_unhandled_exception",
                     method=method,
-                    path=path,
+                    path=route,
                     duration_ms=(
                         duration_ms
                     ),
@@ -121,6 +137,25 @@ def setup_request_observability(
                 2,
             )
 
+            route = request_route_label(
+                request
+            )
+
+            if should_record_http_metrics(
+                path
+            ):
+                record_http_request(
+                    method=method,
+                    route=route,
+                    status_code=(
+                        response.status_code
+                    ),
+                    duration_seconds=(
+                        duration_ms
+                        / 1_000
+                    ),
+                )
+
             response.headers[
                 "X-Request-ID"
             ] = request_id
@@ -141,7 +176,7 @@ def setup_request_observability(
                 log_method(
                     "http_request_completed",
                     method=method,
-                    path=path,
+                    path=route,
                     status_code=(
                         response.status_code
                     ),

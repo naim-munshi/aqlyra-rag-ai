@@ -10,6 +10,13 @@ from sqlalchemy import text
 from app.config.settings import settings
 from app.database.connection import SessionLocal
 
+from fastapi.responses import Response
+from redis.exceptions import RedisError
+
+from app.core.monitoring import render_prometheus_metrics
+from app.core.rate_limit import get_rate_limit_redis
+
+
 router = APIRouter()
 
 
@@ -79,6 +86,23 @@ def readiness():
     finally:
         db.close()
 
+    if settings.RATE_LIMIT_ENABLED:
+        try:
+            redis_ready = bool(
+                get_rate_limit_redis().ping()
+            )
+        except RedisError:
+            redis_ready = False
+
+        if not redis_ready:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Service dependencies "
+                    "are unavailable"
+                ),
+            )
+
     return {
         "status": "ready",
         "service": "aqlyra-rag-ai",
@@ -86,5 +110,24 @@ def readiness():
         "checks": {
             "database": "ready",
             "storage": "ready",
+            **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
+
+
+@router.get(
+    "/metrics",
+    include_in_schema=False,
+)
+def metrics():
+    return Response(
+        content=render_prometheus_metrics(),
+        media_type=(
+            "text/plain; "
+            "version=0.0.4; "
+            "charset=utf-8"
+        ),
+        headers={
+            "Cache-Control": "no-store",
+        },
+    )

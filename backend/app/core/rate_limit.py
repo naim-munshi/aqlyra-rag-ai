@@ -17,6 +17,10 @@ from app.auth.security import (
 )
 from app.config.settings import settings
 from app.core.logging import app_logger
+from app.core.monitoring import (
+    record_rate_limit_backend_unavailable,
+    record_rate_limit_exceeded,
+)
 
 
 _RATE_LIMIT_SCRIPT = """
@@ -150,9 +154,13 @@ def _raise_unavailable(
     *,
     bucket: str,
 ) -> None:
+    record_rate_limit_backend_unavailable(
+        bucket
+    )
+
     app_logger.error(
-        "rate_limit_backend_unavailable "
-        f"bucket={bucket}"
+        "rate_limit_backend_unavailable",
+        bucket=bucket,
     )
 
     raise HTTPException(
@@ -254,6 +262,10 @@ def enforce_rate_limit(
         math.ceil(
             retry_after
         ),
+    )
+
+    record_rate_limit_exceeded(
+        bucket
     )
 
     app_logger.warning(
