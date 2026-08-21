@@ -29,6 +29,18 @@ def _production_settings(
         "DATABASE_URL",
         database_url,
     )
+    monkeypatch.setenv(
+        "RAG_GROUNDING_VERIFIER_ENABLED",
+        "true",
+    )
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "groq",
+    )
+    monkeypatch.setenv(
+        "GROQ_API_KEY",
+        "test-only-groq-key",
+    )
 
     return Settings(
         _env_file=None,

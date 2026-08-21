@@ -21,6 +21,11 @@ from app.rag.answer_service import (
     generate_grounded_answer_draft,
     repair_grounded_answer_draft,
 )
+from app.rag.grounding_verifier import (
+    GroundingVerifier,
+    LLMGroundingVerifier,
+    UnsupportedGroundingError,
+)
 from app.query_rewriting import (
     QueryRewriter,
     QueryRewriteError,
@@ -204,6 +209,7 @@ def answer_question(
     max_source_tokens: int = 700,
     max_sources: int = 8,
     provider: LLMProvider | None = None,
+    grounding_verifier: GroundingVerifier | None = None,
     reranker: RerankerProvider | None = None,
     query_rewriter: QueryRewriter | None = None,
 ) -> RAGAnswerResult:
@@ -300,20 +306,21 @@ def answer_question(
         provider=active_provider,
     )
 
-    try:
-        validated = (
-            validate_grounded_answer_draft(
-                draft
+    active_grounding_verifier = (
+        grounding_verifier
+    )
+
+    if (
+        active_grounding_verifier is None
+        and settings.RAG_GROUNDING_VERIFIER_ENABLED
+    ):
+        active_grounding_verifier = (
+            LLMGroundingVerifier(
+                provider=active_provider,
             )
         )
 
-    except CitationValidationError:
-        draft = repair_grounded_answer_draft(
-            draft=draft,
-            evidence_context=evidence_context,
-            provider=active_provider,
-        )
-
+    for validation_attempt in range(3):
         try:
             validated = (
                 validate_grounded_answer_draft(
@@ -321,21 +328,22 @@ def answer_question(
                 )
             )
 
-        except CitationValidationError:
-            draft = repair_grounded_answer_draft(
-                draft=draft,
-                evidence_context=evidence_context,
-                provider=active_provider,
-            )
-
-            try:
-                validated = (
-                    validate_grounded_answer_draft(
-                        draft
-                    )
+            if (
+                not validated.is_refusal
+                and active_grounding_verifier
+                is not None
+            ):
+                active_grounding_verifier.verify(
+                    answer=validated,
                 )
 
-            except CitationValidationError:
+            break
+
+        except (
+            CitationValidationError,
+            UnsupportedGroundingError,
+        ):
+            if validation_attempt >= 2:
                 safe_refusal_draft = replace(
                     draft,
                     answer_text=(
@@ -348,6 +356,14 @@ def answer_question(
                         safe_refusal_draft
                     )
                 )
+
+                break
+
+            draft = repair_grounded_answer_draft(
+                draft=draft,
+                evidence_context=evidence_context,
+                provider=active_provider,
+            )
 
     if validated.is_refusal:
         answer_text = (

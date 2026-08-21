@@ -96,6 +96,72 @@ if values.get("APP_ENV") != "production":
         "APP_ENV must equal production"
     )
 
+
+llm_provider = require(
+    "LLM_PROVIDER"
+).casefold()
+
+require("LLM_MODEL")
+
+if llm_provider not in {
+    "groq",
+    "openai",
+}:
+    errors.append(
+        "LLM_PROVIDER must be groq or openai "
+        "in production"
+    )
+
+
+grounding_enabled = values.get(
+    "RAG_GROUNDING_VERIFIER_ENABLED",
+    "",
+).casefold()
+
+if grounding_enabled not in {
+    "true",
+    "1",
+    "yes",
+    "on",
+}:
+    errors.append(
+        "RAG_GROUNDING_VERIFIER_ENABLED "
+        "must be true in production"
+    )
+
+
+llm_provider = require(
+    "LLM_PROVIDER"
+).casefold()
+
+require("LLM_MODEL")
+
+if llm_provider not in {
+    "groq",
+    "openai",
+}:
+    errors.append(
+        "LLM_PROVIDER must be groq or openai "
+        "in production"
+    )
+
+
+grounding_enabled = values.get(
+    "RAG_GROUNDING_VERIFIER_ENABLED",
+    "",
+).casefold()
+
+if grounding_enabled not in {
+    "true",
+    "1",
+    "yes",
+    "on",
+}:
+    errors.append(
+        "RAG_GROUNDING_VERIFIER_ENABLED "
+        "must be true in production"
+    )
+
 if values.get(
     "DEBUG",
     "",
@@ -242,8 +308,14 @@ except Exception:
     )
 
 
+if llm_provider == "groq":
+    require("GROQ_API_KEY")
+
+elif llm_provider == "openai":
+    require("OPENAI_API_KEY")
+
+
 for key in (
-    "GROQ_API_KEY",
     "HF_TOKEN",
     "LIVEKIT_URL",
     "LIVEKIT_API_KEY",
@@ -269,7 +341,9 @@ print("CADDY_EMAIL=PASS")
 print("SECRET_KEY=PASS")
 print("POSTGRES_CREDENTIALS=PASS")
 print("DATABASE_URL_DOCKER=PASS")
-print("GROQ_API_KEY=SET")
+print("LLM_PROVIDER=PASS")
+print("RAG_GROUNDING_VERIFIER=PASS")
+print("LLM_API_KEY=SET")
 print("HF_TOKEN=SET")
 print("LIVEKIT_CONFIG=SET")
 print("PRODUCTION_PREFLIGHT=PASS")

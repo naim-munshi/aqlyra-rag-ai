@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     LLM_REASONING_EFFORT: str = ""
 
     # RAG reranking
+    RAG_GROUNDING_VERIFIER_ENABLED: bool = False
     RAG_RERANKER_ENABLED: bool = False
     RERANKER_PROVIDER: str = "llm"
     RERANKER_CANDIDATE_DEPTH: int = 15
@@ -497,6 +498,18 @@ class Settings(BaseSettings):
     ) -> Self:
         if self.APP_ENV != "production":
             return self
+
+        if not self.RAG_GROUNDING_VERIFIER_ENABLED:
+            raise ValueError(
+                "RAG_GROUNDING_VERIFIER_ENABLED "
+                "must be true in production"
+            )
+
+        if self.LLM_PROVIDER == "deterministic":
+            raise ValueError(
+                "LLM_PROVIDER must not be "
+                "deterministic in production"
+            )
 
         if self.DEBUG:
             raise ValueError(

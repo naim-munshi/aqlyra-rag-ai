@@ -120,7 +120,34 @@ def _sanitize_original_filename(filename: str | None) -> str:
             "The filename is invalid"
         )
 
-    return basename[:255]
+    if len(basename) <= 255:
+        return basename
+
+    suffix = Path(basename).suffix
+
+    if not suffix:
+        return basename[:255]
+
+    maximum_stem_length = (
+        255 - len(suffix)
+    )
+
+    stem = basename[
+        :-len(suffix)
+    ].rstrip(" .")
+
+    truncated_stem = stem[
+        :maximum_stem_length
+    ].rstrip(" .")
+
+    if not truncated_stem:
+        raise UnsupportedFileTypeError(
+            "The filename is invalid"
+        )
+
+    return (
+        f"{truncated_stem}{suffix}"
+    )
 
 
 def _get_extension(filename: str) -> str:
