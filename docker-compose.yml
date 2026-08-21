@@ -1,4 +1,27 @@
 services:
+  redis:
+    image: redis:8-alpine
+    container_name: aqlyra-redis
+
+    restart: unless-stopped
+
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: aqlyra-postgres
@@ -40,6 +63,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -56,7 +81,8 @@ services:
       DATABASE_URL: >-
         ${DATABASE_URL_DOCKER:-postgresql+psycopg://postgres:postgres@postgres:5432/aqlyra_rag_ai}
 
-      REDIS_URL: redis://localhost:6379/0
+      REDIS_URL: >-
+        ${REDIS_URL_DOCKER:-redis://redis:6379/0}
 
       HF_TOKEN: ${HF_TOKEN:-}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}
@@ -78,7 +104,7 @@ services:
       LOG_LEVEL: INFO
 
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
     volumes:
       - uploads_data:/app/uploads

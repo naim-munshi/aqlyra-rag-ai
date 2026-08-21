@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.logging import app_logger
+from app.core.rate_limit import (
+    limit_chat_request,
+)
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.llms import (
@@ -160,6 +163,9 @@ def list_messages_endpoint(
 @router.post(
     "/{conversation_id}/messages",
     response_model=ChatTurnResponse,
+    dependencies=[
+        Depends(limit_chat_request),
+    ],
 )
 def create_message_endpoint(
     conversation_id: str,
@@ -348,6 +354,9 @@ def _encode_stream_event(
 
 @router.post(
     "/{conversation_id}/messages/stream",
+    dependencies=[
+        Depends(limit_chat_request),
+    ],
 )
 def create_message_stream_endpoint(
     conversation_id: str,

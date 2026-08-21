@@ -43,6 +43,37 @@ class Settings(BaseSettings):
         "redis://localhost:6379/0"
     )
 
+    # Rate limiting / abuse protection
+    RATE_LIMIT_ENABLED: bool = False
+    RATE_LIMIT_CLIENT_IP_HEADER: str = (
+        "X-Aqlyra-Client-IP"
+    )
+    RATE_LIMIT_REDIS_TIMEOUT_SECONDS: float = 1.0
+
+    RATE_LIMIT_REGISTER_IP_LIMIT: int = 5
+    RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS: int = 3_600
+
+    RATE_LIMIT_LOGIN_IP_LIMIT: int = 10
+    RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS: int = 60
+
+    RATE_LIMIT_LOGIN_IDENTITY_LIMIT: int = 10
+    RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS: int = 300
+
+    RATE_LIMIT_UPLOAD_USER_LIMIT: int = 20
+    RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS: int = 3_600
+
+    RATE_LIMIT_PROCESS_USER_LIMIT: int = 30
+    RATE_LIMIT_PROCESS_USER_WINDOW_SECONDS: int = 3_600
+
+    RATE_LIMIT_RAG_USER_LIMIT: int = 20
+    RATE_LIMIT_RAG_USER_WINDOW_SECONDS: int = 60
+
+    RATE_LIMIT_CHAT_USER_LIMIT: int = 30
+    RATE_LIMIT_CHAT_USER_WINDOW_SECONDS: int = 60
+
+    RATE_LIMIT_VOICE_USER_LIMIT: int = 5
+    RATE_LIMIT_VOICE_USER_WINDOW_SECONDS: int = 60
+
     # Provider credentials
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
@@ -470,6 +501,75 @@ class Settings(BaseSettings):
                 "provider is enabled"
             )
 
+        rate_limit_positive_values = {
+            "RATE_LIMIT_REDIS_TIMEOUT_SECONDS": (
+                self.RATE_LIMIT_REDIS_TIMEOUT_SECONDS
+            ),
+            "RATE_LIMIT_REGISTER_IP_LIMIT": (
+                self.RATE_LIMIT_REGISTER_IP_LIMIT
+            ),
+            "RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS": (
+                self.RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_LOGIN_IP_LIMIT": (
+                self.RATE_LIMIT_LOGIN_IP_LIMIT
+            ),
+            "RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS": (
+                self.RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_LOGIN_IDENTITY_LIMIT": (
+                self.RATE_LIMIT_LOGIN_IDENTITY_LIMIT
+            ),
+            "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS": (
+                self.RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_UPLOAD_USER_LIMIT": (
+                self.RATE_LIMIT_UPLOAD_USER_LIMIT
+            ),
+            "RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS": (
+                self.RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_PROCESS_USER_LIMIT": (
+                self.RATE_LIMIT_PROCESS_USER_LIMIT
+            ),
+            "RATE_LIMIT_PROCESS_USER_WINDOW_SECONDS": (
+                self.RATE_LIMIT_PROCESS_USER_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_RAG_USER_LIMIT": (
+                self.RATE_LIMIT_RAG_USER_LIMIT
+            ),
+            "RATE_LIMIT_RAG_USER_WINDOW_SECONDS": (
+                self.RATE_LIMIT_RAG_USER_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_CHAT_USER_LIMIT": (
+                self.RATE_LIMIT_CHAT_USER_LIMIT
+            ),
+            "RATE_LIMIT_CHAT_USER_WINDOW_SECONDS": (
+                self.RATE_LIMIT_CHAT_USER_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_VOICE_USER_LIMIT": (
+                self.RATE_LIMIT_VOICE_USER_LIMIT
+            ),
+            "RATE_LIMIT_VOICE_USER_WINDOW_SECONDS": (
+                self.RATE_LIMIT_VOICE_USER_WINDOW_SECONDS
+            ),
+        }
+
+        for (
+            setting_name,
+            setting_value,
+        ) in rate_limit_positive_values.items():
+            if setting_value <= 0:
+                raise ValueError(
+                    f"{setting_name} must be positive"
+                )
+
+        if not self.RATE_LIMIT_CLIENT_IP_HEADER.strip():
+            raise ValueError(
+                "RATE_LIMIT_CLIENT_IP_HEADER "
+                "cannot be empty"
+            )
+
         return self
 
     @field_validator("APP_ENV")
@@ -498,6 +598,18 @@ class Settings(BaseSettings):
     ) -> Self:
         if self.APP_ENV != "production":
             return self
+
+        if not self.RATE_LIMIT_ENABLED:
+            raise ValueError(
+                "RATE_LIMIT_ENABLED must be "
+                "true in production"
+            )
+
+        if not self.REDIS_URL.strip():
+            raise ValueError(
+                "REDIS_URL must be configured "
+                "in production"
+            )
 
         if not self.RAG_GROUNDING_VERIFIER_ENABLED:
             raise ValueError(

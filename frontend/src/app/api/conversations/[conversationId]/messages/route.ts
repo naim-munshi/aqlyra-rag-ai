@@ -4,6 +4,7 @@ import {
   backendUrl,
   readJson,
 } from "@/lib/api/backend";
+import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import {
   getAccessToken,
 } from "@/lib/auth/session";
@@ -75,6 +76,10 @@ export async function GET(
       },
       {
         status: response.status,
+        headers:
+          forwardedBackendHeaders(
+            response,
+          ),
       },
     );
   } catch {

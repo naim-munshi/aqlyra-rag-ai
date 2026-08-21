@@ -4,6 +4,7 @@ import {
   backendUrl,
   readJson,
 } from "@/lib/api/backend";
+import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import {
   getAccessToken,
 } from "@/lib/auth/session";
@@ -226,6 +227,10 @@ export async function POST(
           {
             status:
               backendResponse.status,
+            headers:
+              forwardedBackendHeaders(
+                backendResponse,
+              ),
           },
         );
       }
@@ -319,6 +324,10 @@ export async function POST(
             backendResponse.ok
               ? 502
               : backendResponse.status,
+          headers:
+            forwardedBackendHeaders(
+              backendResponse,
+            ),
         },
       );
     }
@@ -336,6 +345,9 @@ export async function POST(
           "Cache-Control":
             "no-cache, no-transform",
           "X-Accel-Buffering": "no",
+          ...forwardedBackendHeaders(
+            backendResponse,
+          ),
         },
       },
     );

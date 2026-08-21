@@ -12,5 +12,7 @@
 		X-Frame-Options "DENY"
 	}
 
-	reverse_proxy frontend:3000
+	reverse_proxy frontend:3000 {
+                header_up X-Aqlyra-Client-IP {remote_host}
+        }
 }

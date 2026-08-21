@@ -162,6 +162,63 @@ if grounding_enabled not in {
         "must be true in production"
     )
 
+rate_limit_enabled = values.get(
+    "RATE_LIMIT_ENABLED",
+    "",
+).casefold()
+
+if rate_limit_enabled not in {
+    "true",
+    "1",
+    "yes",
+    "on",
+}:
+    errors.append(
+        "RATE_LIMIT_ENABLED must be true "
+        "in production"
+    )
+
+
+rate_limit_positive_keys = (
+    "RATE_LIMIT_REDIS_TIMEOUT_SECONDS",
+    "RATE_LIMIT_REGISTER_IP_LIMIT",
+    "RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS",
+    "RATE_LIMIT_LOGIN_IP_LIMIT",
+    "RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS",
+    "RATE_LIMIT_LOGIN_IDENTITY_LIMIT",
+    "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS",
+    "RATE_LIMIT_UPLOAD_USER_LIMIT",
+    "RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS",
+    "RATE_LIMIT_PROCESS_USER_LIMIT",
+    "RATE_LIMIT_PROCESS_USER_WINDOW_SECONDS",
+    "RATE_LIMIT_RAG_USER_LIMIT",
+    "RATE_LIMIT_RAG_USER_WINDOW_SECONDS",
+    "RATE_LIMIT_CHAT_USER_LIMIT",
+    "RATE_LIMIT_CHAT_USER_WINDOW_SECONDS",
+    "RATE_LIMIT_VOICE_USER_LIMIT",
+    "RATE_LIMIT_VOICE_USER_WINDOW_SECONDS",
+)
+
+for key in rate_limit_positive_keys:
+    raw_value = require(key)
+
+    try:
+        parsed_value = float(raw_value)
+
+        if parsed_value <= 0:
+            raise ValueError
+
+    except ValueError:
+        errors.append(
+            f"{key} must be positive"
+        )
+
+
+require(
+    "RATE_LIMIT_CLIENT_IP_HEADER"
+)
+
+
 if values.get(
     "DEBUG",
     "",
@@ -308,6 +365,35 @@ except Exception:
     )
 
 
+redis_url = require(
+    "REDIS_URL_DOCKER"
+)
+
+try:
+    parsed_redis = urlsplit(
+        redis_url
+    )
+
+    if parsed_redis.scheme not in {
+        "redis",
+        "rediss",
+    }:
+        errors.append(
+            "REDIS_URL_DOCKER must use "
+            "redis or rediss"
+        )
+
+    if parsed_redis.hostname != "redis":
+        errors.append(
+            "REDIS_URL_DOCKER host must be redis"
+        )
+
+except Exception:
+    errors.append(
+        "REDIS_URL_DOCKER is invalid"
+    )
+
+
 if llm_provider == "groq":
     require("GROQ_API_KEY")
 
@@ -343,6 +429,8 @@ print("POSTGRES_CREDENTIALS=PASS")
 print("DATABASE_URL_DOCKER=PASS")
 print("LLM_PROVIDER=PASS")
 print("RAG_GROUNDING_VERIFIER=PASS")
+print("RATE_LIMITING=PASS")
+print("REDIS_RATE_LIMIT_BACKEND=PASS")
 print("LLM_API_KEY=SET")
 print("HF_TOKEN=SET")
 print("LIVEKIT_CONFIG=SET")

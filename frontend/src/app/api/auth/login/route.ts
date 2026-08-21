@@ -21,14 +21,26 @@ export async function POST(request: Request) {
     );
   }
 
+  const backendHeaders = new Headers({
+    "Content-Type": "application/json",
+  });
+
+  const clientIp =
+    request.headers.get("x-aqlyra-client-ip");
+
+  if (clientIp) {
+    backendHeaders.set(
+      "X-Aqlyra-Client-IP",
+      clientIp,
+    );
+  }
+
   try {
     const loginResponse = await fetch(
       backendUrl("/auth/login"),
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: backendHeaders,
         body: JSON.stringify(body),
         cache: "no-store",
       },
@@ -38,9 +50,24 @@ export async function POST(request: Request) {
       await readJson<TokenResponse | BackendError>(loginResponse);
 
     if (!loginResponse.ok) {
+      const retryAfter =
+        loginResponse.headers.get("retry-after");
+
+      const responseHeaders = new Headers();
+
+      if (retryAfter) {
+        responseHeaders.set(
+          "Retry-After",
+          retryAfter,
+        );
+      }
+
       return NextResponse.json(
         loginData ?? { detail: "Login failed" },
-        { status: loginResponse.status },
+        {
+          status: loginResponse.status,
+          headers: responseHeaders,
+        },
       );
     }
 

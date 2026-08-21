@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import (
     get_current_user,
 )
+from app.core.rate_limit import (
+    limit_voice_request,
+)
 from app.database.connection import get_db
 from app.models.user import User
 from app.schemas.voice import (
@@ -33,6 +36,9 @@ router = APIRouter(
 @router.post(
     "/session",
     response_model=VoiceSessionResponse,
+    dependencies=[
+        Depends(limit_voice_request),
+    ],
 )
 def create_voice_session_endpoint(
     request: VoiceSessionCreate,

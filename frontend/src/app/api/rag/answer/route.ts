@@ -4,6 +4,7 @@ import {
   backendUrl,
   readJson,
 } from "@/lib/api/backend";
+import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import { getAccessToken } from "@/lib/auth/session";
 import type {
   RAGAnswerRequest,
@@ -87,6 +88,10 @@ export async function POST(request: Request) {
       },
       {
         status: response.status,
+        headers:
+          forwardedBackendHeaders(
+            response,
+          ),
       },
     );
   } catch {

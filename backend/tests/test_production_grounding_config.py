@@ -57,6 +57,33 @@ def production_values(
             f"aqlyra:{password}"
             "@postgres:5432/aqlyra"
         ),
+        "REDIS_URL": (
+            "redis://redis:6379/0"
+        ),
+        "REDIS_URL_DOCKER": (
+            "redis://redis:6379/0"
+        ),
+        "RATE_LIMIT_ENABLED": "true",
+        "RATE_LIMIT_CLIENT_IP_HEADER": (
+            "X-Aqlyra-Client-IP"
+        ),
+        "RATE_LIMIT_REDIS_TIMEOUT_SECONDS": "1",
+        "RATE_LIMIT_REGISTER_IP_LIMIT": "5",
+        "RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS": "3600",
+        "RATE_LIMIT_LOGIN_IP_LIMIT": "10",
+        "RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS": "60",
+        "RATE_LIMIT_LOGIN_IDENTITY_LIMIT": "10",
+        "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS": "300",
+        "RATE_LIMIT_UPLOAD_USER_LIMIT": "20",
+        "RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS": "3600",
+        "RATE_LIMIT_PROCESS_USER_LIMIT": "30",
+        "RATE_LIMIT_PROCESS_USER_WINDOW_SECONDS": "3600",
+        "RATE_LIMIT_RAG_USER_LIMIT": "20",
+        "RATE_LIMIT_RAG_USER_WINDOW_SECONDS": "60",
+        "RATE_LIMIT_CHAT_USER_LIMIT": "30",
+        "RATE_LIMIT_CHAT_USER_WINDOW_SECONDS": "60",
+        "RATE_LIMIT_VOICE_USER_LIMIT": "5",
+        "RATE_LIMIT_VOICE_USER_WINDOW_SECONDS": "60",
         "LLM_PROVIDER": "groq",
         "LLM_MODEL": (
             "openai/gpt-oss-20b"
@@ -307,5 +334,60 @@ def test_settings_reject_deterministic_production_llm(
 
     assert (
         "LLM_PROVIDER"
+        in combined
+    )
+
+
+def test_production_preflight_rejects_disabled_rate_limiting(
+    tmp_path: Path,
+) -> None:
+    values = production_values()
+
+    values[
+        "RATE_LIMIT_ENABLED"
+    ] = "false"
+
+    env_file = (
+        tmp_path / "production.env"
+    )
+
+    write_env(
+        env_file,
+        values,
+    )
+
+    result = run_preflight(
+        env_file
+    )
+
+    assert result.returncode != 0
+
+    assert (
+        "RATE_LIMIT_ENABLED must be true"
+        in result.stdout
+    )
+
+
+def test_settings_reject_disabled_production_rate_limiting(
+) -> None:
+    values = production_values()
+
+    values[
+        "RATE_LIMIT_ENABLED"
+    ] = "false"
+
+    result = run_settings(
+        values
+    )
+
+    assert result.returncode != 0
+
+    combined = (
+        result.stdout
+        + result.stderr
+    )
+
+    assert (
+        "RATE_LIMIT_ENABLED"
         in combined
     )

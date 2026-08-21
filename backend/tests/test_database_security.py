@@ -41,6 +41,14 @@ def _production_settings(
         "GROQ_API_KEY",
         "test-only-groq-key",
     )
+    monkeypatch.setenv(
+        "RATE_LIMIT_ENABLED",
+        "true",
+    )
+    monkeypatch.setenv(
+        "REDIS_URL",
+        "redis://redis:6379/0",
+    )
 
     return Settings(
         _env_file=None,

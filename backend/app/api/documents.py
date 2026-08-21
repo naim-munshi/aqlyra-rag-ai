@@ -15,6 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.logging import app_logger
+from app.core.rate_limit import (
+    limit_process_request,
+    limit_upload_request,
+)
 from app.database.connection import get_db
 from app.models.user import User
 from app.parsers import DocumentParsingError
@@ -64,6 +68,9 @@ router = APIRouter(
     "/upload",
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(limit_upload_request),
+    ],
 )
 async def upload_document(
     file: Annotated[
@@ -223,6 +230,9 @@ def read_documents(
 @router.post(
     "/{document_id}/process",
     response_model=DocumentResponse,
+    dependencies=[
+        Depends(limit_process_request),
+    ],
 )
 def process_uploaded_document(
     document_id: str,

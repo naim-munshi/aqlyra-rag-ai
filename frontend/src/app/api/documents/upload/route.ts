@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
+import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import { getAccessToken } from "@/lib/auth/session";
 import type { DocumentResponse } from "@/types/document";
 
@@ -53,6 +54,10 @@ export async function POST(request: NextRequest) {
       data ?? { detail: "Backend returned an invalid response" },
       {
         status: response.status,
+        headers:
+          forwardedBackendHeaders(
+            response,
+          ),
       },
     );
   } catch {

@@ -10,6 +10,9 @@ from app.api.dependencies import (
     get_current_user,
 )
 from app.core.logging import app_logger
+from app.core.rate_limit import (
+    limit_rag_request,
+)
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.llms import (
@@ -46,6 +49,9 @@ router = APIRouter(
 @router.post(
     "/answer",
     response_model=RAGAnswerResponse,
+    dependencies=[
+        Depends(limit_rag_request),
+    ],
 )
 def create_grounded_answer(
     request: RAGAnswerRequest,
