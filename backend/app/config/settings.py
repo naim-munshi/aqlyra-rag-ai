@@ -74,6 +74,35 @@ class Settings(BaseSettings):
     RATE_LIMIT_VOICE_USER_LIMIT: int = 5
     RATE_LIMIT_VOICE_USER_WINDOW_SECONDS: int = 60
 
+    # Operational alerting
+    ALERTING_ENABLED: bool = False
+    ALERT_BACKEND_BASE_URL: str = (
+        "http://backend:8000/api/v1"
+    )
+    ALERT_POLL_INTERVAL_SECONDS: float = 30.0
+    ALERT_STARTUP_GRACE_SECONDS: float = 60.0
+    ALERT_READINESS_FAILURES: int = 3
+    ALERT_RECOVERY_SUCCESSES: int = 2
+
+    ALERT_HTTP_TIMEOUT_SECONDS: float = 5.0
+    ALERT_WEBHOOK_URL: str = ""
+    ALERT_WEBHOOK_BEARER_TOKEN: str = ""
+    ALERT_WEBHOOK_TIMEOUT_SECONDS: float = 5.0
+
+    ALERT_HTTP_5XX_RATIO_THRESHOLD: float = 0.10
+    ALERT_HTTP_5XX_MIN_REQUESTS: int = 20
+    ALERT_P95_LATENCY_SECONDS: float = 3.0
+    ALERT_LATENCY_MIN_REQUESTS: int = 20
+
+    ALERT_RATE_LIMIT_EXCEEDED_THRESHOLD: int = 50
+    ALERT_RATE_LIMIT_BACKEND_UNAVAILABLE_THRESHOLD: int = 1
+    ALERT_UNHANDLED_EXCEPTION_THRESHOLD: int = 1
+
+    ALERT_HEARTBEAT_FILE: str = (
+        "/tmp/aqlyra-alerting-heartbeat"
+    )
+    ALERT_HEARTBEAT_MAX_AGE_SECONDS: float = 180.0
+
     # Provider credentials
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""

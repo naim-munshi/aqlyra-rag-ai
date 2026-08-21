@@ -177,6 +177,46 @@ services:
 
 
 
+  alert-worker:
+    logging: *default-logging
+    profiles:
+      - production
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aqlyra-alert-worker
+    env_file:
+      - ${BACKEND_ENV_FILE:-./backend/.env}
+    entrypoint:
+      - python
+      - -m
+      - app.alerting.worker
+    restart: unless-stopped
+    environment:
+      ALERT_BACKEND_BASE_URL: http://backend:8000/api/v1
+      ALERT_HEARTBEAT_FILE: /tmp/aqlyra-alerting-heartbeat
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os,pathlib,time;
+          p=pathlib.Path(os.getenv(
+          'ALERT_HEARTBEAT_FILE',
+          '/tmp/aqlyra-alerting-heartbeat'));
+          age=float(os.getenv(
+          'ALERT_HEARTBEAT_MAX_AGE_SECONDS',
+          '180'));
+          raise SystemExit(
+          0 if p.exists()
+          and time.time()-p.stat().st_mtime <= age
+          else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
   frontend:
     logging: *default-logging
     profiles:
