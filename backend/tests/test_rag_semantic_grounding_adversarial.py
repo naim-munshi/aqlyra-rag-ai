@@ -1,4 +1,9 @@
+from collections.abc import Iterator
+from typing import cast
+
 import pytest
+
+from sqlalchemy.orm import Session
 
 import app.services.rag_answer_service as rag_service
 from app.config.settings import settings
@@ -6,6 +11,8 @@ from app.llms import (
     LLMGeneration,
     LLMProviderInfo,
 )
+from app.llms.types import LLMStreamEvent
+
 from app.rag import (
     EvidenceContext,
     EvidenceSource,
@@ -73,6 +80,28 @@ class SequencedProvider:
             input_tokens=100,
             output_tokens=10,
             total_tokens=110,
+        )
+
+
+
+    def stream(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> Iterator[LLMStreamEvent]:
+        generation = self.generate(
+            instructions=instructions,
+            input_text=input_text,
+        )
+        if generation.text:
+            yield LLMStreamEvent(
+                event_type="delta",
+                delta_text=generation.text,
+            )
+        yield LLMStreamEvent(
+            event_type="complete",
+            generation=generation,
         )
 
 
@@ -307,7 +336,7 @@ def test_rag_repairs_semantically_unsupported_answer(
     )
 
     result = rag_service.answer_question(
-        db=None,
+        db=cast(Session, None),
         user_id="semantic-user",
         question=(
             "How are private routes protected?"
@@ -365,7 +394,7 @@ def test_rag_refuses_after_repeated_semantic_failure(
     )
 
     result = rag_service.answer_question(
-        db=None,
+        db=cast(Session, None),
         user_id="semantic-refusal-user",
         question=(
             "How are private routes protected?"
@@ -416,7 +445,7 @@ def test_rag_propagates_invalid_verifier_response(
         GroundingVerifierResponseError
     ):
         rag_service.answer_question(
-            db=None,
+            db=cast(Session, None),
             user_id="semantic-invalid-user",
             question=(
                 "How are private routes protected?"
