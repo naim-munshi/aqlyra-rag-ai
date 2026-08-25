@@ -61,6 +61,7 @@ from app.services.conversation_service import (
     persist_chat_turn,
     update_conversation,
 )
+from app.services.project_service import get_project_for_user
 
 
 router = APIRouter(
@@ -759,12 +760,60 @@ def update_conversation_endpoint(
     if conversation is None:
         raise _conversation_not_found()
 
+    target_mode = request.mode or conversation.mode
+
+    project_id_set = (
+        "project_id"
+        in request.model_fields_set
+    )
+
+    target_project_id = (
+        request.project_id
+        if project_id_set
+        else conversation.project_id
+    )
+
+    if (
+        request.mode is not None
+        and request.mode != conversation.mode
+        and not project_id_set
+    ):
+        project_id_set = True
+        target_project_id = None
+
+    if (
+        project_id_set
+        and target_project_id is not None
+    ):
+        project = get_project_for_user(
+            db=db,
+            user_id=str(current_user.id),
+            project_id=target_project_id,
+        )
+
+        if project is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
+
+        if project.mode != target_mode:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Project mode must match "
+                    "conversation mode"
+                ),
+            )
+
     return update_conversation(
         db=db,
         conversation=conversation,
         title=request.title,
         mode=request.mode,
         is_pinned=request.is_pinned,
+        project_id=target_project_id,
+        project_id_set=project_id_set,
     )
 
 

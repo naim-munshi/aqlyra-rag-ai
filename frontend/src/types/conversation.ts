@@ -15,6 +15,7 @@ export type ConversationResponse = {
   title: string;
   mode: ConversationMode;
   is_pinned: boolean;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 };

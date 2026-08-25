@@ -65,6 +65,27 @@ class ConversationUpdate(BaseModel):
 
     is_pinned: bool | None = None
 
+    project_id: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    @field_validator("project_id")
+    @classmethod
+    def normalize_project_id(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError(
+                "Project ID cannot be empty"
+            )
+        return cleaned
+
     @field_validator("title")
     @classmethod
     def normalize_title(
@@ -89,10 +110,19 @@ class ConversationUpdate(BaseModel):
     def require_change(
         self,
     ) -> Self:
+        has_standard_change = (
+            self.title is not None
+            or self.mode is not None
+            or self.is_pinned is not None
+        )
+        has_project_change = (
+            "project_id"
+            in self.model_fields_set
+        )
+
         if (
-            self.title is None
-            and self.mode is None
-            and self.is_pinned is None
+            not has_standard_change
+            and not has_project_change
         ):
             raise ValueError(
                 "At least one field must be updated"
@@ -110,6 +140,7 @@ class ConversationResponse(BaseModel):
     title: str
     mode: ConversationMode
     is_pinned: bool
+    project_id: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -18,10 +21,15 @@ import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
 import { ThemeSettings } from "@/components/theme/theme-settings";
 import { ConversationHistory } from "@/components/workspace/conversation-history";
 import type { UserResponse } from "@/types/auth";
+import type {
+  ConversationMode,
+} from "@/types/conversation";
+
 
 type SidebarProps = {
   user: UserResponse;
 };
+
 
 export function Sidebar({
   user,
@@ -36,12 +44,110 @@ export function Sidebar({
     setProfileMenuOpen,
   ] = useState(false);
 
+  const [
+    activeMode,
+    setActiveMode,
+  ] = useState<ConversationMode>(
+    "normal",
+  );
+
+  useEffect(() => {
+    function handleModeChanged(
+      event: Event,
+    ) {
+      const detail =
+        (
+          event as CustomEvent<{
+            mode?: ConversationMode;
+          }>
+        ).detail;
+
+      if (
+        detail?.mode === "normal" ||
+        detail?.mode === "knowledge"
+      ) {
+        setActiveMode(detail.mode);
+      }
+    }
+
+    window.addEventListener(
+      "aqlyra:chat-mode-changed",
+      handleModeChanged,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "aqlyra:chat-mode-changed",
+        handleModeChanged,
+      );
+    };
+  }, []);
+
   function startNewChat() {
     setProfileMenuOpen(false);
 
     window.dispatchEvent(
       new Event("aqlyra:new-chat"),
     );
+  }
+
+  async function createProject() {
+    setProfileMenuOpen(false);
+
+    const modeLabel =
+      activeMode === "normal"
+        ? "Converse"
+        : "Knowledge";
+
+    const projectName =
+      window.prompt(
+        `New ${modeLabel} project`,
+      );
+
+    if (projectName === null) {
+      return;
+    }
+
+    const name =
+      projectName.trim();
+
+    if (!name) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "/api/projects",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            mode: activeMode,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        window.alert(
+          "Unable to create project.",
+        );
+        return;
+      }
+
+      window.dispatchEvent(
+        new Event(
+          "aqlyra:projects-changed",
+        ),
+      );
+    } catch {
+      window.alert(
+        "Unable to create project.",
+      );
+    }
   }
 
   function openDocuments() {
@@ -68,7 +174,6 @@ export function Sidebar({
       await fetch("/api/auth/logout", {
         method: "POST",
       });
-
       router.replace("/login");
       router.refresh();
     } catch {
@@ -87,21 +192,22 @@ export function Sidebar({
         <div className="mt-7 space-y-2">
           <button
             type="button"
-            disabled
-            title="Projects coming later"
-            className="flex h-11 w-full items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm font-semibold text-[var(--aq-muted)]"
+            onClick={() => {
+              void createProject();
+            }}
+            title={`Create a ${
+              activeMode === "normal"
+                ? "Converse"
+                : "Knowledge"
+            } project`}
+            className="flex h-11 w-full items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm font-semibold text-[var(--aq-text)] transition hover:bg-[var(--aq-control)]"
           >
             <FolderPlus
               size={18}
               strokeWidth={1.8}
             />
-
             <span className="flex-1 text-left">
               New project
-            </span>
-
-            <span className="text-[8px] font-medium">
-              Soon
             </span>
           </button>
 
@@ -130,7 +236,6 @@ export function Sidebar({
             <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-panel)]">
               <FileText size={15} />
             </span>
-
             Documents
           </button>
 
@@ -144,7 +249,6 @@ export function Sidebar({
                 size={15}
               />
             </span>
-
             RAG Chat
           </button>
         </nav>

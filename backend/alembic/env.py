@@ -11,6 +11,7 @@ from app.models import (
     Memory,
     MemoryEmbedding,
     Message,
+    Project,
     User,
 )
 
@@ -34,6 +35,7 @@ _ = (
     Memory,
     MemoryEmbedding,
     Message,
+    Project,
     User,
 )
 target_metadata = Base.metadata

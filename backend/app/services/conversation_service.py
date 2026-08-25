@@ -80,6 +80,8 @@ def update_conversation(
     title: str | None = None,
     mode: str | None = None,
     is_pinned: bool | None = None,
+    project_id: str | None = None,
+    project_id_set: bool = False,
 ) -> Conversation:
     if title is not None:
         conversation.title = title
@@ -89,6 +91,9 @@ def update_conversation(
 
     if is_pinned is not None:
         conversation.is_pinned = is_pinned
+
+    if project_id_set:
+        conversation.project_id = project_id
 
     conversation.updated_at = utc_now_naive()
 

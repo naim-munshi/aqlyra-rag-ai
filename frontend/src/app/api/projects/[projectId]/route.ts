@@ -8,24 +8,24 @@ import {
   getAccessToken,
 } from "@/lib/auth/session";
 import type {
-  ConversationResponse,
-} from "@/types/conversation";
+  ProjectResponse,
+} from "@/types/project";
+
 
 type ApiError = {
   detail?: unknown;
 };
 
-type ConversationUpdateRequest = {
-  title?: string;
-  is_pinned?: boolean;
-  project_id?: string | null;
+type ProjectUpdateRequest = {
+  name?: string;
 };
 
 type RouteContext = {
   params: Promise<{
-    conversationId: string;
+    projectId: string;
   }>;
 };
+
 
 export async function PATCH(
   request: Request,
@@ -41,15 +41,15 @@ export async function PATCH(
     );
   }
 
-  const { conversationId } =
+  const { projectId } =
     await context.params;
 
-  let body: ConversationUpdateRequest;
+  let body: ProjectUpdateRequest;
 
   try {
     body =
       (await request.json()) as
-        ConversationUpdateRequest;
+        ProjectUpdateRequest;
   } catch {
     return NextResponse.json(
       { detail: "Invalid request body" },
@@ -57,11 +57,23 @@ export async function PATCH(
     );
   }
 
+  const name =
+    typeof body.name === "string"
+      ? body.name.trim()
+      : "";
+
+  if (!name) {
+    return NextResponse.json(
+      { detail: "Project name is required" },
+      { status: 400 },
+    );
+  }
+
   try {
     const response = await fetch(
       backendUrl(
-        `/conversations/${encodeURIComponent(
-          conversationId,
+        `/projects/${encodeURIComponent(
+          projectId,
         )}`,
       ),
       {
@@ -72,14 +84,14 @@ export async function PATCH(
           Authorization:
             `Bearer ${accessToken}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name }),
         cache: "no-store",
       },
     );
 
     const data =
       await readJson<
-        ConversationResponse | ApiError
+        ProjectResponse | ApiError
       >(response);
 
     return NextResponse.json(
@@ -93,17 +105,11 @@ export async function PATCH(
     );
   } catch {
     return NextResponse.json(
-      {
-        detail:
-          "Unable to update conversation",
-      },
-      {
-        status: 502,
-      },
+      { detail: "Unable to update project" },
+      { status: 502 },
     );
   }
 }
-
 
 
 export async function DELETE(
@@ -120,14 +126,14 @@ export async function DELETE(
     );
   }
 
-  const { conversationId } =
+  const { projectId } =
     await context.params;
 
   try {
     const response = await fetch(
       backendUrl(
-        `/conversations/${encodeURIComponent(
-          conversationId,
+        `/projects/${encodeURIComponent(
+          projectId,
         )}`,
       ),
       {
@@ -143,9 +149,7 @@ export async function DELETE(
     if (response.status === 204) {
       return new Response(
         null,
-        {
-          status: 204,
-        },
+        { status: 204 },
       );
     }
 
@@ -165,13 +169,8 @@ export async function DELETE(
     );
   } catch {
     return NextResponse.json(
-      {
-        detail:
-          "Unable to delete conversation",
-      },
-      {
-        status: 502,
-      },
+      { detail: "Unable to delete project" },
+      { status: 502 },
     );
   }
 }

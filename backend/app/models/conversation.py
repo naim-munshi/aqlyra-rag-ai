@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import uuid
 
 from sqlalchemy import (
@@ -22,6 +22,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.conversation_document import ConversationDocument
     from app.models.message import Message
+    from app.models.project import Project
     from app.models.user import User
 
 
@@ -43,6 +44,10 @@ class Conversation(Base):
             "user_id",
             "is_pinned",
             "updated_at",
+        ),
+        Index(
+            "ix_conversations_project_id",
+            "project_id",
         ),
     )
 
@@ -66,6 +71,15 @@ class Conversation(Base):
         nullable=False,
         default="New chat",
         server_default="New chat",
+    )
+
+    project_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey(
+            "projects.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
 
     mode: Mapped[str] = mapped_column(
@@ -99,6 +113,9 @@ class Conversation(Base):
         back_populates="conversations",
     )
 
+    project: Mapped[Optional["Project"]] = relationship(
+        back_populates="conversations",
+    )
 
     document_links: Mapped[
         list["ConversationDocument"]

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.conversation import Conversation
     from app.models.document import Document
     from app.models.memory import Memory
+    from app.models.project import Project
 
 
 class User(Base):
@@ -76,6 +77,12 @@ class User(Base):
     )
 
     memories: Mapped[list["Memory"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    projects: Mapped[list["Project"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
         passive_deletes=True,

@@ -32,11 +32,15 @@ export async function GET() {
     );
   }
 
+  const pageSize = 100;
+  const allConversations: ConversationResponse[] = [];
+  let offset = 0;
+
   try {
-    const response =
-      await fetch(
+    while (true) {
+      const response = await fetch(
         backendUrl(
-          "/conversations?limit=100&offset=0",
+          `/conversations?limit=${pageSize}&offset=${offset}`,
         ),
         {
           method: "GET",
@@ -48,19 +52,46 @@ export async function GET() {
         },
       );
 
-    const data =
-      await readJson<
-        ConversationResponse[] | ApiError
-      >(response);
+      const data =
+        await readJson<
+          ConversationResponse[] | ApiError
+        >(response);
+
+      if (!response.ok) {
+        return NextResponse.json(
+          data ?? {
+            detail:
+              "Backend returned an invalid response",
+          },
+          {
+            status: response.status,
+          },
+        );
+      }
+
+      if (!Array.isArray(data)) {
+        return NextResponse.json(
+          {
+            detail:
+              "Backend returned an invalid response",
+          },
+          {
+            status: 502,
+          },
+        );
+      }
+
+      allConversations.push(...data);
+
+      if (data.length < pageSize) {
+        break;
+      }
+
+      offset += pageSize;
+    }
 
     return NextResponse.json(
-      data ?? {
-        detail:
-          "Backend returned an invalid response",
-      },
-      {
-        status: response.status,
-      },
+      allConversations,
     );
   } catch {
     return NextResponse.json(

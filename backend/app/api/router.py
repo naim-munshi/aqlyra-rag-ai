@@ -15,6 +15,9 @@ from app.api.embedding_indexing import (
 from app.api.memories import (
     router as memories_router,
 )
+from app.api.projects import (
+    router as projects_router,
+)
 from app.api.rag import (
     router as rag_router,
 )
@@ -52,6 +55,10 @@ api_router.include_router(
 
 api_router.include_router(
     memories_router
+)
+
+api_router.include_router(
+    projects_router
 )
 
 api_router.include_router(
