@@ -2332,16 +2332,7 @@ export function RAGWorkspace() {
                               </div>
                             )}
 
-                            <div className="mt-5 flex items-center justify-between border-t border-[var(--aq-border)] pt-4">
-                              <span className="text-[10px] text-[var(--aq-muted)]">
-                                {
-                                  turn.result.provider_name
-                                }
-                                {" · "}
-                                {
-                                  turn.result.model_name
-                                }
-                              </span>
+                            <div className="mt-5 flex items-center justify-end border-t border-[var(--aq-border)] pt-4">
 
                               <button
                                 type="button"
