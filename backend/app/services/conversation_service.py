@@ -16,11 +16,13 @@ def create_conversation(
     user_id: str,
     title: str,
     mode: str,
+    project_id: str | None = None,
 ) -> Conversation:
     conversation = Conversation(
         user_id=user_id,
         title=title,
         mode=mode,
+        project_id=project_id,
     )
 
     db.add(conversation)

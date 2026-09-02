@@ -310,3 +310,97 @@ def test_mode_change_detaches_existing_project(
     assert switch.status_code == 200
     assert switch.json()["mode"] == "normal"
     assert switch.json()["project_id"] is None
+
+
+def test_create_conversation_directly_in_project(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        email="direct-project@example.com",
+        username="direct-project",
+    )
+    authenticate_as(user)
+
+    project = create_project(
+        client,
+        name="Direct project",
+        mode="normal",
+    )
+
+    response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Direct project chat",
+            "mode": "normal",
+            "project_id": project["id"],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["project_id"] == project["id"]
+
+
+def test_direct_create_rejects_project_mode_mismatch(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = create_user(
+        db_session,
+        email="direct-mismatch@example.com",
+        username="direct-mismatch",
+    )
+    authenticate_as(user)
+
+    project = create_project(
+        client,
+        name="Knowledge only",
+        mode="knowledge",
+    )
+
+    response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Wrong mode",
+            "mode": "normal",
+            "project_id": project["id"],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_direct_create_hides_cross_user_project(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = create_user(
+        db_session,
+        email="direct-hidden-owner@example.com",
+        username="direct-hidden-owner",
+    )
+    other = create_user(
+        db_session,
+        email="direct-hidden-other@example.com",
+        username="direct-hidden-other",
+    )
+
+    authenticate_as(owner)
+    project = create_project(
+        client,
+        name="Private direct project",
+        mode="normal",
+    )
+
+    authenticate_as(other)
+    response = client.post(
+        "/api/v1/conversations",
+        json={
+            "title": "Unauthorized direct chat",
+            "mode": "normal",
+            "project_id": project["id"],
+        },
+    )
+
+    assert response.status_code == 404

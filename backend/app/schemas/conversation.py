@@ -32,6 +32,27 @@ class ConversationCreate(BaseModel):
 
     mode: ConversationMode = "normal"
 
+    project_id: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    @field_validator("project_id")
+    @classmethod
+    def normalize_create_project_id(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError(
+                "Project ID cannot be empty"
+            )
+        return cleaned
+
     @field_validator("title")
     @classmethod
     def normalize_title(

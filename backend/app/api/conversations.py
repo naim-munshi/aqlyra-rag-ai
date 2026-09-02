@@ -89,11 +89,34 @@ def create_conversation_endpoint(
     ),
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
+    if request.project_id is not None:
+        project = get_project_for_user(
+            db=db,
+            user_id=str(current_user.id),
+            project_id=request.project_id,
+        )
+
+        if project is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
+
+        if project.mode != request.mode:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Project mode must match "
+                    "conversation mode"
+                ),
+            )
+
     return create_conversation(
         db=db,
         user_id=str(current_user.id),
         title=request.title,
         mode=request.mode,
+        project_id=request.project_id,
     )
 
 
