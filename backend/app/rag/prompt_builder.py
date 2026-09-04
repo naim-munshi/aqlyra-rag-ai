@@ -34,10 +34,14 @@ Follow these rules:
     part of a larger document.
 12. For bullet-point summaries, place at least one valid source
     citation on every bullet that contains a factual claim.
-13. If the evidence supports only part of the requested answer,
+13. Prefer short paragraphs or bullet points over Markdown tables.
+    If you use a Markdown table, every factual table row must include
+    a valid source citation in that same row. Never put citations only
+    in a sentence after the table.
+14. If the evidence supports only part of the requested answer,
     answer the supported part and clearly state the limitation.
     Do not add unsupported information.
-14. Return insufficient evidence only when the supplied evidence
+15. Return insufficient evidence only when the supplied evidence
     is empty, irrelevant to the request, or provides no reasonable
     basis for answering.
 

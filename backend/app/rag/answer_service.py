@@ -63,6 +63,9 @@ Follow these rules:
     valid citation in the exact format [S1], [S2], and so on.
     This includes factual paragraphs, bullets, numbered items,
     headings, and subheadings. Put the citation in the same block.
+    Prefer paragraphs or bullets over Markdown tables. If a table is
+    used, cite every factual row in that row; do not place citations
+    only after the table.
 6. Use only the source IDs listed in the request.
 7. Never invent source IDs.
 8. Keep the answer in the same language as the original answer.
