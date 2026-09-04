@@ -111,8 +111,18 @@ type PersistedWorkspaceState = {
   draft: string;
 };
 
-const WORKSPACE_STORAGE_KEY =
+type RAGWorkspaceProps = {
+  userId: string;
+};
+
+const LEGACY_WORKSPACE_STORAGE_KEY =
   "aqlyra:active-workspace:v1";
+
+function workspaceStorageKey(
+  userId: string,
+) {
+  return `aqlyra:active-workspace:v2:${userId}`;
+}
 
 function parseSseFrame(
   frame: string,
@@ -384,7 +394,12 @@ function formatSimilarity(
   return score.toFixed(3);
 }
 
-export function RAGWorkspace() {
+export function RAGWorkspace({
+  userId,
+}: RAGWorkspaceProps) {
+  const storageKey =
+    workspaceStorageKey(userId);
+
   const fileInputRef =
     useRef<HTMLInputElement>(null);
 
@@ -721,6 +736,27 @@ export function RAGWorkspace() {
             !response.ok ||
             !Array.isArray(data)
           ) {
+            if (response.status === 404) {
+              try {
+                window.localStorage.removeItem(
+                  storageKey,
+                );
+              } catch {
+                // Workspace persistence is best effort.
+              }
+
+              setQuestion("");
+              setTurns([]);
+
+              setNormalConversationId(
+                null,
+              );
+
+              setKnowledgeConversationId(
+                null,
+              );
+            }
+
             return;
           }
 
@@ -806,7 +842,7 @@ export function RAGWorkspace() {
         openConversation,
       );
     };
-  }, []);
+  }, [storageKey]);
 
 
   useEffect(() => {
@@ -819,9 +855,13 @@ export function RAGWorkspace() {
     let restoredDraft = "";
 
     try {
+      window.localStorage.removeItem(
+        LEGACY_WORKSPACE_STORAGE_KEY,
+      );
+
       const raw =
         window.localStorage.getItem(
-          WORKSPACE_STORAGE_KEY,
+          storageKey,
         );
 
       if (raw) {
@@ -859,7 +899,7 @@ export function RAGWorkspace() {
       }
     } catch {
       window.localStorage.removeItem(
-        WORKSPACE_STORAGE_KEY,
+        storageKey,
       );
     }
 
@@ -923,7 +963,7 @@ export function RAGWorkspace() {
         restoreTimer,
       );
     };
-  }, []);
+  }, [storageKey]);
 
 
   useEffect(() => {
@@ -945,7 +985,7 @@ export function RAGWorkspace() {
 
     try {
       window.localStorage.setItem(
-        WORKSPACE_STORAGE_KEY,
+        storageKey,
         JSON.stringify(state),
       );
     } catch {
@@ -957,6 +997,7 @@ export function RAGWorkspace() {
     normalConversationId,
     knowledgeConversationId,
     question,
+    storageKey,
   ]);
 
 

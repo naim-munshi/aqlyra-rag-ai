@@ -26,7 +26,9 @@ export function KnowledgeWorkspace({
       </header>
 
       <main className="min-h-0 flex-1 p-4">
-        <RAGWorkspace />
+        <RAGWorkspace
+          userId={user.id}
+        />
       </main>
     </div>
   );
