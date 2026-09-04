@@ -335,6 +335,9 @@ def create_message_endpoint(
             evidence_tokens=(
                 result.evidence_tokens
             ),
+            title_source_content=(
+                request.content
+            ),
             scope_document_ids=(
                 document_scope
                 .new_document_ids
@@ -492,6 +495,9 @@ def create_message_stream_endpoint(
                     evidence_tokens=(
                         result.evidence_tokens
                     ),
+                    title_source_content=(
+                        request.content
+                    ),
                     attachment_document_ids=tuple(
                         request.document_ids
                     ),
@@ -597,6 +603,9 @@ def create_message_stream_endpoint(
                     generation.total_tokens
                 ),
                 evidence_tokens=None,
+                title_source_content=(
+                    request.content
+                ),
             )
 
             extract_memories_best_effort(

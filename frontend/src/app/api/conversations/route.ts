@@ -19,6 +19,7 @@ type ApiError = {
 type ConversationCreateRequest = {
   title?: string;
   mode?: ConversationMode;
+  project_id?: string | null;
 };
 
 export async function GET() {
@@ -137,6 +138,23 @@ export async function POST(
       ? body.title.trim()
       : "";
 
+  const projectId =
+    typeof body.project_id === "string"
+      ? body.project_id.trim()
+      : body.project_id === null
+        ? null
+        : undefined;
+
+  if (
+    body.project_id !== undefined &&
+    projectId === undefined
+  ) {
+    return NextResponse.json(
+      { detail: "Invalid project ID" },
+      { status: 400 },
+    );
+  }
+
   if (
     !title ||
     (
@@ -170,6 +188,9 @@ export async function POST(
           body: JSON.stringify({
             title,
             mode: body.mode,
+            ...(projectId
+              ? { project_id: projectId }
+              : {}),
           }),
           cache: "no-store",
           signal: request.signal,

@@ -10,6 +10,62 @@ from app.models.message import Message
 from app.models.message_attachment import MessageAttachment
 
 
+_DEFAULT_CONVERSATION_TITLE = "New chat"
+
+
+def _build_conversation_title(
+    value: str,
+) -> str:
+    normalized = " ".join(
+        value.split()
+    ).rstrip(".!?")
+
+    if not normalized:
+        return _DEFAULT_CONVERSATION_TITLE
+
+    title = " ".join(
+        normalized.split(" ")[:8]
+    )
+
+    if len(title) > 72:
+        title = (
+            f"{title[:69].rstrip()}…"
+        )
+
+    return title
+
+
+def _title_first_conversation_turn(
+    *,
+    db: Session,
+    conversation: Conversation,
+    content: str,
+) -> None:
+    if (
+        conversation.title
+        != _DEFAULT_CONVERSATION_TITLE
+    ):
+        return
+
+    existing_message_id = db.scalar(
+        select(Message.id)
+        .where(
+            Message.conversation_id
+            == conversation.id
+        )
+        .limit(1)
+    )
+
+    if existing_message_id is not None:
+        return
+
+    conversation.title = (
+        _build_conversation_title(
+            content,
+        )
+    )
+
+
 def create_conversation(
     *,
     db: Session,
@@ -185,9 +241,20 @@ def persist_chat_turn(
     output_tokens: int | None,
     total_tokens: int | None,
     evidence_tokens: int | None,
+    title_source_content: str | None = None,
     scope_document_ids: tuple[str, ...] = (),
     attachment_document_ids: tuple[str, ...] = (),
 ) -> tuple[Message, Message]:
+    _title_first_conversation_turn(
+        db=db,
+        conversation=conversation,
+        content=(
+            title_source_content
+            if title_source_content is not None
+            else user_content
+        ),
+    )
+
     user_message = Message(
         conversation_id=conversation.id,
         role="user",

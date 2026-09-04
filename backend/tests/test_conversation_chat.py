@@ -13,9 +13,11 @@ from app.llms import (
     LLMProviderInfo,
 )
 from app.main import app
+from app.models.conversation import Conversation
 from app.models.conversation_document import ConversationDocument
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
+from app.models.project import Project
 from app.models.user import User
 
 
@@ -84,13 +86,22 @@ def create_conversation(
     client: TestClient,
     *,
     mode: str,
+    title: str = "Chat test",
+    project_id: str | None = None,
 ) -> str:
+    payload = {
+        "title": title,
+        "mode": mode,
+    }
+
+    if project_id is not None:
+        payload["project_id"] = (
+            project_id
+        )
+
     response = client.post(
         "/api/v1/conversations",
-        json={
-            "title": "Chat test",
-            "mode": mode,
-        },
+        json=payload,
     )
 
     assert response.status_code == 201
@@ -175,6 +186,112 @@ def test_normal_chat_persists_turn_without_citations(
     assert len(messages) == 2
     assert messages[0]["role"] == "user"
     assert messages[1]["role"] == "assistant"
+
+
+def test_first_project_message_replaces_default_chat_title(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    user = create_user(
+        db_session,
+        suffix="project-auto-title",
+    )
+
+    project = Project(
+        user_id=str(user.id),
+        name="User chosen project",
+        mode="normal",
+    )
+
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+
+    authenticate_as(user)
+
+    provider = FakeNormalProvider()
+
+    monkeypatch.setattr(
+        chat_module,
+        "create_configured_llm_provider",
+        lambda: provider,
+    )
+
+    conversation_id = create_conversation(
+        client,
+        mode="normal",
+        title="New chat",
+        project_id=project.id,
+    )
+
+    first = client.post(
+        (
+            "/api/v1/conversations/"
+            f"{conversation_id}/messages"
+        ),
+        json={
+            "content": (
+                "How does hybrid retrieval work "
+                "in multilingual company "
+                "knowledge bases today?"
+            ),
+        },
+    )
+
+    assert first.status_code == 200
+
+    db_session.expire_all()
+
+    conversation = db_session.get(
+        Conversation,
+        conversation_id,
+    )
+    persisted_project = db_session.get(
+        Project,
+        project.id,
+    )
+
+    assert conversation is not None
+    assert conversation.title == (
+        "How does hybrid retrieval work in "
+        "multilingual company"
+    )
+    assert conversation.project_id == (
+        project.id
+    )
+
+    assert persisted_project is not None
+    assert persisted_project.name == (
+        "User chosen project"
+    )
+
+    second = client.post(
+        (
+            "/api/v1/conversations/"
+            f"{conversation_id}/messages"
+        ),
+        json={
+            "content": (
+                "Use a completely different "
+                "title now."
+            ),
+        },
+    )
+
+    assert second.status_code == 200
+
+    db_session.expire_all()
+    conversation = db_session.get(
+        Conversation,
+        conversation_id,
+    )
+
+    assert conversation is not None
+    assert conversation.title == (
+        "How does hybrid retrieval work in "
+        "multilingual company"
+    )
 
 
 def test_normal_chat_receives_previous_history(

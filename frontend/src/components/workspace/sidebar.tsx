@@ -23,7 +23,11 @@ import { ConversationHistory } from "@/components/workspace/conversation-history
 import type { UserResponse } from "@/types/auth";
 import type {
   ConversationMode,
+  ConversationResponse,
 } from "@/types/conversation";
+import type {
+  ProjectResponse,
+} from "@/types/project";
 
 
 type SidebarProps = {
@@ -138,11 +142,90 @@ export function Sidebar({
         return;
       }
 
+      const project =
+        (await response.json()) as
+          ProjectResponse;
+
+      if (
+        !project ||
+        typeof project.id !== "string"
+      ) {
+        window.alert(
+          "Project was created, but its details could not be loaded.",
+        );
+        return;
+      }
+
+      const conversationResponse =
+        await fetch(
+          "/api/conversations",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              title: "New chat",
+              mode: activeMode,
+              project_id: project.id,
+            }),
+          },
+        );
+
+      const conversation =
+        (await conversationResponse.json()) as
+          ConversationResponse;
+
+      if (
+        !conversationResponse.ok ||
+        !conversation ||
+        typeof conversation.id !== "string"
+      ) {
+        window.dispatchEvent(
+          new Event(
+            "aqlyra:projects-changed",
+          ),
+        );
+
+        window.alert(
+          "Project was created, but its first chat could not be opened.",
+        );
+        return;
+      }
+
       window.dispatchEvent(
         new Event(
           "aqlyra:projects-changed",
         ),
       );
+
+      window.dispatchEvent(
+        new Event(
+          "aqlyra:conversations-changed",
+        ),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "aqlyra:open-conversation",
+          {
+            detail: {
+              id: conversation.id,
+              title: conversation.title,
+              mode: conversation.mode,
+            },
+          },
+        ),
+      );
+
+      window.setTimeout(() => {
+        document
+          .querySelector<HTMLTextAreaElement>(
+            'textarea[placeholder^="Ask Aqlyra"]',
+          )
+          ?.focus();
+      }, 0);
     } catch {
       window.alert(
         "Unable to create project.",
