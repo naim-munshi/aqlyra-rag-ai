@@ -19,6 +19,7 @@ import {
 } from "react";
 
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
+import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
 import {
@@ -2306,12 +2307,10 @@ export function RAGWorkspace({
                         {turn.streamedAnswer &&
                           !turn.result && (
                           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
-                            <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--aq-text-soft)]">
-                              {turn.streamedAnswer}
-                              <span className="ml-1 animate-pulse text-[var(--aq-blue)]">
-                                ▋
-                              </span>
-                            </p>
+                            <MarkdownMessage
+                              content={turn.streamedAnswer}
+                              isStreaming
+                            />
                           </div>
                         )}
 
@@ -2332,12 +2331,12 @@ export function RAGWorkspace({
 
                         {turn.result && (
                           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
-                            <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--aq-text-soft)]">
-                              {
+                            <MarkdownMessage
+                              content={
                                 turn.result
                                   .answer
                               }
-                            </p>
+                            />
 
                             {turn.result.citations
                               .length >
