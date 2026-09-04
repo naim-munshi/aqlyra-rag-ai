@@ -66,6 +66,38 @@ The backend is split by responsibility instead of putting most logic inside rout
 | `database/` | engine and database sessions |
 | `models/` | persistent models |
 
+## Identity and session flow
+
+Both supported identity paths converge on the same Aqlyra session model.
+
+```mermaid
+flowchart TB
+    P[Email and password] --> C[Verification challenge]
+    C --> M[SMTP code delivery]
+    M --> V[Code verification]
+    G[Google credential] --> I[Backend ID-token verification]
+    V --> J[JWT access token]
+    I --> J
+    J --> H[HttpOnly browser cookie]
+```
+
+For email registration, the backend creates a user that cannot log in until
+the verification challenge succeeds. The six-digit code is stored as an HMAC
+digest, expires after a bounded interval, has a failed-attempt limit, and is
+subject to resend and endpoint rate limits. A short-lived, typed verification
+ticket binds the browser flow to the user and challenge without exposing the
+challenge in client-readable storage.
+
+For Google sign-in, the browser receives a Google Identity Services
+credential. The backend validates the configured audience, accepted issuer,
+stable Google subject, email address, and verified-email claim before linking
+or creating the local user. The Google Client Secret is not used by this
+ID-token flow.
+
+The Next.js authentication routes exchange either successful result for the
+same backend access token, confirm the user through `/users/me`, and place the
+token in an HttpOnly, SameSite cookie.
+
 ## Knowledge request flow
 
 ```mermaid
@@ -115,11 +147,14 @@ Converse can use normal model knowledge. Knowledge cannot silently fall back to 
 PostgreSQL stores the main application state:
 
 - users;
+- linked Google subjects and email-verification state;
+- email verification challenges;
 - documents;
 - chunks;
 - embeddings;
 - conversations;
 - messages;
+- projects and conversation-to-project assignments;
 - Knowledge document scopes;
 - memory.
 
@@ -131,9 +166,21 @@ Redis is used for rate-limit counters.
 
 Uploaded files are stored separately from the database in persistent storage.
 
+Projects organize conversations inside either Converse or Knowledge mode. A
+project and its conversations must belong to the same authenticated user and
+use the same mode. Deleting a project preserves its conversations and returns
+them to the regular history list. Creating a project also creates and opens an
+initial chat; the first user turn replaces its placeholder title with a title
+derived from that turn.
+
 ## Security boundaries
 
 The authenticated user identity is the source of truth for access control.
+
+Password users must complete email verification before login. Google users are
+accepted only from verified Google ID-token claims. Access tokens and email
+verification tickets have distinct token types, and the browser keeps both in
+HttpOnly cookies.
 
 The backend checks ownership before returning documents, conversations, messages, memory, or document content.
 

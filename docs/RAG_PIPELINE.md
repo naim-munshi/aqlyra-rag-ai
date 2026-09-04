@@ -2,9 +2,11 @@
 
 ## What Knowledge mode does
 
-Knowledge mode answers questions from the user's selected documents.
+Knowledge mode answers questions from the authenticated user's selected
+documents. Authentication establishes the user identity; conversation scope
+and ownership checks determine which documents can enter retrieval.
 
-The full path is:
+Indexing and answering are separate paths:
 
 ```text
 upload
@@ -12,6 +14,9 @@ upload
 → chunk
 → embed
 → store
+
+authenticated question
+→ resolve owned document scope
 → retrieve
 → fuse results
 → build evidence
@@ -20,6 +25,17 @@ upload
 → check grounding
 → answer / repair / refuse
 ```
+
+## 0. Authorization and document scope
+
+Before retrieval, the backend resolves the requested Knowledge document scope.
+For conversation requests, that combines the persisted conversation scope with
+any newly selected document IDs. It rejects missing, cross-user, or otherwise
+invalid document references instead of allowing them into the search filter.
+
+Projects organize conversations but do not widen document access. Project
+membership, conversation ownership, and Knowledge document scope remain
+separate checks.
 
 ## 1. Ingestion
 
@@ -39,7 +55,9 @@ JPEG
 WEBP
 ```
 
-Files are validated before processing.
+Files are validated before processing. Ownership is stored on the document;
+searchable chunks remain linked to that document so retrieval can enforce the
+same user boundary.
 
 Image inputs can be sent through OCR.
 
@@ -69,13 +87,16 @@ Embeddings are stored with provider/model metadata so they can be replaced later
 
 ## 4. Dense retrieval
 
-The question is embedded and compared with stored document vectors through pgvector.
+The question is embedded and compared with stored document vectors through
+pgvector. The query is constrained to the already validated, user-owned
+document scope.
 
 Dense search is useful when the question and the source mean the same thing but use different wording.
 
 ## 5. Lexical retrieval
 
-PostgreSQL full-text search runs alongside dense retrieval.
+PostgreSQL full-text search runs alongside dense retrieval and uses the same
+validated document scope.
 
 Lexical search is useful for exact terms such as:
 
@@ -196,11 +217,12 @@ When a Knowledge answer looks wrong:
 
 ```text
 1. Was the correct content parsed?
-2. Was it chunked correctly?
-3. Did retrieval find it?
-4. Did evidence selection keep it?
-5. Did the model use it?
-6. Were the citations valid?
-7. Did the cited evidence support the claim?
-8. Did the provider fail?
+2. Did the authenticated conversation resolve the intended document scope?
+3. Was it chunked correctly?
+4. Did retrieval find it?
+5. Did evidence selection keep it?
+6. Did the model use it?
+7. Were the citations valid?
+8. Did the cited evidence support the claim?
+9. Did the provider fail?
 ```
