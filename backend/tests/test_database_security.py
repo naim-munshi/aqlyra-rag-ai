@@ -49,6 +49,26 @@ def _production_settings(
         "REDIS_URL",
         "redis://redis:6379/0",
     )
+    monkeypatch.setenv(
+        "EMAIL_VERIFICATION_REQUIRED",
+        "true",
+    )
+    monkeypatch.setenv(
+        "SMTP_USERNAME",
+        "sender@gmail.com",
+    )
+    monkeypatch.setenv(
+        "SMTP_PASSWORD",
+        "test-google-app-password",
+    )
+    monkeypatch.setenv(
+        "SMTP_FROM_EMAIL",
+        "sender@gmail.com",
+    )
+    monkeypatch.setenv(
+        "GOOGLE_CLIENT_ID",
+        "test.apps.googleusercontent.com",
+    )
 
     return Settings(
         _env_file=None,

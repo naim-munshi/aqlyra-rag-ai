@@ -377,6 +377,40 @@ def limit_login_request(
     )
 
 
+def limit_verify_request(
+    request: Request,
+) -> None:
+    _enforce_ip_limit(
+        request=request,
+        bucket="verify-email-ip",
+        limit=(
+            settings
+            .RATE_LIMIT_VERIFY_IP_LIMIT
+        ),
+        window_seconds=(
+            settings
+            .RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS
+        ),
+    )
+
+
+def limit_resend_request(
+    request: Request,
+) -> None:
+    _enforce_ip_limit(
+        request=request,
+        bucket="resend-verification-ip",
+        limit=(
+            settings
+            .RATE_LIMIT_RESEND_IP_LIMIT
+        ),
+        window_seconds=(
+            settings
+            .RATE_LIMIT_RESEND_IP_WINDOW_SECONDS
+        ),
+    )
+
+
 def limit_login_identity(
     email: str,
 ) -> None:

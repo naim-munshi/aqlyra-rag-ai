@@ -35,6 +35,23 @@ class Settings(BaseSettings):
         int
     ) = 30
 
+    # Verified identity
+    EMAIL_VERIFICATION_REQUIRED: bool = True
+    EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
+    EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
+    EMAIL_VERIFICATION_RESEND_SECONDS: int = 60
+
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Aqlyra"
+    SMTP_USE_SSL: bool = True
+    SMTP_TIMEOUT_SECONDS: float = 10.0
+
+    GOOGLE_CLIENT_ID: str = ""
+
     # Database
     DATABASE_URL: str
 
@@ -58,6 +75,12 @@ class Settings(BaseSettings):
 
     RATE_LIMIT_LOGIN_IDENTITY_LIMIT: int = 10
     RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS: int = 300
+
+    RATE_LIMIT_VERIFY_IP_LIMIT: int = 10
+    RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS: int = 300
+
+    RATE_LIMIT_RESEND_IP_LIMIT: int = 5
+    RATE_LIMIT_RESEND_IP_WINDOW_SECONDS: int = 3_600
 
     RATE_LIMIT_UPLOAD_USER_LIMIT: int = 20
     RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS: int = 3_600
@@ -346,6 +369,10 @@ class Settings(BaseSettings):
         "QUERY_REWRITER_MAX_OUTPUT_TOKENS",
         "MEMORY_EXTRACTION_MAX_CANDIDATES",
         "MEMORY_CHAT_TOP_K",
+        "EMAIL_VERIFICATION_CODE_TTL_MINUTES",
+        "EMAIL_VERIFICATION_MAX_ATTEMPTS",
+        "EMAIL_VERIFICATION_RESEND_SECONDS",
+        "SMTP_PORT",
     )
     @classmethod
     def validate_positive_integer(
@@ -379,6 +406,7 @@ class Settings(BaseSettings):
     @field_validator(
         "EMBEDDING_TIMEOUT_SECONDS",
         "LLM_TIMEOUT_SECONDS",
+        "SMTP_TIMEOUT_SECONDS",
     )
     @classmethod
     def validate_positive_timeout(
@@ -552,6 +580,18 @@ class Settings(BaseSettings):
             "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS": (
                 self.RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS
             ),
+            "RATE_LIMIT_VERIFY_IP_LIMIT": (
+                self.RATE_LIMIT_VERIFY_IP_LIMIT
+            ),
+            "RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS": (
+                self.RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS
+            ),
+            "RATE_LIMIT_RESEND_IP_LIMIT": (
+                self.RATE_LIMIT_RESEND_IP_LIMIT
+            ),
+            "RATE_LIMIT_RESEND_IP_WINDOW_SECONDS": (
+                self.RATE_LIMIT_RESEND_IP_WINDOW_SECONDS
+            ),
             "RATE_LIMIT_UPLOAD_USER_LIMIT": (
                 self.RATE_LIMIT_UPLOAD_USER_LIMIT
             ),
@@ -597,6 +637,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RATE_LIMIT_CLIENT_IP_HEADER "
                 "cannot be empty"
+            )
+
+        if (
+            self.EMAIL_VERIFICATION_REQUIRED
+            and not self.SMTP_HOST.strip()
+        ):
+            raise ValueError(
+                "SMTP_HOST is required when email "
+                "verification is enabled"
+            )
+
+        if not self.SMTP_FROM_NAME.strip():
+            raise ValueError(
+                "SMTP_FROM_NAME cannot be empty"
             )
 
         return self
@@ -656,6 +710,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 "DEBUG must be false in production"
             )
+
+        if not self.EMAIL_VERIFICATION_REQUIRED:
+            raise ValueError(
+                "EMAIL_VERIFICATION_REQUIRED must be "
+                "true in production"
+            )
+
+        smtp_values = {
+            "SMTP_USERNAME": self.SMTP_USERNAME,
+            "SMTP_PASSWORD": self.SMTP_PASSWORD,
+            "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
+            "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
+        }
+
+        for setting_name, setting_value in smtp_values.items():
+            if not setting_value.strip():
+                raise ValueError(
+                    f"{setting_name} is required in production"
+                )
 
         origins = {
             origin.strip()

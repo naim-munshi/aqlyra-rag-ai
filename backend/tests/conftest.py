@@ -26,6 +26,7 @@ os.environ["UPLOAD_DIR"] = str(TEST_UPLOAD_DIR)
 os.environ["DEBUG"] = "false"
 os.environ["EMBEDDING_PROVIDER"] = "deterministic"
 os.environ["LLM_PROVIDER"] = "deterministic"
+os.environ["EMAIL_VERIFICATION_REQUIRED"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,6 +42,7 @@ from app.models import (
     DocumentChunk,
     DocumentUnit,
     EmbeddingRecord,
+    EmailVerificationCode,
     Memory,
     MemoryEmbedding,
     Message,
@@ -55,6 +57,7 @@ _REGISTERED_MODELS = (
     DocumentUnit,
     DocumentChunk,
     EmbeddingRecord,
+    EmailVerificationCode,
     Memory,
     MemoryEmbedding,
 )

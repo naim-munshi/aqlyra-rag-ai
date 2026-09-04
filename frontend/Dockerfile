@@ -11,8 +11,11 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=""
+
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV BACKEND_API_URL=http://backend:8000/api/v1
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

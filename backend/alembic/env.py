@@ -8,6 +8,7 @@ from app.database.base import Base
 from app.models import (
     Conversation,
     Document,
+    EmailVerificationCode,
     Memory,
     MemoryEmbedding,
     Message,
@@ -32,6 +33,7 @@ if config.config_file_name is not None:
 _ = (
     Conversation,
     Document,
+    EmailVerificationCode,
     Memory,
     MemoryEmbedding,
     Message,

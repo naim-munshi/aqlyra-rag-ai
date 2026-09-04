@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+
 type LoginError = {
   detail?: string;
 };
@@ -47,6 +49,18 @@ export function LoginForm() {
       const data = (await response.json()) as LoginError;
 
       if (!response.ok) {
+        if (
+          response.status === 403 &&
+          data.detail === "Email verification required"
+        ) {
+          window.sessionStorage.setItem(
+            "aqlyra_pending_email",
+            email.trim().toLowerCase(),
+          );
+          router.push("/verify-email");
+          return;
+        }
+
         setError(
           typeof data.detail === "string"
             ? data.detail
@@ -66,7 +80,10 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-8">
+    <>
+      <GoogleSignInButton />
+
+      <form onSubmit={handleSubmit} className="mt-6">
       <div>
         <label
           htmlFor="email"
@@ -173,6 +190,7 @@ export function LoginForm() {
 
         {loading ? "Signing in..." : "Sign in"}
       </button>
-    </form>
+      </form>
+    </>
   );
 }

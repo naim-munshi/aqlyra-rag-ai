@@ -2,15 +2,13 @@ import { NextResponse } from "next/server";
 
 import { backendUrl } from "@/lib/api/backend";
 import { completeAuthentication } from "@/lib/auth/complete-authentication";
-import type {
-  LoginInput,
-} from "@/types/auth";
+import type { GoogleCredentialInput } from "@/types/auth";
 
 export async function POST(request: Request) {
-  let body: LoginInput;
+  let body: GoogleCredentialInput;
 
   try {
-    body = (await request.json()) as LoginInput;
+    body = (await request.json()) as GoogleCredentialInput;
   } catch {
     return NextResponse.json(
       { detail: "Invalid request body" },
@@ -21,20 +19,16 @@ export async function POST(request: Request) {
   const backendHeaders = new Headers({
     "Content-Type": "application/json",
   });
-
   const clientIp =
     request.headers.get("x-aqlyra-client-ip");
 
   if (clientIp) {
-    backendHeaders.set(
-      "X-Aqlyra-Client-IP",
-      clientIp,
-    );
+    backendHeaders.set("X-Aqlyra-Client-IP", clientIp);
   }
 
   try {
-    const loginResponse = await fetch(
-      backendUrl("/auth/login"),
+    const response = await fetch(
+      backendUrl("/auth/google"),
       {
         method: "POST",
         headers: backendHeaders,
@@ -44,8 +38,8 @@ export async function POST(request: Request) {
     );
 
     return await completeAuthentication(
-      loginResponse,
-      "Login failed",
+      response,
+      "Google sign-in failed",
     );
   } catch {
     return NextResponse.json(

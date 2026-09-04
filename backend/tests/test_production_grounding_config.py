@@ -43,6 +43,19 @@ def production_values(
         ),
         "ALGORITHM": "HS256",
         "ACCESS_TOKEN_EXPIRE_MINUTES": "30",
+        "EMAIL_VERIFICATION_REQUIRED": "true",
+        "EMAIL_VERIFICATION_CODE_TTL_MINUTES": "10",
+        "EMAIL_VERIFICATION_MAX_ATTEMPTS": "5",
+        "EMAIL_VERIFICATION_RESEND_SECONDS": "60",
+        "SMTP_HOST": "smtp.gmail.com",
+        "SMTP_PORT": "465",
+        "SMTP_USERNAME": "sender@gmail.com",
+        "SMTP_PASSWORD": "test-google-app-password",
+        "SMTP_FROM_EMAIL": "sender@gmail.com",
+        "SMTP_FROM_NAME": "Aqlyra",
+        "SMTP_USE_SSL": "true",
+        "SMTP_TIMEOUT_SECONDS": "10",
+        "GOOGLE_CLIENT_ID": "test.apps.googleusercontent.com",
         "POSTGRES_USER": "aqlyra",
         "POSTGRES_PASSWORD": password,
         "POSTGRES_DB": "aqlyra",
@@ -74,6 +87,10 @@ def production_values(
         "RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS": "60",
         "RATE_LIMIT_LOGIN_IDENTITY_LIMIT": "10",
         "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS": "300",
+        "RATE_LIMIT_VERIFY_IP_LIMIT": "10",
+        "RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS": "300",
+        "RATE_LIMIT_RESEND_IP_LIMIT": "5",
+        "RATE_LIMIT_RESEND_IP_WINDOW_SECONDS": "3600",
         "RATE_LIMIT_UPLOAD_USER_LIMIT": "20",
         "RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS": "3600",
         "RATE_LIMIT_PROCESS_USER_LIMIT": "30",
@@ -213,6 +230,27 @@ def test_production_preflight_accepts_grounded_config(
         "RAG_GROUNDING_VERIFIER=PASS"
         in result.stdout
     )
+
+
+def test_production_preflight_rejects_missing_identity_config(
+    tmp_path: Path,
+) -> None:
+    values = production_values()
+    values["SMTP_PASSWORD"] = ""
+    values["GOOGLE_CLIENT_ID"] = ""
+    env_file = tmp_path / "production.env"
+
+    write_env(
+        env_file,
+        values,
+    )
+    result = run_preflight(
+        env_file
+    )
+
+    assert result.returncode != 0
+    assert "SMTP_PASSWORD must be configured" in result.stdout
+    assert "GOOGLE_CLIENT_ID must be configured" in result.stdout
 
 
 def test_production_preflight_rejects_disabled_verifier(

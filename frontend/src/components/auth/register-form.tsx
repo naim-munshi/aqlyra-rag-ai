@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import type { RegistrationResponse } from "@/types/auth";
+
 type ApiError = {
   detail?:
     | string
@@ -78,10 +81,24 @@ export function RegisterForm() {
       );
 
       const registerData =
-        (await registerResponse.json()) as ApiError;
+        (await registerResponse.json()) as
+          | RegistrationResponse
+          | ApiError;
 
       if (!registerResponse.ok) {
-        setError(getErrorMessage(registerData));
+        setError(getErrorMessage(registerData as ApiError));
+        return;
+      }
+
+      if (
+        "verification_required" in registerData &&
+        registerData.verification_required
+      ) {
+        window.sessionStorage.setItem(
+          "aqlyra_pending_email",
+          email.trim().toLowerCase(),
+        );
+        router.push("/verify-email");
         return;
       }
 
@@ -117,10 +134,13 @@ export function RegisterForm() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="mt-8"
-    >
+    <>
+      <GoogleSignInButton />
+
+      <form
+        onSubmit={handleSubmit}
+        className="mt-6"
+      >
       <div>
         <label
           htmlFor="username"
@@ -288,6 +308,7 @@ export function RegisterForm() {
           ? "Creating account..."
           : "Create account"}
       </button>
-    </form>
+      </form>
+    </>
   );
 }

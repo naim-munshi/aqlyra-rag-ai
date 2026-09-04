@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     is_active: bool
+    email_verified_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

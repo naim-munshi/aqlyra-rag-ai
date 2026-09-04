@@ -187,6 +187,10 @@ rate_limit_positive_keys = (
     "RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS",
     "RATE_LIMIT_LOGIN_IDENTITY_LIMIT",
     "RATE_LIMIT_LOGIN_IDENTITY_WINDOW_SECONDS",
+    "RATE_LIMIT_VERIFY_IP_LIMIT",
+    "RATE_LIMIT_VERIFY_IP_WINDOW_SECONDS",
+    "RATE_LIMIT_RESEND_IP_LIMIT",
+    "RATE_LIMIT_RESEND_IP_WINDOW_SECONDS",
     "RATE_LIMIT_UPLOAD_USER_LIMIT",
     "RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS",
     "RATE_LIMIT_PROCESS_USER_LIMIT",
@@ -217,6 +221,52 @@ for key in rate_limit_positive_keys:
 require(
     "RATE_LIMIT_CLIENT_IP_HEADER"
 )
+
+
+email_verification_enabled = values.get(
+    "EMAIL_VERIFICATION_REQUIRED",
+    "",
+).casefold()
+
+if email_verification_enabled not in {
+    "true",
+    "1",
+    "yes",
+    "on",
+}:
+    errors.append(
+        "EMAIL_VERIFICATION_REQUIRED must be true "
+        "in production"
+    )
+
+
+for key in (
+    "EMAIL_VERIFICATION_CODE_TTL_MINUTES",
+    "EMAIL_VERIFICATION_MAX_ATTEMPTS",
+    "EMAIL_VERIFICATION_RESEND_SECONDS",
+    "SMTP_PORT",
+    "SMTP_TIMEOUT_SECONDS",
+):
+    raw_value = require(key)
+
+    try:
+        if float(raw_value) <= 0:
+            raise ValueError
+    except ValueError:
+        errors.append(
+            f"{key} must be positive"
+        )
+
+
+for key in (
+    "SMTP_HOST",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "SMTP_FROM_EMAIL",
+    "SMTP_FROM_NAME",
+    "GOOGLE_CLIENT_ID",
+):
+    require(key)
 
 
 if values.get(
@@ -431,6 +481,8 @@ print("LLM_PROVIDER=PASS")
 print("RAG_GROUNDING_VERIFIER=PASS")
 print("RATE_LIMITING=PASS")
 print("REDIS_RATE_LIMIT_BACKEND=PASS")
+print("EMAIL_VERIFICATION=PASS")
+print("GOOGLE_IDENTITY=PASS")
 print("LLM_API_KEY=SET")
 print("HF_TOKEN=SET")
 print("LIVEKIT_CONFIG=SET")

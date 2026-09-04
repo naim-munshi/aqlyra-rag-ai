@@ -224,11 +224,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: >-
+          ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     container_name: aqlyra-frontend
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
       BACKEND_API_URL: http://backend:8000/api/v1
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: >-
+        ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     depends_on:
       backend:
         condition: service_healthy

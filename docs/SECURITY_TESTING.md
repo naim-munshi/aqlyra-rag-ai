@@ -8,6 +8,27 @@ The test suite also checks a number of failure and adversarial cases.
 
 ## Authentication and ownership
 
+Email syntax alone is not treated as proof of mailbox ownership.
+New password accounts remain unverified until a one-time code is
+accepted. Verification codes:
+
+- contain six digits and expire after ten minutes;
+- are stored as keyed HMAC digests, never as plaintext;
+- stop working after five incorrect attempts or after use;
+- have resend cooldown and IP rate-limit protection;
+- are bound to a short-lived signed verification ticket stored in an
+  HttpOnly, SameSite cookie by the frontend session layer.
+
+An unverified registration can be safely restarted. This prevents an
+attacker from pre-registering another person's email with an
+attacker-chosen password and later benefiting when the real mailbox
+owner verifies it.
+
+Google credentials are verified on the backend for signature,
+audience, issuer, subject, and verified email before an Aqlyra session
+is issued. A Google account can safely reclaim a matching unverified
+email because the pending password is invalidated during linking.
+
 Protected data is always read in the context of the authenticated user.
 
 Ownership checks cover:
@@ -70,6 +91,7 @@ That includes areas such as:
 - registration;
 - login;
 - repeated failed login attempts;
+- email verification and resend requests;
 - uploads;
 - document processing;
 - RAG answers;
