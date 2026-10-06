@@ -1,0 +1,18 @@
+field,type,required,description
+dataset_id,string,yes,Dataset identifier
+query_id,string,yes,Stable canonical query identifier
+primary_source_doc_id,string,yes,Primary controlled source document used during query authoring
+question,string,yes,Original canonical query text
+question_type,string,yes,lexical-anchor, semantic-paraphrase, entity+attribute, multi-hop, or distractor-heavy
+answerability,string,yes,answerable, unanswerable, or conflict
+gold_answer,string,no,Expected answer when applicable
+scope_id,string,yes,Fixed authorized scope for the controlled track
+conflict_group_id,string,no,Conflict group for contradiction cases
+resolution_rule,string,no,Explicit rule for conflict handling
+gold_evidence_count,integer,yes,Number of positive gold evidence units
+distractor_unit_ids,string,no,Semicolon-separated exact distractor retrieval-unit IDs
+distractor_unit_count,integer,yes,Number of designated plausible distractor units
+lexical_overlap_bucket,string,yes,low, moderate, or high overlap with gold evidence
+requires_multi_hop,boolean,yes,Whether at least two supporting retrieval units are necessary
+review_status,string,yes,draft, reviewed, or frozen
+annotation_notes,string,no,Reviewer notes kept separate from system output

@@ -1,0 +1,1 @@
+question_id,document_id,document_version,question_type,question,gold_answer,answerability,expected_action,gold_evidence_unit_ids,gold_evidence_spans,gold_conflicting_unit_ids,resolution_rule,notes

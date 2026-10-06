@@ -1,0 +1,8 @@
+dataset_id,split,role,queries,corpus_units,domain,public_source,md5,development_use,notes
+scifact,test,external_ir,300,~5K,scientific_claims,https://github.com/beir-cellar/beir,5f7d1de60b170fc8027bb7898e2efca1,yes,Use official BEIR qrels; no query rewriting
+nfcorpus,test,external_ir,323,~3.6K,medical_information,https://github.com/beir-cellar/beir,a89dba18a62ef92f7d323ec890a0d38d,yes,Use official BEIR qrels; long-tail/domain-specific natural queries
+fiqa,test,external_ir,648,~57K,financial_QA,https://github.com/beir-cellar/beir,17918ed23cd04fb15047f73e6c3bd9d9,development-subset-first,Full corpus may be resource-heavy on laptop; document subset rules must be deterministic
+bright,subset-test,external_stress,documented_after_pilot,documented_after_pilot,multi-domain_reasoning,https://brightbenchmark.github.io/,NA,no,Add only after Tier B implementation is stable
+lotte,subset-test,external_stress,documented_after_pilot,documented_after_pilot,long-tail_topic_search,https://github.com/stanford-futuredata/ColBERT,NA,no,Add only if resource budget allows
+controlled_v0.2,development,diagnostic,240,48,synthetic-controlled,local,NA,yes,Not for final external-validity claim
+scope_v0.2,development,scope_stress,documented_in_manifest,documented_in_manifest,multi-user-authorized,local,NA,yes,Unauthorized exposure is a hard invariant

@@ -1,0 +1,11 @@
+field,type,required,description
+dataset_id,string,yes,Dataset identifier
+source_doc_id,string,yes,Stable parent document identifier
+document_version,string,yes,Immutable version identifier
+source_unit_id,string,yes,Stable retrieval-unit identifier
+unit_order,integer,yes,Deterministic unit order within the source document
+content_hash_sha256,string,yes,SHA-256 hash of the exact retrieval-unit text
+source_type,string,yes,synthetic or external
+source_reference,string,yes,Provenance reference for the source
+license,string,yes,Applicable license or synthetic-authoring declaration
+text,string,yes,Exact retrieval-unit text used by the benchmark

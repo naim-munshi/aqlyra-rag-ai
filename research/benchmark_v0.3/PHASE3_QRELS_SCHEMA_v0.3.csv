@@ -1,0 +1,11 @@
+field,type,required,description
+dataset_id,string,yes,Dataset identifier
+query_id,string,yes,Canonical query identifier
+source_doc_id,string,yes,Parent source document identifier
+document_version,string,yes,Immutable source-document version
+source_unit_id,string,yes,Exact retrieval unit containing relevant evidence
+relevance_grade,integer,yes,Published qrels-compatible relevance grade or reviewed controlled judgment
+gold_evidence_span,string,no,Exact supporting span when available
+conflicting_unit_flag,boolean,no,Whether this unit participates in a controlled conflict set
+conflict_group_id,string,no,Identifier linking contradictory units for a conflict query
+annotation_notes,string,no,Judgment notes kept separate from system output

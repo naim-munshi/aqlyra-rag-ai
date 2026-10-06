@@ -1,0 +1,20 @@
+Aqlyra Tier A v0.3.3 Full Integrity Gate
+============================================
+STATUS: PASS
+
+documents=288
+queries=240
+qrels=288
+evidence_span_errors=0
+gold_evidence_errors=0
+unanswerable_errors=0
+multi_hop_errors=0
+conflict_errors=0
+duplicate_word_errors=0
+grammar_errors=0
+exact_duplicate_questions=0
+provenance_errors=0
+
+FAILURES:
+
+WARNINGS:

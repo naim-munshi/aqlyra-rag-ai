@@ -1,0 +1,13 @@
+dataset_id,query_id,question,question_type,answerability,gold_answer,scope_id,conflict_group_id,resolution_rule,annotation_notes
+controlled_smoke_v0.1,Q01,When does the Riverside Library open on a weekday?,lexical-anchor,answerable,9:00 AM,scope_demo,,,
+controlled_smoke_v0.1,Q02,At what time does the Riverside Library open on Saturday?,semantic-paraphrase,answerable,10:00 AM,scope_demo,,,
+controlled_smoke_v0.1,Q03,How long does the Blue Line trip from Harbor Station to Central Station take?,entity+attribute,answerable,18 minutes,scope_demo,,,
+controlled_smoke_v0.1,Q04,Which route is the shortest between Harbor Station and Central Station on the Blue Line?,entity+attribute,answerable,The Harbor-to-Central route,scope_demo,,,
+controlled_smoke_v0.1,Q05,What time does the East Hall conference begin?,lexical-anchor,answerable,2:00 PM,scope_demo,,,
+controlled_smoke_v0.1,Q06,When does registration close for the East Hall conference?,entity+attribute,answerable,1:30 PM,scope_demo,,,
+controlled_smoke_v0.1,Q07,The conference starts at 2:00 PM and registration closes 30 minutes earlier. What time should a registrant arrive by?,multi-hop,answerable,1:30 PM,scope_demo,,,
+controlled_smoke_v0.1,Q08,Does the community clinic accept walk-in patients on Tuesday?,semantic-paraphrase,answerable,Yes,scope_demo,,,
+controlled_smoke_v0.1,Q09,What is the clinic's exact Tuesday closing time?,unanswerable,unanswerable,,scope_demo,,,
+controlled_smoke_v0.1,Q10,What time does the Riverside Library close on Sunday?,unanswerable,unanswerable,,scope_demo,,,
+controlled_smoke_v0.1,Q11,What time does the Blue Line reach Central Station after leaving Harbor Station?,distractor-heavy,answerable,18 minutes after departure,scope_demo,,,
+controlled_smoke_v0.1,Q12,What happens 30 minutes before the East Hall conference?,semantic-paraphrase,answerable,Registration closes,scope_demo,,,

@@ -1,0 +1,12 @@
+field,type,required,description
+query_id,string,yes,Stable query identifier
+source_doc_id,string,yes,Document containing target evidence
+source_unit_id,string,yes,Passage/chunk identifier for exact supporting unit
+question,string,yes,Original query text; never rewritten between conditions
+relevance_grade,integer,yes,External qrels-compatible relevance grade
+question_type,string,yes,Controlled semantic/query category
+gold_scope_id,string,yes,Authorized scope for scope-aware track
+gold_evidence_span,string,no,Exact supporting span when available
+conflict_group_id,string,no,Conflict set identifier when multiple versions exist
+resolution_rule,string,no,Explicit rule when conflict resolution is required
+notes,string,no,Annotation notes; kept separate from model output

@@ -1,0 +1,13 @@
+mask_id,coverage,policy,seeds,mask_scope,role
+M01,1.00,RANDOM,0-9,corpus_global,full-coverage reference
+M02,0.90,RANDOM,0-9,corpus_global,primary random missingness
+M03,0.75,RANDOM,0-9,corpus_global,primary random missingness
+M04,0.50,RANDOM,0-9,corpus_global,primary random missingness
+M05,0.25,RANDOM,0-9,corpus_global,primary random missingness
+M06,0.10,RANDOM,0-9,corpus_global,primary random missingness
+M07,0.00,RANDOM,0-9,corpus_global,no-compatible-embedding reference
+M08,0.90,RELEVANCE-DEPLETED,0-9,query_specific,adversarial relevance-loss diagnostic
+M09,0.75,RELEVANCE-DEPLETED,0-9,query_specific,adversarial relevance-loss diagnostic
+M10,0.50,RELEVANCE-DEPLETED,0-9,query_specific,adversarial relevance-loss diagnostic
+M11,0.25,RELEVANCE-PRESERVING,0-9,query_specific,relevance-preservation control
+M12,0.50,RELEVANCE-PRESERVING,0-9,query_specific,relevance-preservation control

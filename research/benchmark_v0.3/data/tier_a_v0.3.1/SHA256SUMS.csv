@@ -1,0 +1,4 @@
+file,algorithm,sha256
+documents.csv,SHA-256,a58b3a7ec5afaf0774dc81ac06be29202a420d695ee33cc29ee1c4b16bbc6afe
+queries.csv,SHA-256,4a64c6c053e8a3c1ebcc865d155db042fa3087af4701332f3f4a653a63daf044
+qrels.csv,SHA-256,b01a9118a59ac61864c89679205f29db9e7a917ff15e368bd1ca7d280c7b0e65

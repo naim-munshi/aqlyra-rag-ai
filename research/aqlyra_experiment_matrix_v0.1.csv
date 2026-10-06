@@ -1,0 +1,9 @@
+condition,ui_name,backend_mode,source_input,citation_contract,strict_grounding,purpose
+K,Knowledge,knowledge,authorized benchmark document via RAG,yes,yes,primary grounded condition
+C,Converse,normal,exact same benchmark document as attachment,no,no,same-source alternate evidence contract
+N,Converse,normal,no benchmark attachment,no,no,model-only/conversational control
+A1,Knowledge no-gate,knowledge,same as K,condition-specific,no,isolate strict refusal/grounding contribution
+A2,Converse + evaluator,normal,same as C,post-hoc only,no,separate generation from attribution evaluation
+A3,Converse matched budget,normal,same as C with matched context budget,no,no,control context-size confound
+A4,Knowledge gold evidence,knowledge,gold evidence injected,yes,yes,separate retrieval from generation/grounding failure
+A5,Knowledge top-k sweep,knowledge,same as K across top-k values,yes,yes,measure retrieval-depth sensitivity

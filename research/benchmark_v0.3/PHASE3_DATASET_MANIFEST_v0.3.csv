@@ -1,0 +1,6 @@
+dataset_id,split,role,query_count,source_unit_count,domain,public_source,checksum_algorithm,checksum_value,checksum_status,query_type_level,qrels_level,development_use,notes
+scifact,test,external_ir,300,~5K,scientific_claims,https://github.com/beir-cellar/beir,SHA-256,,TO_BE_VERIFIED,natural_language,document,yes,Use published BEIR qrels; verify checksum during dataset acquisition
+nfcorpus,test,external_ir,323,~3.6K,medical_information,https://github.com/beir-cellar/beir,SHA-256,,TO_BE_VERIFIED,natural_language,document,yes,Use published BEIR qrels; verify checksum during dataset acquisition
+fiqa,test,external_ir,648,~57K,financial_QA,https://github.com/beir-cellar/beir,SHA-256,,TO_BE_VERIFIED,natural_language,document,development-subset-first,Add after SciFact and NFCorpus run reproducibly; subset rule must be deterministic
+controlled_v0.3,development,controlled_diagnostic,240,48,synthetic-controlled,local,SHA-256,,TO_BE_VERIFIED,natural_language,unit,yes,48 reviewed source documents; five canonical query categories
+scope_v0.3,development,security_stress,documented_in_protocol,documented_in_protocol,multi-user-authorized,local,SHA-256,,TO_BE_VERIFIED,natural_language,unit,yes,Secondary track only; unauthorized retrieval is a hard invariant

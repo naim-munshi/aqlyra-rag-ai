@@ -1,0 +1,3 @@
+dataset,source,split,url,expected_md5,role
+scifact,BEIR,test,https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip,5f7d1de60b170fc8027bb7898e2efca1,external_validation
+nfcorpus,BEIR,test,https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip,a89dba18a62ef92f7d323ec890a0d38d,external_validation

@@ -1,0 +1,25 @@
+field,type,required,description
+run_id,string,yes,Stable run identifier
+benchmark_version,string,yes,Benchmark protocol version
+dataset_id,string,yes,Dataset identifier
+query_id,string,yes,Canonical query identifier
+retriever_condition,string,yes,Retrieval condition identifier such as LEXICAL_ONLY or DENSE_ONLY
+coverage_target,float,yes,Requested compatible embedding coverage
+coverage_achieved,float,yes,Measured compatible embedding coverage
+coverage_policy,string,yes,"RANDOM, RELEVANCE-DEPLETED, or RELEVANCE-PRESERVING"
+coverage_seed,integer,yes,Deterministic masking seed
+eligible_unit_count,integer,yes,Number of eligible retrieval units before masking
+compatible_unit_count,integer,yes,Number of compatible embedding units after masking
+gold_relevant_eligible_count,integer,no,Gold-relevant eligible units for the query
+gold_relevant_compatible_count,integer,no,Gold-relevant units retaining compatible embeddings
+embedding_provider,string,yes,Active dense embedding provider
+embedding_model,string,yes,Active dense embedding model
+embedding_dimension,integer,yes,Active embedding dimension
+top_k,integer,yes,Final retrieval depth
+candidate_multiplier,integer,no,Dense or lexical candidate multiplier when configured
+rrf_k,integer,no,RRF reciprocal-rank constant
+authorization_scope_id,string,yes,Fixed authorized scope used by the run
+unauthorized_retrieval_count,integer,yes,Count of unauthorized units appearing in retrieval
+git_commit,string,yes,Exact repository commit used for the run
+runtime_environment,string,yes,Recorded execution environment
+run_timestamp,string,yes,ISO-8601 run timestamp

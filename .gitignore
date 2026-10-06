@@ -35,3 +35,7 @@ backend/.env.production.local
 .github/instructions/mermaid.instructions.md
 frontend/AGENTS.md
 frontend/CLAUDE.md
+.research-venv/
+research/.certs/
+research/benchmark_v0.3/external_v0.1/raw/
+research/benchmark_v0.3/external_v0.1/canonical_test_v0.1/

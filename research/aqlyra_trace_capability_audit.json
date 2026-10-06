@@ -1,0 +1,630 @@
+{
+  "rag_answer_service": {
+    "exists": true,
+    "path": "backend/app/services/rag_answer_service.py",
+    "lines": 417,
+    "signals": {
+      "user_scope": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "retrieved_count": {
+        "count": 3,
+        "sample_lines": [
+          183,
+          287,
+          400
+        ]
+      },
+      "context_source_count": {
+        "count": 3,
+        "sample_lines": [
+          184,
+          288,
+          401
+        ]
+      },
+      "skipped_evidence_count": {
+        "count": 3,
+        "sample_lines": [
+          185,
+          289,
+          404
+        ]
+      },
+      "was_truncated": {
+        "count": 5,
+        "sample_lines": [
+          186,
+          293,
+          295,
+          407,
+          408
+        ]
+      },
+      "source_id": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "chunk_id": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "document_id": {
+        "count": 3,
+        "sample_lines": [
+          202,
+          240,
+          240
+        ]
+      },
+      "authorization": {
+        "count": 3,
+        "sample_lines": [
+          2,
+          2,
+          169
+        ]
+      },
+      "dedup": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "parent_pruning": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "context_budget": {
+        "count": 6,
+        "sample_lines": [
+          208,
+          209,
+          251,
+          252,
+          254,
+          255
+        ]
+      },
+      "citation": {
+        "count": 13,
+        "sample_lines": [
+          14,
+          180,
+          181,
+          285,
+          286,
+          343,
+          373,
+          383,
+          384,
+          396,
+          396,
+          397
+        ]
+      },
+      "grounding": {
+        "count": 15,
+        "sample_lines": [
+          24,
+          25,
+          26,
+          27,
+          212,
+          212,
+          309,
+          310,
+          314,
+          315,
+          317,
+          318
+        ]
+      }
+    }
+  },
+  "retrieval_service": {
+    "exists": true,
+    "path": "backend/app/services/retrieval_service.py",
+    "lines": 345,
+    "signals": {
+      "user_scope": {
+        "count": 2,
+        "sample_lines": [
+          86,
+          268
+        ]
+      },
+      "retrieved_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "context_source_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "skipped_evidence_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "was_truncated": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "source_id": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "chunk_id": {
+        "count": 16,
+        "sample_lines": [
+          77,
+          155,
+          160,
+          161,
+          192,
+          201,
+          203,
+          204,
+          204,
+          205,
+          209,
+          259
+        ]
+      },
+      "document_id": {
+        "count": 8,
+        "sample_lines": [
+          83,
+          99,
+          102,
+          156,
+          265,
+          284,
+          287,
+          319
+        ]
+      },
+      "authorization": {
+        "count": 1,
+        "sample_lines": [
+          198
+        ]
+      },
+      "dedup": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "parent_pruning": {
+        "count": 4,
+        "sample_lines": [
+          160,
+          161,
+          323,
+          324
+        ]
+      },
+      "context_budget": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "citation": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "grounding": {
+        "count": 0,
+        "sample_lines": []
+      }
+    }
+  },
+  "hybrid_retrieval_service": {
+    "exists": true,
+    "path": "backend/app/services/hybrid_retrieval_service.py",
+    "lines": 295,
+    "signals": {
+      "user_scope": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "retrieved_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "context_source_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "skipped_evidence_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "was_truncated": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "source_id": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "chunk_id": {
+        "count": 15,
+        "sample_lines": [
+          119,
+          119,
+          124,
+          125,
+          204,
+          209,
+          214,
+          216,
+          223,
+          237,
+          238,
+          241
+        ]
+      },
+      "document_id": {
+        "count": 2,
+        "sample_lines": [
+          120,
+          120
+        ]
+      },
+      "authorization": {
+        "count": 1,
+        "sample_lines": [
+          1
+        ]
+      },
+      "dedup": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "parent_pruning": {
+        "count": 2,
+        "sample_lines": [
+          124,
+          125
+        ]
+      },
+      "context_budget": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "citation": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "grounding": {
+        "count": 0,
+        "sample_lines": []
+      }
+    }
+  },
+  "rag_types": {
+    "exists": true,
+    "path": "backend/app/rag/types.py",
+    "lines": 100,
+    "signals": {
+      "user_scope": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "retrieved_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "context_source_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "skipped_evidence_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "was_truncated": {
+        "count": 2,
+        "sample_lines": [
+          87,
+          96
+        ]
+      },
+      "source_id": {
+        "count": 1,
+        "sample_lines": [
+          73
+        ]
+      },
+      "chunk_id": {
+        "count": 4,
+        "sample_lines": [
+          9,
+          12,
+          74,
+          77
+        ]
+      },
+      "document_id": {
+        "count": 2,
+        "sample_lines": [
+          10,
+          75
+        ]
+      },
+      "authorization": {
+        "count": 5,
+        "sample_lines": [
+          2,
+          2,
+          25,
+          71,
+          90
+        ]
+      },
+      "dedup": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "parent_pruning": {
+        "count": 2,
+        "sample_lines": [
+          12,
+          77
+        ]
+      },
+      "context_budget": {
+        "count": 10,
+        "sample_lines": [
+          27,
+          28,
+          38,
+          40,
+          43,
+          45,
+          48,
+          48,
+          50,
+          51
+        ]
+      },
+      "citation": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "grounding": {
+        "count": 0,
+        "sample_lines": []
+      }
+    }
+  },
+  "context_builder": {
+    "exists": true,
+    "path": "backend/app/rag/context_builder.py",
+    "lines": 465,
+    "signals": {
+      "user_scope": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "retrieved_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "context_source_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "skipped_evidence_count": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "was_truncated": {
+        "count": 12,
+        "sample_lines": [
+          299,
+          305,
+          315,
+          368,
+          376,
+          407,
+          442,
+          443,
+          448,
+          449,
+          464,
+          464
+        ]
+      },
+      "source_id": {
+        "count": 8,
+        "sample_lines": [
+          126,
+          157,
+          161,
+          318,
+          329,
+          329,
+          415,
+          415
+        ]
+      },
+      "chunk_id": {
+        "count": 9,
+        "sample_lines": [
+          195,
+          254,
+          256,
+          264,
+          416,
+          416,
+          423,
+          424,
+          425
+        ]
+      },
+      "document_id": {
+        "count": 3,
+        "sample_lines": [
+          193,
+          417,
+          418
+        ]
+      },
+      "authorization": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "dedup": {
+        "count": 5,
+        "sample_lines": [
+          47,
+          239,
+          242,
+          246,
+          250
+        ]
+      },
+      "parent_pruning": {
+        "count": 7,
+        "sample_lines": [
+          254,
+          256,
+          262,
+          268,
+          423,
+          424,
+          425
+        ]
+      },
+      "context_budget": {
+        "count": 3,
+        "sample_lines": [
+          341,
+          372,
+          401
+        ]
+      },
+      "citation": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "grounding": {
+        "count": 0,
+        "sample_lines": []
+      }
+    }
+  },
+  "rag_api": {
+    "exists": true,
+    "path": "backend/app/api/rag.py",
+    "lines": 244,
+    "signals": {
+      "user_scope": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "retrieved_count": {
+        "count": 3,
+        "sample_lines": [
+          200,
+          218,
+          219
+        ]
+      },
+      "context_source_count": {
+        "count": 2,
+        "sample_lines": [
+          221,
+          222
+        ]
+      },
+      "skipped_evidence_count": {
+        "count": 2,
+        "sample_lines": [
+          224,
+          225
+        ]
+      },
+      "was_truncated": {
+        "count": 4,
+        "sample_lines": [
+          190,
+          191,
+          227,
+          228
+        ]
+      },
+      "source_id": {
+        "count": 2,
+        "sample_lines": [
+          160,
+          160
+        ]
+      },
+      "chunk_id": {
+        "count": 4,
+        "sample_lines": [
+          161,
+          161,
+          165,
+          166
+        ]
+      },
+      "document_id": {
+        "count": 4,
+        "sample_lines": [
+          69,
+          70,
+          162,
+          163
+        ]
+      },
+      "authorization": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "dedup": {
+        "count": 0,
+        "sample_lines": []
+      },
+      "parent_pruning": {
+        "count": 2,
+        "sample_lines": [
+          165,
+          166
+        ]
+      },
+      "context_budget": {
+        "count": 4,
+        "sample_lines": [
+          78,
+          79,
+          81,
+          82
+        ]
+      },
+      "citation": {
+        "count": 12,
+        "sample_lines": [
+          25,
+          35,
+          140,
+          158,
+          159,
+          194,
+          201,
+          201,
+          214,
+          214,
+          215,
+          216
+        ]
+      },
+      "grounding": {
+        "count": 1,
+        "sample_lines": [
+          154
+        ]
+      }
+    }
+  }
+}

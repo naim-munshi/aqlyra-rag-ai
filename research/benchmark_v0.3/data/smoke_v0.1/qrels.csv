@@ -1,0 +1,12 @@
+dataset_id,query_id,source_doc_id,document_version,source_unit_id,relevance_grade,gold_evidence_span,conflicting_unit_flag,annotation_notes
+controlled_smoke_v0.1,Q01,D01,v1,D01_U01,2,The Riverside Library opens at 9:00 AM on weekdays.,false,
+controlled_smoke_v0.1,Q02,D01,v1,D01_U02,2,"On Saturdays, the Riverside Library opens at 10:00 AM.",false,
+controlled_smoke_v0.1,Q03,D02,v1,D02_U01,2,The Blue Line train reaches Central Station 18 minutes after leaving Harbor Station.,false,
+controlled_smoke_v0.1,Q04,D02,v1,D02_U02,2,Harbor Station to Central Station is the shortest route on the Blue Line.,false,
+controlled_smoke_v0.1,Q05,D03,v1,D03_U01,2,The East Hall conference begins at 2:00 PM.,false,
+controlled_smoke_v0.1,Q06,D03,v1,D03_U02,2,Registration for the East Hall conference closes 30 minutes before the start.,false,
+controlled_smoke_v0.1,Q07,D03,v1,D03_U01,1,The East Hall conference begins at 2:00 PM.,false,
+controlled_smoke_v0.1,Q07,D03,v1,D03_U02,2,Registration for the East Hall conference closes 30 minutes before the start.,false,
+controlled_smoke_v0.1,Q08,D04,v1,D04_U01,2,The community clinic accepts walk-in patients on Tuesday.,false,
+controlled_smoke_v0.1,Q11,D02,v1,D02_U01,2,The Blue Line train reaches Central Station 18 minutes after leaving Harbor Station.,false,
+controlled_smoke_v0.1,Q12,D03,v1,D03_U02,2,Registration for the East Hall conference closes 30 minutes before the start.,false,

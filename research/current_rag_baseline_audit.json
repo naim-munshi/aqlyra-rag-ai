@@ -1,0 +1,228 @@
+{
+  "repository_root": "/Users/mdnaim/aqlyra-rag-ai",
+  "configuration": {
+    "llm_provider": "groq",
+    "llm_model": "openai/gpt-oss-20b",
+    "llm_reasoning_effort": "low",
+    "llm_max_output_tokens": 1600,
+    "embedding_provider": "deterministic",
+    "embedding_model": "text-embedding-3-small",
+    "embedding_dimension": 384,
+    "rag_reranker_enabled": false,
+    "reranker_provider": "llm",
+    "rag_query_rewrite_enabled": false,
+    "query_rewriter_provider": "llm",
+    "memory_auto_extract_enabled": false,
+    "memory_chat_enabled": false,
+    "secret_presence": {
+      "groq_api_key": true,
+      "openai_api_key": false,
+      "hf_token": true
+    }
+  },
+  "structure": [
+    {
+      "path": "backend/app/auth",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/app/retrieval",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/app/rag",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/app/llms",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/app/embeddings",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/app/services",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    },
+    {
+      "path": "backend/tests",
+      "exists": true,
+      "is_file": false,
+      "is_dir": true
+    }
+  ],
+  "documentation_signals": {
+    "rag_pipeline": {
+      "resolve owned document scope": true,
+      "dense semantic retrieval": false,
+      "lexical full-text retrieval": false,
+      "RRF": true,
+      "build evidence": true,
+      "Validate the returned citations": false,
+      "check whether the cited evidence actually supports": false,
+      "Repair the answer": false,
+      "Refuse the answer": false
+    },
+    "architecture": {
+      "Knowledge request flow": true,
+      "Dense Retrieval": true,
+      "Lexical Retrieval": true,
+      "RRF": true,
+      "Citation Check": true,
+      "Grounding Check": true,
+      "Answer / Repair / Refusal": true
+    }
+  },
+  "test_module_count": 71,
+  "relevant_test_modules": [
+    "backend/tests/test_alerting.py",
+    "backend/tests/test_chunk_persistence.py",
+    "backend/tests/test_chunking_engine.py",
+    "backend/tests/test_citation_validator.py",
+    "backend/tests/test_configured_embedding_pipeline.py",
+    "backend/tests/test_conversation_chat.py",
+    "backend/tests/test_conversation_document_scope.py",
+    "backend/tests/test_conversation_streaming.py",
+    "backend/tests/test_database_security.py",
+    "backend/tests/test_document_chunk_model.py",
+    "backend/tests/test_document_content_api.py",
+    "backend/tests/test_document_processing.py",
+    "backend/tests/test_documents.py",
+    "backend/tests/test_embedding_persistence.py",
+    "backend/tests/test_embedding_provider.py",
+    "backend/tests/test_embedding_reindex_api.py",
+    "backend/tests/test_groq_llm_provider.py",
+    "backend/tests/test_grounded_answer_service.py",
+    "backend/tests/test_health_api.py",
+    "backend/tests/test_huggingface_embedding_provider.py",
+    "backend/tests/test_hybrid_retrieval.py",
+    "backend/tests/test_hybrid_retrieval_db.py",
+    "backend/tests/test_image_ocr.py",
+    "backend/tests/test_lexical_retrieval.py",
+    "backend/tests/test_llm_registry.py",
+    "backend/tests/test_llm_stream_contract.py",
+    "backend/tests/test_memory_api.py",
+    "backend/tests/test_memory_extraction.py",
+    "backend/tests/test_memory_integration.py",
+    "backend/tests/test_memory_persistence.py",
+    "backend/tests/test_memory_vector_retrieval.py",
+    "backend/tests/test_monitoring.py",
+    "backend/tests/test_normal_chat_memory.py",
+    "backend/tests/test_normal_chat_stream_service.py",
+    "backend/tests/test_openai_embedding_provider.py",
+    "backend/tests/test_openai_llm_provider.py",
+    "backend/tests/test_product_identity_integration.py",
+    "backend/tests/test_production_grounding_config.py",
+    "backend/tests/test_projects.py",
+    "backend/tests/test_rag_answer_api.py",
+    "backend/tests/test_rag_context_builder.py",
+    "backend/tests/test_rag_provider_failure_adversarial.py",
+    "backend/tests/test_rag_query_rewriting.py",
+    "backend/tests/test_rag_reranking.py",
+    "backend/tests/test_rag_retrieval_question.py",
+    "backend/tests/test_rag_semantic_grounding_adversarial.py",
+    "backend/tests/test_rank_fusion.py",
+    "backend/tests/test_rate_limiting.py",
+    "backend/tests/test_reranked_retrieval.py",
+    "backend/tests/test_reranking_multik_benchmark.py",
+    "backend/tests/test_reranking_multik_query_rewrite.py",
+    "backend/tests/test_retrieval_api.py",
+    "backend/tests/test_retrieval_benchmark.py",
+    "backend/tests/test_retrieval_benchmark_query_rewrite.py",
+    "backend/tests/test_retrieval_benchmark_reranker.py",
+    "backend/tests/test_retrieval_corpus.py",
+    "backend/tests/test_retrieval_evaluation.py",
+    "backend/tests/test_retrieval_fallback_logging.py",
+    "backend/tests/test_root.py",
+    "backend/tests/test_security_isolation_matrix.py",
+    "backend/tests/test_upload_adversarial.py",
+    "backend/tests/test_vector_retrieval.py"
+  ],
+  "source_signals": {
+    "document_scope": [
+      "backend/app/voice/worker.py",
+      "backend/app/api/conversations.py",
+      "backend/app/services/conversation_document_service.py"
+    ],
+    "dense_retrieval": [
+      "backend/app/models/memory_embedding.py",
+      "backend/app/models/embedding_record.py"
+    ],
+    "lexical_retrieval": [
+      "backend/app/retrieval/rank_fusion.py",
+      "backend/app/services/hybrid_retrieval_service.py",
+      "backend/app/services/lexical_retrieval_service.py"
+    ],
+    "rrf": [
+      "backend/app/retrieval/rank_fusion.py",
+      "backend/app/retrieval/evaluation.py",
+      "backend/app/services/hybrid_retrieval_service.py"
+    ],
+    "citation": [
+      "backend/app/models/message.py",
+      "backend/app/models/document_chunk.py",
+      "backend/app/rag/prompt_builder.py",
+      "backend/app/rag/citation_types.py",
+      "backend/app/rag/__init__.py",
+      "backend/app/rag/citation_validator.py",
+      "backend/app/rag/grounding_verifier.py",
+      "backend/app/rag/answer_service.py",
+      "backend/app/schemas/memory_extraction.py",
+      "backend/app/schemas/conversation.py",
+      "backend/app/schemas/rag.py",
+      "backend/app/schemas/retrieval.py",
+      "backend/app/chunking/engine.py",
+      "backend/app/voice/worker.py",
+      "backend/app/api/rag.py",
+      "backend/app/api/retrieval.py",
+      "backend/app/api/conversations.py",
+      "backend/app/services/chat_service.py",
+      "backend/app/services/conversation_service.py",
+      "backend/app/services/memory_extraction_service.py",
+      "backend/app/services/converse_vision_service.py",
+      "backend/app/services/rag_answer_service.py"
+    ],
+    "grounding": [
+      "backend/app/config/settings.py",
+      "backend/app/rag/answer_types.py",
+      "backend/app/rag/prompt_builder.py",
+      "backend/app/rag/citation_types.py",
+      "backend/app/rag/__init__.py",
+      "backend/app/rag/citation_validator.py",
+      "backend/app/rag/grounding_verifier.py",
+      "backend/app/rag/answer_service.py",
+      "backend/app/api/rag.py",
+      "backend/app/api/conversations.py",
+      "backend/app/llms/deterministic_provider.py",
+      "backend/app/services/chat_service.py",
+      "backend/app/services/converse_vision_service.py",
+      "backend/app/services/rag_answer_service.py"
+    ],
+    "repair": [
+      "backend/app/rag/grounding_verifier.py",
+      "backend/app/rag/answer_service.py"
+    ],
+    "refusal": [
+      "backend/app/rag/prompt_builder.py",
+      "backend/app/api/rag.py",
+      "backend/app/llms/openai_provider.py",
+      "backend/app/services/chat_service.py"
+    ]
+  },
+  "warnings": [
+    "DETERMINISTIC EMBEDDING ACTIVE: retrieval results should NOT be treated as semantic-retrieval research results."
+  ]
+}

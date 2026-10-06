@@ -1,0 +1,11 @@
+field,type,required,description
+dataset_id,string,yes,Dataset identifier
+query_id,string,yes,Stable canonical query identifier
+question,string,yes,Original canonical query text
+question_type,string,yes,Canonical query category
+answerability,string,yes,"answerable, unanswerable, or conflict under the declared corpus/scope"
+gold_answer,string,no,Expected answer for downstream answer-layer evaluation when available
+scope_id,string,no,Authorized scope identifier for security-aware tracks
+conflict_group_id,string,no,Identifier for a controlled conflicting-evidence group
+resolution_rule,string,no,Explicit rule for conflict cases when applicable
+annotation_notes,string,no,Reviewer notes kept separate from system output

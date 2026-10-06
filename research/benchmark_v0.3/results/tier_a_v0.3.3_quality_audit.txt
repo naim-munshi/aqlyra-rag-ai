@@ -1,0 +1,27 @@
+Aqlyra Tier A v0.3.3 Quality Audit
+========================================
+STATUS: PASS
+
+documents: 288
+queries: 240
+qrels: 288
+
+questions changed: 25
+duplicate-word fixes: 20
+grammar fixes: 5
+
+remaining duplicate-word errors: 0
+remaining countable-noun grammar errors: 0
+remaining direct gold/evidence mismatches: 0
+
+QUESTION TYPE COUNTS
+distractor-heavy: 48
+entity+attribute: 48
+lexical-anchor: 48
+multi-hop: 48
+semantic-paraphrase: 48
+
+ANSWERABILITY COUNTS
+answerable: 192
+conflict: 24
+unanswerable: 24

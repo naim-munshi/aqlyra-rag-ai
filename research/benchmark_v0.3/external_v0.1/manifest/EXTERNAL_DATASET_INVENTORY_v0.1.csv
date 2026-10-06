@@ -1,0 +1,3 @@
+dataset,corpus,queries,qrels,unique_corpus_ids,unique_query_ids,unknown_qrel_queries,unknown_qrel_docs,archive_md5,archive_sha256
+scifact,5183,1109,339,5183,1109,0,0,5f7d1de60b170fc8027bb7898e2efca1,536e14446a0ba56ed1398ab1055f39fe852686ecad24a6306c80c490fa8e0165
+nfcorpus,3633,3237,12334,3633,3237,0,0,a89dba18a62ef92f7d323ec890a0d38d,efe5be03f8c5b86a5870102d0599d227c8c6e2484328e68c6522560385671b0b

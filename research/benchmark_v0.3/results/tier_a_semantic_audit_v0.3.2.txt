@@ -1,0 +1,43 @@
+Aqlyra Tier A Semantic Quality Audit v0.3.2
+====================================================
+
+documents=288
+queries=240
+qrels=288
+
+QUERY TEMPLATE DIVERSITY
+unique_normalized_templates=240
+templates_repeated_12plus=0
+cross_document_near_duplicates_ge_0.85=0
+
+QREL / DISTRACTOR
+distractor_gold_overlap_errors=0
+direct_gold_answer_not_in_evidence=104
+
+MULTI-HOP
+multi_hop_errors=0
+
+CONFLICT
+conflict_errors=0
+
+WARNINGS
+- DIRECT GOLD ANSWER NOT LITERALLY PRESENT IN EVIDENCE: 104 queries
+
+HARD ERRORS
+- none
+
+NEAR-DUPLICATE EXAMPLES
+
+TOP DOCUMENT TEMPLATES
+- 12x: the regular routine service checks window runs from <num>:<num> to <num>:<num>.
+- 6x: the regular routine system checks window runs from <num>:<num> to <num>:<num>.
+- 6x: an additional reserve of <num> requests per day is held for periods of unusually high demand.
+- 6x: weekend maintenance work is scheduled from <num>:<num> to <num>:<num>.
+- 6x: the regular routine intake checks window runs from <num>:<num> to <num>:<num>.
+- 6x: an additional reserve of <num> appointments per day is held for periods of unusually high demand.
+- 6x: weekend community outreach is scheduled from <num>:<num> to <num>:<num>.
+- 6x: the regular routine processing checks window runs from <num>:<num> to <num>:<num>.
+- 6x: an additional reserve of <num> transactions per day is held for periods of unusually high demand.
+- 6x: weekend reconciliation work is scheduled from <num>:<num> to <num>:<num>.
+
+DECISION=REVIEW_REQUIRED

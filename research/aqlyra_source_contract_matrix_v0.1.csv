@@ -1,0 +1,7 @@
+source_channel,scope,retrieval,stored_provenance,llm_visible_provenance,citation_contract,grounding_contract,persistence,cross_turn,cross_mode_or_route,notes
+Conversation history,conversation ownership/recent messages,no,Message.id,role+content,no,conversational only,yes,yes,depends on conversation route,Knowledge contextualizer filters to knowledge-mode messages
+Knowledge retrieved chunk,user+document scope,dense/lexical/hybrid,source/chunk/document lineage,source metadata+content,yes,strict,not as memory,via persisted answer/history,separate Knowledge conversation in normal UI,primary factual evidence path
+Personal memory,user scope,vector,Memory.source_message_id internally,kind+content only,no,personal context not document evidence,yes,yes,Converse,source_message_id currently omitted from MemoryRetrievalHit
+Converse attachment,user-owned ready document,sequential DocumentUnit loading,document/unit identity internally,file metadata+content,no,no strict RAG gate,turn-linked attachment,within Converse route,current product contract intentionally non-citation-gated
+Image attachment,user-owned ready image,vision/OCR path,document identity plus extracted context,vision/extracted context,no,no strict RAG gate,turn-linked attachment,within Converse route,visual evidence availability depends on supplied vision/extraction context
+Knowledge contextualizer,Knowledge conversation history,LLM rewrite,source messages,history content,no,query formation only,not persistent,within Knowledge,Knowledge only,never intended to answer or supply factual evidence
