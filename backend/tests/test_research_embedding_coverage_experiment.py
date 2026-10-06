@@ -257,8 +257,11 @@ def test_embedding_coverage_quantitative_pilot(
 
     db_session.commit()
 
+    repo_root = Path(__file__).resolve().parents[2]
+
     output_dir = (
-        Path("research")
+        repo_root
+        / "research"
         / "experiments"
         / "results"
     )

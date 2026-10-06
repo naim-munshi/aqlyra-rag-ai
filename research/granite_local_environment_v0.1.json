@@ -1,0 +1,22 @@
+{
+  "status": "verified",
+  "model_id": "ibm-granite/granite-embedding-97m-multilingual-r2",
+  "revision": "c61e626a6255c490879d0af885078b61929d51f6",
+  "embedding_dimension": 384,
+  "distance": "cosine",
+  "normalization": "L2",
+  "model_weights": {
+    "file": "model.safetensors",
+    "sha256": "f3ea88b230492811046145513710e76b4cc8c2ad49e8708da0e7247e548903be",
+    "bytes": 194889568
+  },
+  "python": "3.12.4",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "packages": {
+    "torch": "2.6.0",
+    "transformers": "4.56.2",
+    "sentence-transformers": "5.1.1",
+    "huggingface-hub": "0.36.0"
+  }
+}
