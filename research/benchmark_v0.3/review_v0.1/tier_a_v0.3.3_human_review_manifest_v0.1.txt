@@ -1,0 +1,10 @@
+Tier-A v0.3.3 Human Review Packet v0.1
+========================================
+selection_seed=20261007
+target_total=120
+question_types=distractor-heavy,entity+attribute,lexical-anchor,multi-hop,semantic-paraphrase
+per_question_type=24
+selection_status=machine-generated; human review pending
+queries_csv_sha256=d201d76a508182f77a1786cbf26eda216a502373c0aa0353728bfb5ec901ff08
+documents_csv_sha256=8a4b6f6ea73886ec5a358aa3a6dcb0ab429388fd559431baf75525270cf585ca
+packet_csv_sha256=1b723be06d62eaea9b07939e9c0b80ac9a233ddaf0a5d3dfdd09e6bb9e610bb0

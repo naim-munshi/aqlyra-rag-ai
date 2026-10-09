@@ -39,3 +39,5 @@ frontend/CLAUDE.md
 research/.certs/
 research/benchmark_v0.3/external_v0.1/raw/
 research/benchmark_v0.3/external_v0.1/canonical_test_v0.1/
+
+research/experiments/generated/
