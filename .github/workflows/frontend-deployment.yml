@@ -10,6 +10,7 @@ on:
       - "docker-compose.yml"
       - "Caddyfile"
       - "scripts/ops/**"
+      - "docs/STAGING.md"
       - ".github/workflows/frontend-deployment.yml"
   pull_request:
     branches: [main]
@@ -20,6 +21,7 @@ on:
       - "docker-compose.yml"
       - "Caddyfile"
       - "scripts/ops/**"
+      - "docs/STAGING.md"
       - ".github/workflows/frontend-deployment.yml"
   workflow_dispatch:
 
@@ -54,6 +56,15 @@ jobs:
       - name: Build Next.js for production
         run: npm run build
 
+  staging-smoke-unit:
+    name: Validate staging smoke contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run standalone smoke tests
+        run: python3 -m unittest discover -s scripts/ops -p 'test_staging_smoke.py' -v
+
   deployment-config:
     name: Validate production Compose configuration
     runs-on: ubuntu-latest
@@ -73,3 +84,21 @@ jobs:
           --env-file backend/.env.production.example
           --profile production
           config --quiet
+
+  container-build:
+    name: Build production Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build backend, frontend and voice-worker images
+        env:
+          BACKEND_ENV_FILE: ./backend/.env.production.example
+          DOCKER_BUILDKIT: "1"
+        run: >-
+          docker compose
+          --env-file backend/.env.production.example
+          --profile production
+          build backend frontend voice-worker
