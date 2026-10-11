@@ -5,8 +5,7 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
-      - "backend/Dockerfile"
-      - "backend/.env.production.example"
+      - "backend/**"
       - "docker-compose.yml"
       - "Caddyfile"
       - "scripts/ops/**"
@@ -16,8 +15,7 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
-      - "backend/Dockerfile"
-      - "backend/.env.production.example"
+      - "backend/**"
       - "docker-compose.yml"
       - "Caddyfile"
       - "scripts/ops/**"

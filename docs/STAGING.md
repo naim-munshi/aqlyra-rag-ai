@@ -13,8 +13,10 @@ The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
 3. Run `scripts/ops/production-preflight.sh backend/.env.production`.
 4. Run `docker compose --env-file backend/.env.production --profile production
    config --quiet`.
-5. Build the same container images validated by GitHub Actions:
-   `backend`, `voice-worker`, and `frontend`.
+5. Build the backend, voice-worker and frontend Docker images. GitHub Actions
+   validates that these Dockerfiles build successfully. The real deployment
+   still needs a fresh frontend build with its configured public Google Client
+   ID; do not deploy the example-config CI image.
 6. Start staging and verify service health with
    `docker compose --env-file backend/.env.production --profile production ps`.
 
