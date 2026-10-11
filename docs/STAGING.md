@@ -93,3 +93,13 @@ migration in a maintenance window. First take and verify a backup; never
 remove the persistent uploads or database volumes. On new Docker volumes,
 `/app/uploads` ownership is provisioned by the image. Production volume
 permissions still require testing on the actual staging server.
+
+## CI fresh-volume startup check
+
+In addition to building Docker images and inspecting their non-root user
+IDs, the deployment workflow now starts a fresh PostgreSQL + Redis + API
+stack with non-production test credentials. It waits for the backend
+readiness endpoint after the automatic migrations and verifies that the
+persistent upload volume is writable. This is an ephemeral GitHub Actions
+smoke check, not a substitute for running the same procedure against an
+existing staging volume containing migrated user documents.

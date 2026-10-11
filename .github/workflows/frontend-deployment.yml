@@ -129,3 +129,28 @@ jobs:
             fi
             echo "PASS: $service uid=$uid"
           done
+      - name: Start backend and verify fresh-volume readiness
+        env:
+          BACKEND_ENV_FILE: ./backend/.env.example
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            docker compose --env-file backend/.env.example down --remove-orphans
+          }
+          trap cleanup EXIT
+          docker compose --env-file backend/.env.example up -d postgres redis backend
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 4 http://127.0.0.1:8000/api/v1/readiness; then
+              ready=1
+              break
+            fi
+            sleep 3
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker compose --env-file backend/.env.example ps
+            docker compose --env-file backend/.env.example logs --no-color --tail 70 backend
+            exit 1
+          fi
+          echo "Fresh-volume backend readiness PASS"
+
