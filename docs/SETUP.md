@@ -259,8 +259,21 @@ scripts/ops/
 ```
 
 They cover backup, backup verification, restore, and production preflight.
+For production, always point operational scripts at the production environment
+file rather than the development default:
 
-Backup verification uses temporary restore state so it does not overwrite the live database.
+```bash
+AQ_ENV_FILE=backend/.env.production scripts/ops/backup.sh
+AQ_ENV_FILE=backend/.env.production scripts/ops/verify-backup.sh backups/<timestamp>
+```
+
+Backup verification uses temporary restore state so it does not overwrite the
+live database. Backup archives contain private documents and database records:
+keep them access-restricted, encrypted at rest, and stored off-host.
+
+Restoring replaces current data. Only use `scripts/ops/restore.sh` after a
+verified backup and a planned maintenance window. Test the full recovery
+procedure on staging before production launch.
 
 ## Stop the stack
 

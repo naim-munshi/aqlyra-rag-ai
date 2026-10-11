@@ -9,7 +9,7 @@ on:
       - "backend/.env.production.example"
       - "docker-compose.yml"
       - "Caddyfile"
-      - "scripts/ops/production-preflight.sh"
+      - "scripts/ops/**"
       - ".github/workflows/frontend-deployment.yml"
   pull_request:
     branches: [main]
@@ -19,7 +19,7 @@ on:
       - "backend/.env.production.example"
       - "docker-compose.yml"
       - "Caddyfile"
-      - "scripts/ops/production-preflight.sh"
+      - "scripts/ops/**"
       - ".github/workflows/frontend-deployment.yml"
   workflow_dispatch:
 
@@ -60,8 +60,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - name: Validate preflight shell syntax
-        run: bash -n scripts/ops/production-preflight.sh
+      - name: Validate operational shell script syntax
+        run: |
+          for script in scripts/ops/*.sh; do
+            bash -n "$script"
+          done
       - name: Validate production Compose profile
         env:
           BACKEND_ENV_FILE: ./backend/.env.production.example

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Backups contain private documents and database records.
+umask 077
+
 ROOT_DIR="$(
   cd "$(dirname "${BASH_SOURCE[0]}")/../.."
   pwd
