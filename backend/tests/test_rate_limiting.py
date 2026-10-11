@@ -413,3 +413,62 @@ def test_disabled_limiter_does_not_touch_redis(
     )
 
     assert response.status_code == 201
+
+
+def test_retrieval_search_is_rate_limited(
+    client,
+    monkeypatch,
+) -> None:
+    fake = FakeRedis()
+    configure(monkeypatch, fake)
+    headers = auth_headers(client, "rate-retrieval")
+
+    monkeypatch.setattr(
+        settings,
+        "RATE_LIMIT_RAG_USER_LIMIT",
+        1,
+    )
+
+    first = client.post(
+        "/api/v1/retrieval/search",
+        headers=headers,
+        json={"query": "private document search"},
+    )
+    second = client.post(
+        "/api/v1/retrieval/search",
+        headers=headers,
+        json={"query": "another search"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert "retry-after" in second.headers
+
+
+def test_embedding_rebuild_is_rate_limited(
+    client,
+    monkeypatch,
+) -> None:
+    fake = FakeRedis()
+    configure(monkeypatch, fake)
+    headers = auth_headers(client, "rate-reindex")
+
+    monkeypatch.setattr(
+        settings,
+        "RATE_LIMIT_PROCESS_USER_LIMIT",
+        1,
+    )
+
+    endpoint = (
+        "/api/v1/documents/"
+        "00000000-0000-0000-0000-000000000000"
+        "/embeddings/rebuild"
+    )
+
+    first = client.post(endpoint, headers=headers)
+    second = client.post(endpoint, headers=headers)
+
+    assert first.status_code == 404
+    assert second.status_code == 429
+    assert "retry-after" in second.headers
+

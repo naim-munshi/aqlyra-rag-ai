@@ -86,6 +86,9 @@ _IMAGE_FORMAT_BY_EXTENSION: dict[str, str] = {
 
 
 MAX_IMAGE_PIXELS = 40_000_000
+MAX_OOXML_MEMBERS = 2_000
+MAX_OOXML_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+MAX_OOXML_COMPRESSION_RATIO = 1_000
 
 
 def _upload_root() -> Path:
@@ -189,9 +192,43 @@ def _validate_ooxml(
 
     try:
         with zipfile.ZipFile(path) as archive:
-            archive_files = set(
-                archive.namelist()
-            )
+            members = archive.infolist()
+
+            if len(members) > MAX_OOXML_MEMBERS:
+                raise InvalidFileContentError(
+                    "Office document contains too many archive entries"
+                )
+
+            expanded_size = 0
+
+            for member in members:
+                if member.is_dir():
+                    continue
+
+                expanded_size += member.file_size
+
+                if expanded_size > MAX_OOXML_UNCOMPRESSED_BYTES:
+                    raise InvalidFileContentError(
+                        "Office document expands beyond the safety limit"
+                    )
+
+                if (
+                    member.file_size
+                    > max(1, member.compress_size)
+                    * MAX_OOXML_COMPRESSION_RATIO
+                ):
+                    raise InvalidFileContentError(
+                        "Office document has an unsafe compression ratio"
+                    )
+
+                if member.flag_bits & 0x1:
+                    raise InvalidFileContentError(
+                        "Encrypted Office archive entries are not supported"
+                    )
+
+            archive_files = {
+                member.filename for member in members
+            }
 
     except (
         OSError,

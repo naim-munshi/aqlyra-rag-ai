@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.logging import app_logger
+from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.models.user import User
@@ -36,6 +37,7 @@ router = APIRouter(
 @router.post(
     "/search",
     response_model=RetrievalSearchResponse,
+    dependencies=[Depends(limit_rag_request)],
 )
 def search_documents(
     request: RetrievalSearchRequest,

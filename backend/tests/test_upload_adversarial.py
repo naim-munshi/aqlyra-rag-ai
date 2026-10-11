@@ -582,3 +582,117 @@ def test_processing_failure_rolls_back_partial_state_and_retries(
 
     assert retry_units.status_code == 200
     assert retry_units.json()["total"] > 0
+
+
+def make_office_archive(
+    *,
+    uncompressed_bytes: int = 100,
+    extra_members: int = 0,
+) -> bytes:
+    buffer = BytesIO()
+
+    with zipfile.ZipFile(
+        buffer,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as archive:
+        archive.writestr(
+            "word/document.xml",
+            b"x" * uncompressed_bytes,
+        )
+        for index in range(extra_members):
+            archive.writestr(
+                f"docProps/item-{index}.xml",
+                "<metadata></metadata>",
+            )
+
+    return buffer.getvalue()
+
+
+def test_office_zip_bomb_is_rejected_before_storage(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    import app.services.storage_service as storage_service
+
+    monkeypatch.setattr(
+        storage_service,
+        "MAX_OOXML_UNCOMPRESSED_BYTES",
+        1024,
+    )
+    headers = create_auth_headers(
+        client,
+        suffix="upload-zip-bomb",
+    )
+
+    response = upload(
+        client,
+        headers,
+        filename="compressed.docx",
+        content=make_office_archive(uncompressed_bytes=2048),
+        content_type="application/octet-stream",
+    )
+
+    assert response.status_code == 400
+    assert_no_documents(client, headers)
+    assert stored_files() == []
+
+
+def test_office_excessive_archive_members_are_rejected(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    import app.services.storage_service as storage_service
+
+    monkeypatch.setattr(
+        storage_service,
+        "MAX_OOXML_MEMBERS",
+        2,
+    )
+    headers = create_auth_headers(
+        client,
+        suffix="upload-many-zip-entries",
+    )
+
+    response = upload(
+        client,
+        headers,
+        filename="many-entries.docx",
+        content=make_office_archive(extra_members=3),
+        content_type="application/octet-stream",
+    )
+
+    assert response.status_code == 400
+    assert_no_documents(client, headers)
+    assert stored_files() == []
+
+
+def test_office_unsafe_compression_ratio_is_rejected(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    import app.services.storage_service as storage_service
+
+    monkeypatch.setattr(
+        storage_service,
+        "MAX_OOXML_COMPRESSION_RATIO",
+        2,
+    )
+    headers = create_auth_headers(
+        client,
+        suffix="upload-high-zip-ratio",
+    )
+
+    response = upload(
+        client,
+        headers,
+        filename="high-ratio.docx",
+        content=make_office_archive(uncompressed_bytes=4096),
+        content_type="application/octet-stream",
+    )
+
+    assert response.status_code == 400
+    assert_no_documents(client, headers)
+    assert stored_files() == []
+
+

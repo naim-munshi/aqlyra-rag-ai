@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.logging import app_logger
+from app.core.rate_limit import limit_process_request
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.models.user import User
@@ -37,6 +38,7 @@ router = APIRouter(
 @router.post(
     "/{document_id}/embeddings/rebuild",
     response_model=EmbeddingReindexResponse,
+    dependencies=[Depends(limit_process_request)],
 )
 def rebuild_document_embeddings(
     document_id: str,
