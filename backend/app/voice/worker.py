@@ -710,11 +710,7 @@ class AqlyraVoiceAgent(Agent):
             )
         )
 
-        logger.info(
-            "voice_llm_node_start "
-            "input_chars=%d",
-            len(user_text),
-        )
+        logger.info("voice_llm_node_start")
 
         try:
             generated = (
@@ -874,11 +870,9 @@ async def aqlyra_voice_session(
     ) -> None:
         logger.info(
             "voice_user_transcript "
-            "final=%s language=%s "
-            "chars=%d",
+            "final=%s language=%s",
             event.is_final,
             event.language,
-            len(event.transcript or ""),
         )
 
         if not event.is_final:
