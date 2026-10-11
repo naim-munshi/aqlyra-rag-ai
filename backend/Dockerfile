@@ -43,6 +43,16 @@ RUN apt-get update \
         tesseract-ocr-ben \
     && rm -rf /var/lib/apt/lists/*
 
+ARG UID=10001
+
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home /home/appuser \
+    --shell /usr/sbin/nologin \
+    --uid "${UID}" \
+    appuser
+
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
@@ -53,7 +63,10 @@ COPY app ./app
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN chmod +x ./docker-entrypoint.sh \
-    && mkdir -p /app/uploads
+    && mkdir -p /app/uploads \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 

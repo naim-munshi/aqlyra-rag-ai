@@ -58,6 +58,10 @@ services:
 
   backend:
     logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -135,6 +139,10 @@ services:
 
   voice-worker:
     logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     build:
       context: ./backend
       dockerfile: Dockerfile.voice
@@ -179,6 +187,10 @@ services:
 
   alert-worker:
     logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     profiles:
       - production
     build:
@@ -219,6 +231,10 @@ services:
 
   frontend:
     logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     profiles:
       - production
     build:

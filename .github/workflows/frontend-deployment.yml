@@ -109,3 +109,21 @@ jobs:
           --env-file backend/.env.production.example
           --profile production
           build backend frontend voice-worker
+
+      - name: Assert application containers run without root
+        env:
+          BACKEND_ENV_FILE: ./backend/.env.production.example
+        run: |
+          for service in backend frontend voice-worker; do
+            uid="$(
+              docker compose \
+                --env-file backend/.env.production.example \
+                --profile production \
+                run --rm --no-deps --entrypoint id "$service" -u
+            )"
+            if [ "$uid" = "0" ]; then
+              echo "FAIL: $service container runs as root" >&2
+              exit 1
+            fi
+            echo "PASS: $service uid=$uid"
+          done

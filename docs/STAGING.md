@@ -78,3 +78,18 @@ multipart data; backend document validation still enforces its 25 MiB file
 limit. Validating the Caddyfile is part of deployment CI. Public responses
 include basic security headers and HSTS. Confirm these settings on the
 actual HTTPS staging domain; do not bypass Caddy with public backend ports.
+
+## Application container privilege boundary
+
+The backend (including migrations and alert worker), voice worker, and
+frontend run as unprivileged users. Compose drops Linux capabilities and
+prevents privilege escalation for these application services. PostgreSQL,
+Redis, and Caddy retain their upstream container configurations.
+
+**Existing deployments:** before introducing this backend image, verify
+that the current uploads Docker volume is writable by UID 10001. Uploads
+created by the previous root process may require a one-time ownership
+migration in a maintenance window. First take and verify a backup; never
+remove the persistent uploads or database volumes. On new Docker volumes,
+`/app/uploads` ownership is provisioned by the image. Production volume
+permissions still require testing on the actual staging server.
