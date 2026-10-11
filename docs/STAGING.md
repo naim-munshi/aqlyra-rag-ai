@@ -70,3 +70,11 @@ down -v` on a persistent environment.
 After successful deployment, rerun the smoke check and manually verify
 critical authenticated flows. Promote to production only when all release
 checks have recorded evidence.
+
+## Reverse-proxy hardening
+
+Caddy limits incoming request bodies to 32 MB before Next.js parses
+multipart data; backend document validation still enforces its 25 MiB file
+limit. Validating the Caddyfile is part of deployment CI. Public responses
+include basic security headers and HSTS. Confirm these settings on the
+actual HTTPS staging domain; do not bypass Caddy with public backend ports.

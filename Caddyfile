@@ -5,14 +5,22 @@
 {$APP_DOMAIN} {
 	encode zstd gzip
 
+	# Bound incoming request bodies before Next.js parses multipart uploads.
+	# The application accepts documents up to 25 MiB; allow form overhead.
+	request_body {
+		max_size 32MB
+	}
+
 	header {
+		Strict-Transport-Security "max-age=15552000"
 		-Server
+		-X-Powered-By
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "DENY"
 	}
 
 	reverse_proxy frontend:3000 {
-                header_up X-Aqlyra-Client-IP {remote_host}
-        }
+		header_up X-Aqlyra-Client-IP {remote_host}
+	}
 }

@@ -83,6 +83,15 @@ jobs:
           --profile production
           config --quiet
 
+      - name: Validate Caddy reverse-proxy configuration
+        run: |
+          docker run --rm \
+            --env APP_DOMAIN=staging.example.com \
+            --env CADDY_EMAIL=ops@example.com \
+            --volume "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
   container-build:
     name: Build production Docker images
     runs-on: ubuntu-latest
