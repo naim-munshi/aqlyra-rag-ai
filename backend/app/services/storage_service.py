@@ -398,9 +398,13 @@ async def save_upload_to_temporary_storage(
     total_size = 0
 
     try:
-        with temporary_path.open(
-            "xb"
-        ) as output_file:
+        fd = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+
+        with os.fdopen(fd, "wb") as output_file:
             while True:
                 chunk = await upload.read(
                     settings.UPLOAD_CHUNK_SIZE_BYTES

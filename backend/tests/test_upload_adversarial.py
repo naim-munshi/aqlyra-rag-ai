@@ -696,3 +696,41 @@ def test_office_unsafe_compression_ratio_is_rejected(
     assert stored_files() == []
 
 
+
+
+def test_private_document_is_written_with_owner_only_permissions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    import os
+    import stat
+
+    headers = create_auth_headers(
+        client,
+        suffix="upload-private-permissions",
+    )
+
+    response = upload(
+        client,
+        headers,
+        filename="private.md",
+        content=b"Private user document",
+        content_type="text/markdown",
+    )
+
+    assert response.status_code == 201
+    document = db_session.scalar(
+        select(Document).where(
+            Document.id == response.json()["id"]
+        )
+    )
+    assert document is not None
+
+    file_path = settings.UPLOAD_DIR / document.storage_path
+    assert file_path.is_file()
+
+    if os.name == "posix":
+        mode = stat.S_IMODE(file_path.stat().st_mode)
+        assert mode == 0o600
+
+
