@@ -124,9 +124,9 @@ BACKEND_API_URL=http://127.0.0.1:8000/api/v1
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ```
 
-For a production Docker frontend build, also provide
-`NEXT_PUBLIC_GOOGLE_CLIENT_ID` to Compose before running
-`docker compose --profile production up -d --build`.
+For a production Docker frontend build, set `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+in `backend/.env.production` to the same public value as `GOOGLE_CLIENT_ID`.
+Docker Compose passes it to the frontend build.
 
 The Google Client ID is public configuration. A Google Client Secret
 is not used by this ID-token sign-in flow and must not be exposed to
@@ -184,10 +184,28 @@ npm run build
 
 ## Production Compose profile
 
+Copy the production template, replace placeholders with real values,
+and protect the private environment file:
+
+```bash
+cp backend/.env.production.example backend/.env.production
+chmod 600 backend/.env.production
+```
+
+Run the production preflight before starting the stack. Do not commit
+`backend/.env.production` to Git.
+
 Validate the production profile:
 
 ```bash
-docker compose --profile production config --quiet
+docker compose --env-file backend/.env.production --profile production config --quiet
+```
+
+Start the stack only after preflight and configuration checks pass:
+
+```bash
+docker compose --env-file backend/.env.production --profile production up -d --build
+docker compose --env-file backend/.env.production --profile production ps
 ```
 
 The production profile contains:

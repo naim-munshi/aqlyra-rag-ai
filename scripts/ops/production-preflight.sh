@@ -130,38 +130,6 @@ if grounding_enabled not in {
     )
 
 
-llm_provider = require(
-    "LLM_PROVIDER"
-).casefold()
-
-require("LLM_MODEL")
-
-if llm_provider not in {
-    "groq",
-    "openai",
-}:
-    errors.append(
-        "LLM_PROVIDER must be groq or openai "
-        "in production"
-    )
-
-
-grounding_enabled = values.get(
-    "RAG_GROUNDING_VERIFIER_ENABLED",
-    "",
-).casefold()
-
-if grounding_enabled not in {
-    "true",
-    "1",
-    "yes",
-    "on",
-}:
-    errors.append(
-        "RAG_GROUNDING_VERIFIER_ENABLED "
-        "must be true in production"
-    )
-
 rate_limit_enabled = values.get(
     "RATE_LIMIT_ENABLED",
     "",
@@ -264,9 +232,21 @@ for key in (
     "SMTP_PASSWORD",
     "SMTP_FROM_EMAIL",
     "SMTP_FROM_NAME",
-    "GOOGLE_CLIENT_ID",
 ):
     require(key)
+
+
+google_client_id = require("GOOGLE_CLIENT_ID")
+frontend_google_client_id = require("NEXT_PUBLIC_GOOGLE_CLIENT_ID")
+
+if (
+    google_client_id
+    and frontend_google_client_id
+    and google_client_id != frontend_google_client_id
+):
+    errors.append(
+        "NEXT_PUBLIC_GOOGLE_CLIENT_ID must match GOOGLE_CLIENT_ID"
+    )
 
 
 if values.get(
@@ -483,6 +463,7 @@ print("RATE_LIMITING=PASS")
 print("REDIS_RATE_LIMIT_BACKEND=PASS")
 print("EMAIL_VERIFICATION=PASS")
 print("GOOGLE_IDENTITY=PASS")
+print("FRONTEND_GOOGLE_CLIENT_ID=PASS")
 print("LLM_API_KEY=SET")
 print("HF_TOKEN=SET")
 print("LIVEKIT_CONFIG=SET")

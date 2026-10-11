@@ -1,0 +1,72 @@
+name: Frontend and Deployment Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/Dockerfile"
+      - "backend/.env.production.example"
+      - "docker-compose.yml"
+      - "Caddyfile"
+      - "scripts/ops/production-preflight.sh"
+      - ".github/workflows/frontend-deployment.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/Dockerfile"
+      - "backend/.env.production.example"
+      - "docker-compose.yml"
+      - "Caddyfile"
+      - "scripts/ops/production-preflight.sh"
+      - ".github/workflows/frontend-deployment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-deployment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend lint, typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Lint source
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build Next.js for production
+        run: npm run build
+
+  deployment-config:
+    name: Validate production Compose configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate preflight shell syntax
+        run: bash -n scripts/ops/production-preflight.sh
+      - name: Validate production Compose profile
+        env:
+          BACKEND_ENV_FILE: ./backend/.env.production.example
+        run: >-
+          docker compose
+          --env-file backend/.env.production.example
+          --profile production
+          config --quiet
