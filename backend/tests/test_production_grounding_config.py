@@ -56,6 +56,7 @@ def production_values(
         "SMTP_USE_SSL": "true",
         "SMTP_TIMEOUT_SECONDS": "10",
         "GOOGLE_CLIENT_ID": "test.apps.googleusercontent.com",
+        "NEXT_PUBLIC_GOOGLE_CLIENT_ID": "test.apps.googleusercontent.com",
         "POSTGRES_USER": "aqlyra",
         "POSTGRES_PASSWORD": password,
         "POSTGRES_DB": "aqlyra",
@@ -251,6 +252,25 @@ def test_production_preflight_rejects_missing_identity_config(
     assert result.returncode != 0
     assert "SMTP_PASSWORD must be configured" in result.stdout
     assert "GOOGLE_CLIENT_ID must be configured" in result.stdout
+
+
+def test_production_preflight_rejects_mismatched_google_ids(
+    tmp_path: Path,
+) -> None:
+    values = production_values()
+    values["NEXT_PUBLIC_GOOGLE_CLIENT_ID"] = (
+        "different.apps.googleusercontent.com"
+    )
+    env_file = tmp_path / "production.env"
+
+    write_env(env_file, values)
+    result = run_preflight(env_file)
+
+    assert result.returncode != 0
+    assert (
+        "NEXT_PUBLIC_GOOGLE_CLIENT_ID must match GOOGLE_CLIENT_ID"
+        in result.stdout
+    )
 
 
 def test_production_preflight_rejects_disabled_verifier(
