@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Aqlyra Frontend
 
-## Getting Started
+Next.js 16, React 19, and TypeScript web application for the Aqlyra AI knowledge platform. The frontend provides verified authentication, Converse and Knowledge workspaces, conversations, document workflows, and optional voice sessions.
 
-First, run the development server:
+The browser uses same-origin Next.js API routes. Server-side route handlers forward authenticated requests to FastAPI using the HttpOnly session cookie. The backend access token is not exposed to browser JavaScript.
+
+## Requirements
+
+- Node.js 24 and npm
+- A running Aqlyra backend with PostgreSQL (and Redis when rate limiting is enabled)
+- SMTP credentials for email-code verification, or a configured Google Web Client ID for Google sign-in
+
+## Local development
+
+Start the backend services from the repository root using the [setup guide](../docs/SETUP.md), then run:
 
 ```bash
+cd frontend
+npm ci
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Configure `frontend/.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```dotenv
+BACKEND_API_URL=http://127.0.0.1:8000/api/v1
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To use Google sign-in, set the public Client ID to the same value as `GOOGLE_CLIENT_ID` in `backend/.env`. It is not an OAuth client secret.
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000). Unauthenticated users are redirected to `/login`. The development backend uses deterministic LLM/embedding defaults unless real model providers are configured.
 
-To learn more about Next.js, take a look at the following resources:
+## Quality and security checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+From `frontend/`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run lint
+npx tsc --noEmit
+node --experimental-strip-types --test tests/*.test.mjs
+npm run build
+```
 
-## Deploy on Vercel
+The tests check same-origin state-changing API request protection in `src/proxy.ts` and `src/lib/security/origin.ts`. The production app uses HttpOnly, Secure and SameSite session cookies; FastAPI independently enforces ownership and JWT validation.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The supported full-stack deployment uses Docker Compose and Caddy with HTTPS termination. The Next.js runtime container uses an unprivileged user. The public `NEXT_PUBLIC_GOOGLE_CLIENT_ID` must be supplied at **image build time**, while `BACKEND_API_URL` points to the internal FastAPI address.
+
+The frontend image alone does not include PostgreSQL, Redis, the voice worker, SMTP delivery or hosted AI model services. For actual rollout procedures, see [Staging and Release Gate](../docs/STAGING.md) and [Setup](../docs/SETUP.md). Do not deploy with example secrets.
+
+## Documentation
+
+- [Project overview](../README.md)
+- [Architecture](../docs/ARCHITECTURE.md)
+- [Security and Testing](../docs/SECURITY_TESTING.md)
+- [RAG Pipeline](../docs/RAG_PIPELINE.md)
