@@ -76,6 +76,8 @@ jobs:
           for script in scripts/ops/*.sh; do
             bash -n "$script"
           done
+      - name: Validate OCI ARM64 host preflight syntax
+        run: python3 -m py_compile scripts/ops/oci_host_preflight.py
       - name: Validate production Compose profile
         env:
           BACKEND_ENV_FILE: ./backend/.env.production.example
