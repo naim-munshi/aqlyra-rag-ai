@@ -191,7 +191,6 @@ def test_validator_allows_headings_and_labels(
     )
 
 
-
 @pytest.mark.parametrize(
     "uncited_text",
     [
@@ -203,7 +202,7 @@ def test_validator_rejects_uncited_bengali_block(
     uncited_text: str,
 ) -> None:
     draft = create_draft(
-        "JWT protects private routes [S1].\\n\\n"
+        "JWT protects private routes [S1].\n\n"
         + uncited_text
     )
 
