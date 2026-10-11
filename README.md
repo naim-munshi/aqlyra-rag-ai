@@ -1,6 +1,8 @@
 # Aqlyra RAG AI
 
-Aqlyra is an AI knowledge system for working with private documents and general conversations.
+Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
+
+**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
 
 It has two main modes:
 
@@ -26,11 +28,11 @@ After either path succeeds, the backend issues the same application access token
 - FastAPI backend
 - Verified email/password authentication with expiring six-digit codes
 - Google sign-in with backend ID-token verification
-- JWT-backed sessions stored in HttpOnly browser cookies
+- HS256 JWT sessions held in HttpOnly browser cookies, with same-origin mutation checks
 - User-scoped documents, conversations, and memory
 - PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
 - OCR for PNG, JPG, JPEG, and WEBP images
-- IBM Granite multilingual embeddings
+- Hugging Face IBM Granite multilingual embeddings (production config; deterministic test embeddings locally)
 - PostgreSQL with pgvector
 - PostgreSQL full-text search
 - Hybrid dense + lexical retrieval
@@ -46,15 +48,16 @@ After either path succeeds, the backend issues the same application access token
 - Turn-scoped attachments
 - Multimodal image understanding
 - Voice integration
-- Redis-backed rate limiting
+- Redis-backed rate limiting for authentication, ingestion, retrieval, generation, and voice APIs
 - Structured JSON logs
 - Request IDs
 - Prometheus-compatible metrics
 - Health and readiness checks
 - Internal alerting
-- Backup and restore tooling
-- Docker Compose deployment profile
-- Caddy reverse proxy configuration
+- Backup, verification, and explicit restore tooling
+- Docker Compose deployment with non-root application containers
+- Caddy reverse proxy with HTTPS and request-body limits
+- GitHub Actions for tests, image builds, dependency audit, and startup checks
 
 ## How the system is structured
 
@@ -156,8 +159,10 @@ Other controls include:
 - verified email/password and Google identity paths;
 - expiring, attempt-limited email codes stored only as HMAC digests;
 - HttpOnly, SameSite session and verification cookies;
+- same-origin protection for state-changing frontend API requests;
 - JWT token-type separation for access and verification tickets;
-- upload validation;
+- upload validation, including Office archive expansion limits;
+- owner-only permissions on new uploaded documents;
 - filename sanitization;
 - production CORS validation;
 - production secret validation;
@@ -166,7 +171,9 @@ Other controls include:
 - log redaction;
 - generic responses for unhandled errors;
 - disabled OpenAPI/docs in production;
-- localhost-only backend and database bindings in the intended deployment layout.
+- localhost-only backend and database bindings in the intended deployment layout;
+- non-root application containers with reduced Linux privileges;
+- production dependency scanning and commit-pinned GitHub Actions.
 
 See [Security and Testing](docs/SECURITY_TESTING.md).
 
@@ -230,7 +237,6 @@ aqlyra-rag-ai/
 │   │   ├── models/                # ORM models
 │   │   ├── parsers/               # document parsing
 │   │   ├── product_identity/      # product identity settings
-│   │   ├── prompts/               # prompt definitions
 │   │   ├── query_rewriting/       # optional query rewrite layer
 │   │   ├── rag/                   # context, citations, grounding
 │   │   ├── reranking/             # optional reranking layer
@@ -238,20 +244,21 @@ aqlyra-rag-ai/
 │   │   ├── schemas/               # request/response models
 │   │   ├── services/              # application services
 │   │   ├── voice/                 # voice worker
-│   │   ├── websocket/             # realtime support
 │   │   └── main.py                # FastAPI entry point
+│   ├── evaluation/                # controlled retrieval benchmark
 │   ├── tests/
 │   ├── Dockerfile
 │   ├── Dockerfile.voice
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   └── app/
+│   │   ├── app/
 │   │       ├── api/
 │   │       ├── login/
 │   │       ├── register/
 │   │       ├── verify-email/
 │   │       └── page.tsx
+│   │   └── proxy.ts               # cross-origin API security
 │   ├── Dockerfile
 │   └── package.json
 ├── docs/
@@ -259,9 +266,10 @@ aqlyra-rag-ai/
 │   ├── RAG_PIPELINE.md
 │   ├── SECURITY_TESTING.md
 │   ├── SETUP.md
-│   └── DEMO.md
+│   └── STAGING.md
 ├── scripts/
-│   └── ops/
+│   └── ops/                      # preflight, smoke, backup, restore
+├── .github/workflows/            # CI and dependency audits
 ├── Caddyfile
 ├── docker-compose.yml
 ├── LICENSE
@@ -270,7 +278,7 @@ aqlyra-rag-ai/
 
 ## Testing
 
-The backend currently has 71 `test_*.py` modules.
+The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
 
 The tests cover:
 
@@ -306,12 +314,15 @@ Tests use a separate PostgreSQL test database instead of the normal development 
 
 ## Local development
 
-Start the backend services:
+Create a local, untracked development configuration and start the required backend services:
 
 ```bash
-docker compose up -d --build
-docker compose ps
+cp backend/.env.example backend/.env
+docker compose --env-file backend/.env up -d --build postgres redis backend
+docker compose --env-file backend/.env ps
 ```
+
+Configure SMTP for verified registration; the optional voice worker requires LiveKit credentials and can be started separately. Development defaults use deterministic AI providers and do not indicate production answer quality.
 
 Check the backend:
 
@@ -324,7 +335,8 @@ Run the frontend:
 
 ```bash
 cd frontend
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -354,7 +366,9 @@ For the full setup, see [docs/SETUP.md](docs/SETUP.md).
 - [RAG Pipeline](docs/RAG_PIPELINE.md)
 - [Security and Testing](docs/SECURITY_TESTING.md)
 - [Setup](docs/SETUP.md)
-- [Demo](docs/DEMO.md)
+- [Staging and Release Gate](docs/STAGING.md)
+- [Retrieval Baseline](backend/evaluation/BASELINE.md)
+- [Frontend Development](frontend/README.md)
 
 ## License
 
