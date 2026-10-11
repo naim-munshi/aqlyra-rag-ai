@@ -33,6 +33,7 @@ _BULLET_PATTERN = re.compile(
 
 _CONTENT_TOKEN_PATTERN = re.compile(
     r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*"
+    r"|[\u0980-\u09ff]"
     r"|[\u3040-\u30ff]"
     r"|[\u3400-\u9fff]"
     r"|[\uac00-\ud7af]",

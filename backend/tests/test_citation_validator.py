@@ -191,6 +191,38 @@ def test_validator_allows_headings_and_labels(
     )
 
 
+
+@pytest.mark.parametrize(
+    "uncited_text",
+    [
+        "ব্যক্তিগত নথির তথ্য অন্য ব্যবহারকারীর কাছে প্রকাশ করা যাবে না।",
+        "ব্যবহারকারীর নথি কেবল অনুমোদিত ব্যক্তিরা দেখতে পারবেন।",
+    ],
+)
+def test_validator_rejects_uncited_bengali_block(
+    uncited_text: str,
+) -> None:
+    draft = create_draft(
+        "JWT protects private routes [S1].\\n\\n"
+        + uncited_text
+    )
+
+    with pytest.raises(UncitedClaimError):
+        validate_grounded_answer_draft(draft)
+
+
+def test_validator_accepts_cited_bengali_answer(
+) -> None:
+    draft = create_draft(
+        "ব্যবহারকারীর নথি নিরাপদে রাখা হয় [S1]।"
+    )
+
+    result = validate_grounded_answer_draft(draft)
+
+    assert result.citation_ids == ("S1",)
+    assert result.is_refusal is False
+
+
 def test_validator_accepts_exact_refusal(
 ) -> None:
     draft = create_draft(
