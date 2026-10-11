@@ -1,5 +1,7 @@
 # Staging validation and release gate
 
+For an Ubuntu ARM64 VM that retains the existing Docker Compose services, see [Oracle Always Free](ORACLE_ALWAYS_FREE.md).
+
 Aqlyra runs behind Caddy -> Next.js -> FastAPI. Do not publicly expose
 PostgreSQL, Redis, the FastAPI metrics endpoint, or the backend's port 8000.
 The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
