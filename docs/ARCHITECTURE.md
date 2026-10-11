@@ -15,8 +15,8 @@ Keeping them separate makes it easier to apply strict evidence rules only where 
 
 ```mermaid
 flowchart TB
-    U[User] --> C[Caddy]
-    C --> F[Next.js]
+    U[User] --> C[Caddy TLS]
+    C --> F[Next.js Proxy + API routes]
     F --> B[FastAPI]
 
     B --> PG[(PostgreSQL + pgvector)]
@@ -96,7 +96,9 @@ ID-token flow.
 
 The Next.js authentication routes exchange either successful result for the
 same backend access token, confirm the user through `/users/me`, and place the
-token in an HttpOnly, SameSite cookie.
+token in an HttpOnly, SameSite cookie (Secure in production). Next.js Proxy
+rejects cross-origin requests on state-changing public API routes;
+FastAPI still verifies JWTs and user ownership independently.
 
 ## Knowledge request flow
 
@@ -184,7 +186,13 @@ HttpOnly cookies.
 
 The backend checks ownership before returning documents, conversations, messages, memory, or document content.
 
-Rate-limited routes use Redis-backed counters.
+Rate-limited routes use Redis-backed counters, including for retrieval and
+embedding rebuild operations. Office archive validation bounds
+decompression costs and uploaded files are owner-only by default.
+
+Production Docker application services run as non-root users with reduced
+privileges. Caddy handles HTTPS and request-body limits; FastAPI and
+PostgreSQL ports bind to localhost on the Docker host.
 
 When Redis is required for the protected operation and is unavailable, the backend fails closed instead of allowing the request through without rate limiting.
 
@@ -223,3 +231,8 @@ Scripts under `scripts/ops/` handle database and upload backups.
 Backup verification restores into temporary state before the backup is treated as valid.
 
 Restore is explicit and does not overwrite live data silently.
+
+CI validates isolated PostgreSQL/Redis/backend startup and upload-volume
+writability, but a real staging restore rehearsal is required before launch.
+Existing deployments must check uploads volume ownership before enabling
+non-root containers.

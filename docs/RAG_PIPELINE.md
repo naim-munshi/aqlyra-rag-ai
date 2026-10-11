@@ -55,9 +55,11 @@ JPEG
 WEBP
 ```
 
-Files are validated before processing. Ownership is stored on the document;
-searchable chunks remain linked to that document so retrieval can enforce the
-same user boundary.
+Files are validated before processing, including maximum upload size,
+file-type checks, and bounded Office archive expansion. Newly uploaded files
+are created with owner-only Unix permissions. Ownership is recorded on each
+document; searchable chunks remain linked to that document so retrieval
+can enforce the same user boundary.
 
 Image inputs can be sent through OCR.
 
@@ -71,13 +73,15 @@ That metadata can include page, slide, sheet, filename, and document information
 
 ## 3. Embeddings
 
-The current semantic embedding model is:
+The production template configures the following semantic embedding
+model (development and test environments use deterministic embeddings
+by default):
 
 ```text
 ibm-granite/granite-embedding-97m-multilingual-r2
 ```
 
-Vector size:
+Configured vector size:
 
 ```text
 384

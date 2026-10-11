@@ -66,6 +66,11 @@ Upload checks include:
 
 The long-filename regression tests are important because filename sanitization must not remove a valid extension.
 
+Office archives are bounded by entry count, expanded size, and compression
+ratio to mitigate decompression bombs. Newly uploaded document files receive
+owner-only `0600` permissions on Unix. The proxy rejects requests exceeding
+32 MB; the application applies its own 25 MiB file limit.
+
 ## RAG safety
 
 Knowledge mode checks both citation syntax and evidence support.
@@ -96,7 +101,8 @@ That includes areas such as:
 - document processing;
 - RAG answers;
 - normal chat generation;
-- voice sessions.
+- voice sessions;
+- retrieval searches and embedding rebuild requests.
 
 Rate-limit responses use `429` and include `Retry-After`.
 
@@ -114,7 +120,16 @@ The production configuration rejects unsafe settings such as:
 - deterministic production LLM configuration;
 - disabled grounding verification.
 
-Production API docs/OpenAPI are disabled.
+Production API docs/OpenAPI are disabled. Next.js also checks trusted
+origin / browser fetch provenance for unsafe `/api/*` requests to reduce
+cross-site request forgery. Browser sessions use HttpOnly cookies that are
+Secure in production. FastAPI applies independent JWT and ownership checks.
+A successful origin check is not an authorization grant.
+
+The backend, voice worker, and frontend run under non-root users, with
+Linux capabilities dropped and privilege escalation disabled for application
+containers. Deployments upgrading from root-run containers must first verify
+ownership of persisted upload files.
 
 ## Logging
 
@@ -140,7 +155,10 @@ The alert worker is tested for:
 
 ## Test suite
 
-The backend currently contains 70 `test_*.py` modules.
+The repository contains 73 backend `test_*.py` modules as of this audit.
+The latest verified backend CI run reported **380 passing tests**
+([run details](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)).
+These tests do not establish a successful public production deployment.
 
 Coverage includes:
 
@@ -213,6 +231,13 @@ any critical/high production advisory blocks the security workflow.
 The full audit result stays visible in GitHub Actions, and the team
 must reassess this exception after upstream publishes a patched version
 or if an affected package enters the release runtime image.
+
+GitHub Actions jobs use pinned action commit SHAs. Image builds, non-root
+runtime identity checks, fresh-volume PostgreSQL/Redis/backend startup,
+database migrations, and readiness checks are in deployment CI.
+Container operating-system vulnerability scanning, real staging E2E tests,
+off-host recovery drills, and `main` branch protection are still release
+work, not completed validations.
 
 The earlier Next.js runtime advisories were addressed by upgrading to
 16.4.0 and generating a fresh npm lockfile. JWT handling has moved to

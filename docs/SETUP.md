@@ -13,21 +13,29 @@ Python 3.13+
 
 ## Start the backend services
 
-From the repository root:
+From the repository root, create the private local settings file first,
+then start the required services:
 
 ```bash
-docker compose up -d --build
-docker compose ps
+cp backend/.env.example backend/.env
+docker compose --env-file backend/.env up -d --build postgres redis backend
+docker compose --env-file backend/.env ps
 ```
 
-The normal development stack includes:
+Review the untracked `backend/.env` before use. Replace placeholder secrets
+and add real SMTP credentials to test verified email registration. The
+development template uses deterministic LLM and embedding providers; this is
+not a substitute for testing real model providers.
 
-```text
-postgres
-redis
-backend
-voice-worker
+The optional `voice-worker` requires LiveKit credentials. Start it separately
+only when the voice integration is configured:
+
+```bash
+docker compose --env-file backend/.env up -d --build voice-worker
 ```
+
+The production profile adds the frontend, alert worker, and Caddy.
+
 
 Backend URL:
 
@@ -59,7 +67,8 @@ curl -fsS http://127.0.0.1:8000/api/v1/metrics
 
 ```bash
 cd frontend
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -136,12 +145,17 @@ the browser.
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-PostgreSQL and Redis still need to be available.
+The process reads `backend/.env` when started from `backend/`. The
+`DATABASE_URL` should use `localhost`, not the internal Docker hostname
+`postgres`. Run database migrations with `alembic upgrade head` before
+serving a fresh database. PostgreSQL must be running; Redis is required when
+`RATE_LIMIT_ENABLED=true`.
 
 ## Database migrations
 
@@ -158,27 +172,44 @@ an upgrade does not lock out accounts created before OTP support.
 
 ## Run backend tests
 
-Tests use a separate PostgreSQL instance.
+Tests mutate and recreate their database state. Run them against a
+**dedicated PostgreSQL 16 test database**, never the normal development or
+production database. For example, from the repository root:
 
-Database URL:
+```bash
+docker run -d --rm --name aqlyra-test-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=aqlyra_rag_ai_test \
+  -p 127.0.0.1:5433:5432 pgvector/pgvector:pg16
 
-```text
-postgresql+psycopg://postgres:postgres@127.0.0.1:5433/aqlyra_rag_ai_test
+# After PostgreSQL reports ready:
+docker exec aqlyra-test-postgres \
+  psql -U postgres -d aqlyra_rag_ai_test \
+  -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ```
 
-Run from `backend/`:
+Then run from `backend/` in the virtual environment:
 
 ```bash
 TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5433/aqlyra_rag_ai_test' python -m pytest -q
 ```
 
-Do not use the normal development database for tests.
+To stop the disposable test database:
+
+```bash
+docker stop aqlyra-test-postgres
+```
+
+GitHub Actions uses the same PostgreSQL/pgvector test isolation, with its
+service on port 5432 instead of 5433.
 
 ## Frontend checks
 
 ```bash
 cd frontend
 npm run lint
+npx tsc --noEmit
+node --experimental-strip-types --test tests/*.test.mjs
 npm run build
 ```
 
@@ -192,8 +223,12 @@ cp backend/.env.production.example backend/.env.production
 chmod 600 backend/.env.production
 ```
 
+Edit the file for your real domain, credentials, Google public Client ID,
+SMTP, model provider, and (when enabled) voice and alert integrations.
 Run the production preflight before starting the stack. Do not commit
-`backend/.env.production` to Git.
+`backend/.env.production` to Git. The backend, frontend, and voice images
+must be built with the deployment's actual settings, not CI placeholder
+configuration.
 
 Validate the production profile:
 
@@ -248,7 +283,10 @@ uploaded documents
 Caddy state
 ```
 
-Normal updates should not delete these volumes.
+Normal updates should not delete these volumes. Application containers
+run as non-root users; if upgrading an existing deployment, verify that the
+persistent uploads volume is writable by UID 10001 before replacing the
+running containers. See [Staging](STAGING.md) for the migration warning.
 
 ## Backup and restore
 
@@ -277,8 +315,18 @@ procedure on staging before production launch.
 
 ## Stop the stack
 
+For development:
+
 ```bash
-docker compose down
+docker compose --env-file backend/.env down
 ```
 
-Do not remove persistent volumes unless you actually intend to delete the stored data.
+For a configured staging/production profile:
+
+```bash
+docker compose --env-file backend/.env.production --profile production down
+```
+
+Neither command deletes named volumes. **Never use `down -v` on a
+persistent environment.** Backups and restores are operationally disruptive
+and should be rehearsed on staging; see [Staging](STAGING.md).

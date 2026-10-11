@@ -6,18 +6,23 @@ The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
 
 ## Before deployment
 
-1. Provision a staging host with Docker Compose, DNS, and a working HTTPS
-   certificate. Use a dedicated database and test accounts, not production data.
+1. Provision a staging host with Docker Compose, DNS pointing to the host,
+   and inbound TCP 80/443 (and UDP 443 if HTTP/3 is desired) for Caddy to
+   obtain and renew HTTPS certificates. Use a dedicated database and test
+   accounts, not production data.
 2. Configure `backend/.env.production` with production-style settings, a
    staging domain and staging-only credentials. Keep the file outside Git.
 3. Run `scripts/ops/production-preflight.sh backend/.env.production`.
-4. Run `docker compose --env-file backend/.env.production --profile production
+4. From the repository root run:
+   `docker compose --env-file backend/.env.production --profile production
    config --quiet`.
 5. Build the backend, voice-worker and frontend Docker images. GitHub Actions
    validates that these Dockerfiles build successfully. The real deployment
    still needs a fresh frontend build with its configured public Google Client
    ID; do not deploy the example-config CI image.
-6. Start staging and verify service health with
+6. Start staging with
+   `docker compose --env-file backend/.env.production --profile production
+   up -d --build`, then check with
    `docker compose --env-file backend/.env.production --profile production ps`.
 
 ## Public endpoint smoke test
@@ -60,7 +65,10 @@ Record the deployed Git SHA, Docker image digests, current Alembic revision,
 and the timestamp/location of the latest verified off-host backup. Before
 deploying a migration, rehearse its forward and recovery behavior on staging.
 
-Deploy by pinned, reviewed commits, not by force-pushing `main`. On a release
+Deploy by pinned, reviewed commits, not by force-pushing `main`.
+GitHub `main` branch protection was not enabled as of this audit; configure
+the required CI status checks and merge policy before an unrestricted
+production release. On a release
 failure, stop accepting new writes, inspect service health, and restore a
 **verified** snapshot when schema or data rollback is necessary. Restoring the
 database and upload archive replaces current data and can lose writes since

@@ -252,13 +252,13 @@ aqlyra-rag-ai/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── app/
-│   │       ├── api/
-│   │       ├── login/
-│   │       ├── register/
-│   │       ├── verify-email/
-│   │       └── page.tsx
-│   │   └── proxy.ts               # cross-origin API security
+│   └── app/
+│       ├── api/
+│       ├── login/
+│       ├── register/
+│       ├── verify-email/
+│       └── page.tsx
+│   └── proxy.ts               # cross-origin API security
 │   ├── Dockerfile
 │   └── package.json
 ├── docs/
@@ -340,8 +340,8 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Verified login requires SMTP settings in `backend/.env` and the same
-Google Web Client ID in backend and frontend configuration. Local secret
+Email-code verification requires SMTP settings in `backend/.env`.
+Google sign-in requires matching public Web Client IDs in backend and frontend configuration. Local secret
 files are ignored by Git; see the setup guide for the required values.
 
 Run backend tests from `backend/`:
