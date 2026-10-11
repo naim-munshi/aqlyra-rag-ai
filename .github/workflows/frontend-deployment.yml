@@ -51,6 +51,8 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Test cross-origin API protection
+        run: node --experimental-strip-types --test tests/*.test.mjs
       - name: Build Next.js for production
         run: npm run build
 
