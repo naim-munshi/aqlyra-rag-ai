@@ -10,8 +10,10 @@ The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
    and inbound TCP 80/443 (and UDP 443 if HTTP/3 is desired) for Caddy to
    obtain and renew HTTPS certificates. Use a dedicated database and test
    accounts, not production data.
-2. Configure `backend/.env.production` with production-style settings, a
+2. Configure `backend/.env.production` using the
+   [production template](../backend/.env.production.example), with a
    staging domain and staging-only credentials. Keep the file outside Git.
+   Never overwrite an existing private configuration with the template.
 3. Run `scripts/ops/production-preflight.sh backend/.env.production`.
 4. From the repository root run:
    `docker compose --env-file backend/.env.production --profile production

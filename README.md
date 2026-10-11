@@ -252,13 +252,13 @@ aqlyra-rag-ai/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   └── app/
-│       ├── api/
-│       ├── login/
-│       ├── register/
-│       ├── verify-email/
-│       └── page.tsx
-│   └── proxy.ts               # cross-origin API security
+│   │   ├── app/
+│   │   │   ├── api/
+│   │   │   ├── login/
+│   │   │   ├── register/
+│   │   │   ├── verify-email/
+│   │   │   └── page.tsx
+│   │   └── proxy.ts           # cross-origin API security
 │   ├── Dockerfile
 │   └── package.json
 ├── docs/
@@ -277,6 +277,8 @@ aqlyra-rag-ai/
 ```
 
 ## Testing
+
+The `backend/evaluation/corpus/` Markdown files contain synthetic retrieval-test data, **not real operational policies**. The benchmark numbers in `backend/evaluation/BASELINE.md` are historical controlled measurements, not production semantic quality results.
 
 The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
 
@@ -317,7 +319,7 @@ Tests use a separate PostgreSQL test database instead of the normal development 
 Create a local, untracked development configuration and start the required backend services:
 
 ```bash
-cp backend/.env.example backend/.env
+cp -n backend/.env.example backend/.env
 docker compose --env-file backend/.env up -d --build postgres redis backend
 docker compose --env-file backend/.env ps
 ```
@@ -336,7 +338,7 @@ Run the frontend:
 ```bash
 cd frontend
 npm ci
-cp .env.example .env.local
+cp -n .env.example .env.local
 npm run dev
 ```
 

@@ -17,7 +17,7 @@ From the repository root, create the private local settings file first,
 then start the required services:
 
 ```bash
-cp backend/.env.example backend/.env
+cp -n backend/.env.example backend/.env
 docker compose --env-file backend/.env up -d --build postgres redis backend
 docker compose --env-file backend/.env ps
 ```
@@ -68,7 +68,7 @@ curl -fsS http://127.0.0.1:8000/api/v1/metrics
 ```bash
 cd frontend
 npm ci
-cp .env.example .env.local
+cp -n .env.example .env.local
 npm run dev
 ```
 
@@ -148,13 +148,14 @@ cd backend
 python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 The process reads `backend/.env` when started from `backend/`. The
 `DATABASE_URL` should use `localhost`, not the internal Docker hostname
-`postgres`. Run database migrations with `alembic upgrade head` before
-serving a fresh database. PostgreSQL must be running; Redis is required when
+`postgres`. The command above applies Alembic migrations before
+serving the backend. PostgreSQL must be running; Redis is required when
 `RATE_LIMIT_ENABLED=true`.
 
 ## Database migrations
@@ -215,11 +216,12 @@ npm run build
 
 ## Production Compose profile
 
-Copy the production template, replace placeholders with real values,
+For **first-time setup only**, copy the production template without
+overwriting an existing secrets file. Replace placeholders with real values
 and protect the private environment file:
 
 ```bash
-cp backend/.env.production.example backend/.env.production
+cp -n backend/.env.production.example backend/.env.production
 chmod 600 backend/.env.production
 ```
 
