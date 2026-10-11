@@ -197,3 +197,23 @@ Examples include:
 - Redis outage;
 - alert firing and recovery;
 - backup verification.
+
+## Dependency vulnerability audit
+
+The dedicated Dependency Security Audit workflow checks Python packages
+and the production npm dependency graph on dependency changes and weekly.
+Python pinning is audited for both the API and voice worker. The frontend
+production dependency gate uses `npm audit --omit=dev --audit-level=high`.
+
+The full frontend dependency graph is checked separately and reported
+as non-blocking because some build-time development tooling pulls the
+unpatched `braces` package (GHSA-vfj7-8cjw-p6xm, no fixed version as
+of 2026-10-12). This exception does **not** apply to runtime packages;
+any critical/high production advisory blocks the security workflow.
+The full audit result stays visible in GitHub Actions, and the team
+must reassess this exception after upstream publishes a patched version
+or if an affected package enters the release runtime image.
+
+The earlier Next.js runtime advisories were addressed by upgrading to
+16.4.0 and generating a fresh npm lockfile. JWT handling has moved to
+PyJWT with explicit allowed algorithm verification and regression tests.
