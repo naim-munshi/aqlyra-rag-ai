@@ -147,6 +147,16 @@ jobs:
             --requests 20 \
             --concurrency 2
 
+      - name: Rehearse database and uploads restoration in disposable CI
+        env:
+          AQ_DISPOSABLE_RESTORE_CONFIRMED: "yes"
+        run: |
+          set -Eeuo pipefail
+          bash scripts/ops/rehearse_backup_restore_ci.sh
+          python3 scripts/ops/staging_smoke.py \
+            --base-url http://localhost \
+            --allow-http-loopback
+
       - name: Print diagnostics if the smoke fails
         if: failure()
         run: |
