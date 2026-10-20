@@ -370,6 +370,7 @@ For the full setup, see [docs/SETUP.md](docs/SETUP.md).
 - [Setup](docs/SETUP.md)
 - [Staging and Release Gate](docs/STAGING.md)
 - [Oracle Always Free Deployment](docs/ORACLE_ALWAYS_FREE.md)
+- [Staging Performance Baseline](docs/PERFORMANCE_BASELINE.md)
 - [Retrieval Baseline](backend/evaluation/BASELINE.md)
 - [Frontend Development](frontend/README.md)
 

@@ -108,6 +108,20 @@ Rate-limit responses use `429` and include `Retry-After`.
 
 If Redis is required for the operation and unavailable, the protected route fails closed.
 
+## Deployment network and persistence contract
+
+A deployment check consumes the canonical Compose production profile and
+rejects configurations that accidentally expose PostgreSQL, FastAPI, Redis,
+the frontend or workers to public host ports; grant app containers extra
+Linux capabilities; enable privileged or host-network modes; or remove
+persistent database/upload volumes. It also confirms that backend and
+voice-worker share the same uploads volume.
+
+The OCI host preflight and GitHub deployment CI share this check and
+run negative-path unit tests. This protects the intended single-host
+reverse-proxy topology but **does not** verify a live OCI security list,
+SSH firewall, remote TLS, or Kubernetes/network-layer controls.
+
 ## Production configuration checks
 
 The production configuration rejects unsafe settings such as:

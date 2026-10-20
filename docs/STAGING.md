@@ -48,6 +48,19 @@ TLS certificates are validated by Python's standard HTTPS client. The checker
 never sends credentials. HTTP is accepted only for loopback test servers when
 `--allow-http-loopback` is explicitly set.
 
+## Performance baseline (authorized staging only)
+
+After the HTTPS security smoke check passes, run the
+[bounded transport performance probe](PERFORMANCE_BASELINE.md).
+It measures p50/p95 response time and errors using up to 100
+**unauthenticated GETs** and 4 concurrent requests; it does not call
+AI models, use API credits, or establish RAG concurrency limits.
+
+Deployment CI now checks Compose's network exposure, least-privilege
+application containers, PostgreSQL and upload persistence, and
+shared uploads for API and voice workers. Unit tests deliberately
+exercise unsafe configurations and must fail closed.
+
 ## Manual end-to-end checks
 
 Use test accounts only. Verify:

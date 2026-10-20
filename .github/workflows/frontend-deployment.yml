@@ -81,6 +81,7 @@ jobs:
           python3 -m py_compile
           scripts/ops/oci_host_preflight.py
           scripts/ops/deployment_contract.py
+          scripts/ops/performance_probe.py
       - name: Run deployment security regression tests
         run: >-
           python3 -m unittest discover
