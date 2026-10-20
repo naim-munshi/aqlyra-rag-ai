@@ -38,6 +38,16 @@ echo "===== VERIFY BACKUP FIRST ====="
 echo
 echo "===== STOP APPLICATION SERVICES ====="
 
+# An optional voice worker may not be configured in a staging environment.
+# Only restart it if it was running before the restore.
+voice_worker_was_running=0
+voice_cid="$("${DC[@]}" ps -q voice-worker 2>/dev/null || true)"
+if [ -n "$voice_cid" ] && \
+   [ "$(docker inspect --format '{{.State.Running}}' "$voice_cid" \
+       2>/dev/null || true)" = "true" ]; then
+  voice_worker_was_running=1
+fi
+
 "${DC[@]}" stop \
   backend \
   voice-worker
@@ -96,9 +106,13 @@ cat "$UPLOAD_ARCHIVE" \
 echo
 echo "===== START APPLICATION ====="
 
-"${DC[@]}" up -d \
-  backend \
-  voice-worker
+"${DC[@]}" up -d backend
+
+if [ "$voice_worker_was_running" -eq 1 ]; then
+  "${DC[@]}" up -d voice-worker
+else
+  echo "Voice worker was not running before restore; leaving it stopped."
+fi
 
 
 echo
