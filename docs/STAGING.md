@@ -104,6 +104,35 @@ Use test accounts only. Verify:
 The automated smoke test cannot prove these authenticated or provider-backed
 flows work. All must pass before public launch.
 
+## GitHub main branch protection (owner-only setting)
+
+The [Always-on Merge Gate](../.github/workflows/merge-gate.yml) runs on
+**every** pull request to `main`, including documentation-only changes.
+It checks offline security tests, operational scripts, Markdown links,
+and the production Compose network/storage contract. This makes it a
+safe **required status check**: path-filtered CI jobs cannot be
+required for all PRs because some changes do not trigger them.
+
+**Repository owner action (cannot be completed by this connector):**
+
+1. Open **Settings → Rules → Rulesets → New branch ruleset** in GitHub.
+2. Give it the name `Protect Aqlyra main`, set enforcement **Active**,
+   and target the `main` branch.
+3. Enable **Require a pull request before merging**, **Require status
+   checks to pass**, **Block force pushes** and **Restrict deletions**.
+4. Choose exactly `Always-on Merge Gate` as the required job after
+   it has run successfully. Optionally require conversation resolution.
+5. As a solo developer, do not require one external approval unless a
+   separate reviewer is available. Review the rule before saving so
+   the repository owner does not lock out their own merge workflow.
+6. Confirm `main` is protected; no rule is considered active until
+   GitHub reports it as such.
+
+For changes to code, inspect the additional backend, frontend,
+dependency-audit and native ARM64 checks before merging. Some of these
+workflows use path filters and therefore are **not** guaranteed to
+appear on documentation-only pull requests.
+
 ## Release and rollback
 
 Record the deployed Git SHA, Docker image digests, current Alembic revision,
