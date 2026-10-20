@@ -121,6 +121,24 @@ jobs:
           done
           test "$ready" -eq 1
 
+      - name: Reject cross-site authentication requests through Caddy
+        run: |
+          set -Eeuo pipefail
+          status="$(curl --silent --show-error \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'Origin: https://attacker.invalid' \
+            --header 'Sec-Fetch-Site: cross-site' \
+            --data '{"email":"attacker@example.invalid","password":"invalid"}' \
+            http://localhost/api/auth/login)"
+          if [ "$status" != "403" ]; then
+            echo "FAIL: cross-origin mutation was not rejected (HTTP $status)"
+            exit 1
+          fi
+          echo "PASS: cross-origin mutation rejected"
+
       - name: Run bounded HTTP performance probe
         run: |
           python3 scripts/ops/performance_probe.py \
