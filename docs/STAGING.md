@@ -29,6 +29,34 @@ The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
    up -d --build`, then check with
    `docker compose --env-file backend/.env.production --profile production ps`.
 
+## Native ARM64 pre-deployment CI
+
+The [Native ARM64 Full-stack Predeploy](../.github/workflows/arm64-predeploy.yml)
+workflow builds the backend, frontend and voice-worker images on a native
+`ubuntu-24.04-arm` GitHub runner. It starts disposable ARM64 PostgreSQL,
+Redis, FastAPI, Next.js and Caddy containers and checks:
+
+- non-root native ARM64 application images;
+- expected private networking and named data volumes;
+- backend migrations and database readiness;
+- the public-path health and anonymous authorization checks through Caddy;
+- rejection of a malicious cross-origin authentication request;
+- a bounded, unauthenticated HTTP p50/p95 and RPS probe.
+
+The workflow also creates disposable database and upload markers, captures
+a backup, verifies its archive and temporary-database restore, modifies
+both markers, executes the actual restore script with explicit CI-only
+confirmation, and verifies the original records/files return. This is
+a **destructive test only on ephemeral CI resources** and does not count
+as an off-host production recovery rehearsal.
+
+For CI **only**, Caddy uses `http://localhost` with local test settings and
+deterministic AI providers. No Internet-facing service, user data or paid
+model API is involved. Consequently, passing this job does **not** verify
+live TLS certificate issuance, Google login, SMTP, real model responses,
+voice-provider integration, backup restoration, OCI VM performance, or
+the full end-to-end user workload.
+
 ## Public endpoint smoke test
 
 After HTTPS is serving on the staging hostname:
@@ -75,6 +103,35 @@ Use test accounts only. Verify:
 
 The automated smoke test cannot prove these authenticated or provider-backed
 flows work. All must pass before public launch.
+
+## GitHub main branch protection (owner-only setting)
+
+The [Always-on Merge Gate](../.github/workflows/merge-gate.yml) runs on
+**every** pull request to `main`, including documentation-only changes.
+It checks offline security tests, operational scripts, Markdown links,
+and the production Compose network/storage contract. This makes it a
+safe **required status check**: path-filtered CI jobs cannot be
+required for all PRs because some changes do not trigger them.
+
+**Repository owner action (cannot be completed by this connector):**
+
+1. Open **Settings → Rules → Rulesets → New branch ruleset** in GitHub.
+2. Give it the name `Protect Aqlyra main`, set enforcement **Active**,
+   and target the `main` branch.
+3. Enable **Require a pull request before merging**, **Require status
+   checks to pass**, **Block force pushes** and **Restrict deletions**.
+4. Choose exactly `Always-on Merge Gate` as the required job after
+   it has run successfully. Optionally require conversation resolution.
+5. As a solo developer, do not require one external approval unless a
+   separate reviewer is available. Review the rule before saving so
+   the repository owner does not lock out their own merge workflow.
+6. Confirm `main` is protected; no rule is considered active until
+   GitHub reports it as such.
+
+For changes to code, inspect the additional backend, frontend,
+dependency-audit and native ARM64 checks before merging. Some of these
+workflows use path filters and therefore are **not** guaranteed to
+appear on documentation-only pull requests.
 
 ## Release and rollback
 

@@ -1,0 +1,173 @@
+name: Native ARM64 Full-stack Predeploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - "Caddyfile"
+      - "scripts/ops/**"
+      - ".github/workflows/arm64-predeploy.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - "Caddyfile"
+      - "scripts/ops/**"
+      - ".github/workflows/arm64-predeploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-full-stack:
+    name: Native ARM64 builds + real local reverse-proxy smoke
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    env:
+      BACKEND_ENV_FILE: ./backend/.env.example
+      APP_DOMAIN: http://localhost
+      CADDY_EMAIL: ci@example.invalid
+      DOCKER_BUILDKIT: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Confirm native ARM64 runner
+        run: |
+          set -Eeuo pipefail
+          test "$(uname -m)" = "aarch64"
+          docker info --format '{{.Architecture}}'
+          docker compose version
+
+      - name: Validate private networking and persistent volumes
+        run: |
+          set -Eeuo pipefail
+          docker compose \
+            --env-file backend/.env.example \
+            --profile production \
+            config --format json \
+            | python3 scripts/ops/deployment_contract.py
+
+      - name: Build native ARM64 backend, frontend, and voice-worker
+        run: |
+          set -Eeuo pipefail
+          docker compose \
+            --env-file backend/.env.example \
+            --profile production \
+            build backend frontend voice-worker
+
+      - name: Verify native containers run without root
+        run: |
+          set -Eeuo pipefail
+          for service in backend frontend voice-worker; do
+            arch="$(docker compose \
+              --env-file backend/.env.example \
+              --profile production \
+              run --rm --no-deps --entrypoint uname "$service" -m)"
+            test "$arch" = "aarch64" || {
+              echo "FAIL: $service architecture $arch is not aarch64"
+              exit 1
+            }
+            uid="$(docker compose \
+              --env-file backend/.env.example \
+              --profile production \
+              run --rm --no-deps --entrypoint id "$service" -u)"
+            test "$uid" != "0" || {
+              echo "FAIL: $service runs as root"
+              exit 1
+            }
+            echo "PASS: $service native ARM64, UID=$uid"
+          done
+
+      - name: Start native DB, Redis, API, frontend, and Caddy
+        run: |
+          set -Eeuo pipefail
+          # CI-only HTTP on loopback: no public domain, identity or model keys.
+          # HTTPS/TLS must be checked separately on the eventual OCI staging VM.
+          docker compose \
+            --env-file backend/.env.example \
+            --profile production \
+            up -d --no-build postgres redis backend frontend caddy
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl -fsS --max-time 4 \
+              http://127.0.0.1:8000/api/v1/readiness >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+
+      - name: Check full-stack access through real Caddy
+        run: |
+          set -Eeuo pipefail
+          ready=0
+          for attempt in $(seq 1 60); do
+            if python3 scripts/ops/staging_smoke.py \
+              --base-url http://localhost \
+              --allow-http-loopback; then
+              ready=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+
+      - name: Reject cross-site authentication requests through Caddy
+        run: |
+          set -Eeuo pipefail
+          status="$(curl --silent --show-error \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'Origin: https://attacker.invalid' \
+            --header 'Sec-Fetch-Site: cross-site' \
+            --data '{"email":"attacker@example.invalid","password":"invalid"}' \
+            http://localhost/api/auth/login)"
+          if [ "$status" != "403" ]; then
+            echo "FAIL: cross-origin mutation was not rejected (HTTP $status)"
+            exit 1
+          fi
+          echo "PASS: cross-origin mutation rejected"
+
+      - name: Run bounded HTTP performance probe
+        run: |
+          python3 scripts/ops/performance_probe.py \
+            --base-url http://localhost \
+            --allow-http-loopback \
+            --requests 20 \
+            --concurrency 2
+
+      - name: Rehearse database and uploads restoration in disposable CI
+        env:
+          AQ_DISPOSABLE_RESTORE_CONFIRMED: "yes"
+        run: |
+          set -Eeuo pipefail
+          bash scripts/ops/rehearse_backup_restore_ci.sh
+          python3 scripts/ops/staging_smoke.py \
+            --base-url http://localhost \
+            --allow-http-loopback
+
+      - name: Print diagnostics if the smoke fails
+        if: failure()
+        run: |
+          docker compose --env-file backend/.env.example \
+            --profile production ps || true
+          docker compose --env-file backend/.env.example \
+            --profile production logs --no-color --tail 75 \
+            postgres redis backend frontend caddy || true
+
+      - name: Remove disposable CI services without deleting volumes
+        if: always()
+        run: |
+          docker compose --env-file backend/.env.example \
+            --profile production down --remove-orphans || true

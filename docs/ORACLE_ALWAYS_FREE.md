@@ -9,6 +9,16 @@ Oracle's [official Always Free guide](https://docs.oracle.com/en-us/iaas/Content
 
 Suggested test VM: Ubuntu 24.04 ARM64, `VM.Standard.A1.Flex`, 2 OCPUs, 12 GB RAM, 50–100 GB boot disk. The entire app shares one VM and is not highly available. Test resource usage with voice and embedding services together before accepting public users.
 
+## Native ARM64 preflight evidence
+
+Before creating a paid VM, GitHub Actions can now validate a native ARM64
+image build and a disposable full-stack startup using `ubuntu-24.04-arm`.
+See [STAGING.md](STAGING.md#native-arm64-pre-deployment-ci) and the
+[ARM64 workflow](../.github/workflows/arm64-predeploy.yml).
+This checks architecture compatibility **in CI** without guaranteeing
+OCI regional capacity, hardware throughput, account approval, TLS
+or any provider-backed authenticated flows.
+
 ## 1. Account-owner OCI Console actions
 
 1. Sign up or sign in to [Oracle Cloud](https://www.oracle.com/cloud/free/), including required email/identity/payment-method checks. Only the account owner can complete these actions.
@@ -70,6 +80,13 @@ python3 scripts/ops/performance_probe.py \
 
 Interpret results using [Performance Baseline](PERFORMANCE_BASELINE.md).
 These timings do not establish LLM/RAG token throughput or maximum user count.
+
+In native ARM64 GitHub Actions, a separate CI-only rehearsal backs up
+and restores disposable PostgreSQL rows and uploads to check recovery
+behavior. The run is deliberately restricted to GitHub Actions and
+requires explicit opt-in. It never handles existing Oracle data,
+and it cannot replace an encrypted **off-host backup** plus an
+independent restore test against the actual deployed environment.
 
 ## 6. Backups and limitations
 

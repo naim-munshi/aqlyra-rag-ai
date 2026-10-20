@@ -108,6 +108,24 @@ Rate-limit responses use `429` and include `Retry-After`.
 
 If Redis is required for the operation and unavailable, the protected route fails closed.
 
+## Native ARM64 and reverse-proxy integration checks
+
+The dedicated ARM64 workflow builds actual production Dockerfiles on
+native ARM64 Linux runners, then starts the existing Caddy/Next.js/API/
+PostgreSQL/Redis stack with **local-only** deterministic test settings.
+A malicious cross-origin login request must receive HTTP 403 through
+the real reverse proxy; the smoke check also expects anonymous routes
+to return HTTP 401 and private metrics to remain inaccessible.
+
+The CI rehearsal also verifies that an actual backup and restore cycle
+recovers synthetic PostgreSQL and upload markers after they have been
+changed. This is isolated from real user data and is **not** evidence
+of recovery from an off-host encrypted production snapshot.
+
+It cannot replace live HTTPS/SMTP/Google/LiveKit, real provider or
+cross-account authenticated staging tests. Those tests must be
+recorded against the eventual deployed Singapore VM.
+
 ## Deployment network and persistence contract
 
 A deployment check consumes the canonical Compose production profile and
