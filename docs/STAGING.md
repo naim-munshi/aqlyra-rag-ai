@@ -29,6 +29,27 @@ The default Compose bindings for PostgreSQL and FastAPI are localhost-only.
    up -d --build`, then check with
    `docker compose --env-file backend/.env.production --profile production ps`.
 
+## Native ARM64 pre-deployment CI
+
+The [Native ARM64 Full-stack Predeploy](../.github/workflows/arm64-predeploy.yml)
+workflow builds the backend, frontend and voice-worker images on a native
+`ubuntu-24.04-arm` GitHub runner. It starts disposable ARM64 PostgreSQL,
+Redis, FastAPI, Next.js and Caddy containers and checks:
+
+- non-root native ARM64 application images;
+- expected private networking and named data volumes;
+- backend migrations and database readiness;
+- the public-path health and anonymous authorization checks through Caddy;
+- rejection of a malicious cross-origin authentication request;
+- a bounded, unauthenticated HTTP p50/p95 and RPS probe.
+
+For CI **only**, Caddy uses `http://localhost` with local test settings and
+deterministic AI providers. No Internet-facing service, user data or paid
+model API is involved. Consequently, passing this job does **not** verify
+live TLS certificate issuance, Google login, SMTP, real model responses,
+voice-provider integration, backup restoration, OCI VM performance, or
+the full end-to-end user workload.
+
 ## Public endpoint smoke test
 
 After HTTPS is serving on the staging hostname:
