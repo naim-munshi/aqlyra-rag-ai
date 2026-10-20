@@ -61,6 +61,16 @@ Run authenticated tests in [STAGING.md](STAGING.md): email code verification, Go
 
 Never execute `docker compose down -v` on an environment containing data. Both backend and voice worker use one uploads volume and the backend runs under UID 10001. On upgrades from older root-run images, verify upload ownership before replacing them.
 
+After staging smoke succeeds, measure a small read-only transport baseline:
+
+```bash
+python3 scripts/ops/performance_probe.py \
+  --base-url https://YOUR_DOMAIN --requests 40 --concurrency 2
+```
+
+Interpret results using [Performance Baseline](PERFORMANCE_BASELINE.md).
+These timings do not establish LLM/RAG token throughput or maximum user count.
+
 ## 6. Backups and limitations
 
 ```bash

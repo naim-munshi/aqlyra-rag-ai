@@ -76,8 +76,16 @@ jobs:
           for script in scripts/ops/*.sh; do
             bash -n "$script"
           done
-      - name: Validate OCI ARM64 host preflight syntax
-        run: python3 -m py_compile scripts/ops/oci_host_preflight.py
+      - name: Validate OCI and network contract Python syntax
+        run: >-
+          python3 -m py_compile
+          scripts/ops/oci_host_preflight.py
+          scripts/ops/deployment_contract.py
+          scripts/ops/performance_probe.py
+      - name: Run deployment security regression tests
+        run: >-
+          python3 -m unittest discover
+          -s scripts/ops -p 'test_*.py' -v
       - name: Validate production Compose profile
         env:
           BACKEND_ENV_FILE: ./backend/.env.production.example
@@ -86,6 +94,16 @@ jobs:
           --env-file backend/.env.production.example
           --profile production
           config --quiet
+
+      - name: Audit production Compose security boundaries
+        env:
+          BACKEND_ENV_FILE: ./backend/.env.production.example
+        run: |
+          docker compose \
+            --env-file backend/.env.production.example \
+            --profile production \
+            config --format json \
+            | python3 scripts/ops/deployment_contract.py
 
       - name: Validate Caddy reverse-proxy configuration
         run: |

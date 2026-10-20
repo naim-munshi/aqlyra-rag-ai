@@ -2,6 +2,8 @@
 """Non-destructive host checks before Oracle Always Free staging deployment."""
 
 import json
+
+from deployment_contract import audit_services
 import os
 from pathlib import Path
 import platform
@@ -87,26 +89,11 @@ if ENV_FILE.is_file():
         if result is not None and result.returncode == 0:
             try:
                 services = json.loads(result.stdout)["services"]
-                issues = []
-                for name, target in (("backend", 8000), ("postgres", 5432)):
-                    ports = services.get(name, {}).get("ports", [])
-                    if len(ports) != 1 or int(ports[0]["target"]) != target:
-                        issues.append(name + " has unexpected port bindings")
-                    elif ports[0].get("host_ip") not in ("127.0.0.1", "::1"):
-                        issues.append(name + " is publicly exposed")
-
-                for name in ("redis", "frontend", "voice-worker", "alert-worker"):
-                    if services.get(name, {}).get("ports"):
-                        issues.append(name + " is publicly exposed")
-
-                caddy = services.get("caddy", {}).get("ports", [])
-                if {int(item["target"]) for item in caddy} != {80, 443}:
-                    issues.append("Caddy should expose only HTTP(S)")
-
+                issues = audit_services(services)
                 for issue in issues:
-                    print("FAIL: " + issue)
-                    errors.append(issue)
-                check(not issues, "Only Caddy accepts publicly routed ports")
+                    check(False, issue)
+                if not issues:
+                    check(True, "Network, privilege and persistence boundaries")
             except (ValueError, KeyError, TypeError):
                 check(False, "Could not inspect Compose published ports")
 
