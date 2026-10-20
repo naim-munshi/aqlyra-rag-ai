@@ -81,6 +81,13 @@ python3 scripts/ops/performance_probe.py \
 Interpret results using [Performance Baseline](PERFORMANCE_BASELINE.md).
 These timings do not establish LLM/RAG token throughput or maximum user count.
 
+In native ARM64 GitHub Actions, a separate CI-only rehearsal backs up
+and restores disposable PostgreSQL rows and uploads to check recovery
+behavior. The run is deliberately restricted to GitHub Actions and
+requires explicit opt-in. It never handles existing Oracle data,
+and it cannot replace an encrypted **off-host backup** plus an
+independent restore test against the actual deployed environment.
+
 ## 6. Backups and limitations
 
 ```bash

@@ -43,6 +43,13 @@ Redis, FastAPI, Next.js and Caddy containers and checks:
 - rejection of a malicious cross-origin authentication request;
 - a bounded, unauthenticated HTTP p50/p95 and RPS probe.
 
+The workflow also creates disposable database and upload markers, captures
+a backup, verifies its archive and temporary-database restore, modifies
+both markers, executes the actual restore script with explicit CI-only
+confirmation, and verifies the original records/files return. This is
+a **destructive test only on ephemeral CI resources** and does not count
+as an off-host production recovery rehearsal.
+
 For CI **only**, Caddy uses `http://localhost` with local test settings and
 deterministic AI providers. No Internet-facing service, user data or paid
 model API is involved. Consequently, passing this job does **not** verify
