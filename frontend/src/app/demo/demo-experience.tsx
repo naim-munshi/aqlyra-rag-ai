@@ -13,7 +13,7 @@ import {
   Database,
   FileSearch,
   Fingerprint,
-  Github,
+  GitBranch,
   Layers3,
   LockKeyhole,
   MessageSquareText,
@@ -230,7 +230,7 @@ export function DemoExperience() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <Github size={17} /> View source on GitHub <ArrowUpRight size={14} />
+          <GitBranch size={17} /> View source on GitHub <ArrowUpRight size={14} />
         </a>
       </aside>
 
@@ -506,7 +506,7 @@ export function DemoExperience() {
                 rel="noopener noreferrer"
                 className={styles.primaryButton}
               >
-                <Github size={17} /> Explore the source <ArrowUpRight size={16} />
+                <GitBranch size={17} /> Explore the source <ArrowUpRight size={16} />
               </a>
             </section>
 
