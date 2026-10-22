@@ -34,17 +34,25 @@ and usage limits before connecting a repository.
 3. Framework preset: **Next.js**. Install command: npm ci.
    Build command: npm run build. Do not change the application's
    current TypeScript, routing, or production Docker configuration.
-4. Do not supply backend SECRET_KEY, database credentials, SMTP
-   passwords or private API tokens in Vercel's public environment
-   variables. The public demo does not need credentials or backend URLs.
+4. In Vercel Environment Variables, configure exactly
+   `NEXT_PUBLIC_AQLYRA_DEMO_ONLY=true` for a **frontend-only**
+   deployment. This hides links that would otherwise imply that
+   backend sign-in is available. It is a public non-secret setting.
+   Do **not** set `BACKEND_API_URL` to a placeholder or expose backend
+   SECRET_KEY, database credentials, SMTP passwords or private API tokens.
+   The public demo needs no backend credentials.
 5. Deploy on the **Hobby** plan; verify that https://YOUR_SITE/demo
    renders without a login or backend account.
 6. Verify that the root URL redirects to /demo when unauthenticated
    and that all sample-mode buttons, prompts, mobile layout and citation
    disclosure work.
-7. Verify that /login is a *separate real-app route*, **not** a
-   functioning authentication promise for a frontend-only deployment.
-   If the backend is unavailable, sign-in APIs will not work.
+7. In frontend-only mode, confirm the public demo links to GitHub
+   instead of inviting sign-in. /login remains a *separate real-app route*
+   and does **not** work without the backend. Do not advertise it as live
+   authentication on the portfolio demo.
+8. If you later deploy the complete backend, unset
+   `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` or set it to `false` and rebuild
+   the frontend to restore its normal real-app sign-in links.
 
 Do not create a new Supabase project just to power this preview. The
 public demo needs no database, Redis instance, object storage,
