@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  ArrowUpRight,
   FileSearch,
   ShieldCheck,
   type LucideIcon,
@@ -10,10 +11,10 @@ import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen bg-[var(--aq-bg)] text-[var(--aq-text)]">
+    <main className="min-h-screen bg-[#080b12] text-[var(--aq-text)]">
       <div className="grid min-h-screen lg:grid-cols-[380px_1fr]">
         {/* Left side */}
-        <aside className="hidden border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] px-10 py-10 lg:flex lg:flex-col">
+        <aside className="hidden border-r border-[var(--aq-border)] bg-[linear-gradient(180deg,#121523,#0b0e16)] px-10 py-10 lg:flex lg:flex-col">
           <AqlyraLogo size={46} />
 
           <div className="my-auto">
@@ -44,6 +45,13 @@ export default function LoginPage() {
                 title="Grounded citations"
               />
             </div>
+
+            <Link
+              href="/demo"
+              className="mt-8 inline-flex items-center gap-2 rounded-xl border border-violet-400/25 bg-violet-400/10 px-4 py-3 text-xs font-semibold text-violet-200 transition hover:border-violet-300/45 hover:bg-violet-400/15"
+            >
+              Explore interactive demo <ArrowUpRight size={15} />
+            </Link>
           </div>
 
           <p className="text-[10px] text-[var(--aq-muted)]">
@@ -72,6 +80,13 @@ export default function LoginPage() {
               </p>
 
               <LoginForm />
+
+              <Link
+                href="/demo"
+                className="mt-6 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-400/25 bg-violet-400/10 px-4 text-xs font-semibold text-violet-200 transition hover:border-violet-300/50 hover:bg-violet-400/15"
+              >
+                Explore demo without an account <ArrowUpRight size={15} />
+              </Link>
 
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 New to Aqlyra?{" "}
