@@ -86,11 +86,11 @@ with running containers from the original checkout. Before startup,
 inspect without stopping or removing anything:
 
 ```bash
-docker ps --filter 'name=aqlyra-' --format '{{.Names}} {{.Status}}'
+docker ps -a --filter 'name=aqlyra-' --format '{{.Names}} {{.Status}}'
 docker volume ls --format '{{.Name}}' | grep 'aqlyra' || true
 ```
 
-If old Aqlyra containers are running, stop here and resolve the
+If old Aqlyra containers (including stopped ones) exist, stop here and resolve the
 container-name collision deliberately; do not delete or prune containers
 or volumes. For a new, isolated local instance, after checking that no
 old services are in the way, run `bash scripts/ops/mac_local_up.sh`
