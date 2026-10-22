@@ -51,7 +51,7 @@ revised, count = re.subn(
 if count:
     path.write_text(revised, encoding="utf-8")
     print("Generated a strong private local JWT key.")
-elif not re.search(r"(?m)^SECRET_KEY=\\S{32,}\\s*$", source):
+elif not re.search(r"(?m)^SECRET_KEY=\S{32,}\s*$", source):
     raise SystemExit("FAIL: Set a strong SECRET_KEY in backend/.env first.")
 PY
 
