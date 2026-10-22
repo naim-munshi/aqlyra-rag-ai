@@ -46,6 +46,65 @@ No database or upload volume is wiped, and no paid cloud resource is
 created. Existing non-placeholder configuration and credentials stay
 unchanged.
 
+
+## Recover a diverged Mac checkout without rewriting Git history
+
+When `git pull --ff-only origin main` fails because the local branch has
+diverged, **do not** run `git reset --hard`, force-pull, or delete the
+existing checkout. You can run the reviewed current `main` in a separate
+detached worktree without rewriting the original repository:
+
+```bash
+cd ~/aqlyra-rag-ai
+git status --short --branch
+git fetch origin main
+git worktree list
+
+# Only create a fresh worktree when the destination does not yet exist.
+if [ ! -e "$HOME/aqlyra-rag-ai-live" ]; then
+  git worktree add --detach "$HOME/aqlyra-rag-ai-live" origin/main
+fi
+
+cd ~/aqlyra-rag-ai-live
+git log -1 --format='%h %s'
+test -f scripts/ops/mac_local_up.sh
+```
+
+Verify that the displayed commit matches the reviewed GitHub main
+before starting. If `~/aqlyra-rag-ai-live` already exists, do not
+blindly reuse it; inspect `git status`, `git rev-parse HEAD`, and
+`git worktree list` instead. The worktree shares Git objects but does
+not overwrite the original worktree's files, branch or uncommitted edits.
+
+**Important: Docker Compose project identity and existing data.**
+By default Compose derives its project name from the checkout directory:
+`aqlyra-rag-ai` and `aqlyra-rag-ai-live` can use *different*
+`postgres_data` and `uploads_data` volumes. That isolation keeps the
+original data untouched but means the new worktree might appear to have
+an empty database. The app's fixed container names can also conflict
+with running containers from the original checkout. Before startup,
+inspect without stopping or removing anything:
+
+```bash
+docker ps --filter 'name=aqlyra-' --format '{{.Names}} {{.Status}}'
+docker volume ls --format '{{.Name}}' | grep 'aqlyra' || true
+```
+
+If old Aqlyra containers are running, stop here and resolve the
+container-name collision deliberately; do not delete or prune containers
+or volumes. For a new, isolated local instance, after checking that no
+old services are in the way, run `bash scripts/ops/mac_local_up.sh`
+from the new worktree. Its `backend/.env` is also separate from the
+original checkout's `backend/.env`.
+
+Do **not** set `COMPOSE_PROJECT_NAME` to the original project's name
+merely to make data appear in the new worktree. Doing so may attach
+the new application code to an existing database and automatically run
+Alembic migrations against it. Reuse an existing project/volume only
+after identifying its owner, making a verified backup and reviewing
+migration compatibility. Never run `docker compose down -v`,
+`docker volume prune` or destructive Git cleanup as a recovery shortcut.
+
 ## Open the real software
 
 - **Login:** <http://127.0.0.1:3000/login>
