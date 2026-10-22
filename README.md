@@ -316,6 +316,20 @@ The tests cover:
 
 Tests use a separate PostgreSQL test database instead of the normal development database.
 
+## Run the actual software on your Mac
+
+For a one-command, loopback-only Docker deployment with actual
+PostgreSQL/pgvector, FastAPI, Next.js, Redis and a local email-OTP
+inbox, use the [Mac Local Software guide](docs/MAC_LOCAL_SOFTWARE.md):
+
+```bash
+bash scripts/ops/mac_local_up.sh
+```
+
+This tests real application authentication and persistence, but uses
+deterministic AI providers until you configure actual model credentials.
+It is **not** an Internet-ready production configuration.
+
 ## Local development
 
 Create a local, untracked development configuration and start the required backend services:

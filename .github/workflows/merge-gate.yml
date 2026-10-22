@@ -33,6 +33,18 @@ jobs:
       - name: Verify documented local links
         run: python3 scripts/ops/check_markdown_docs.py
 
+      - name: Verify private Mac-only Compose profile
+        run: |
+          set -Eeuo pipefail
+          BACKEND_ENV_FILE=./backend/.env.example \
+            docker compose \
+            --env-file backend/.env.example \
+            --file docker-compose.yml \
+            --file docker-compose.mac-local.yml \
+            --profile production \
+            config --format json \
+            | python3 scripts/ops/check_mac_local_compose.py
+
       - name: Verify production Compose security and storage contract
         env:
           BACKEND_ENV_FILE: ./backend/.env.production.example
