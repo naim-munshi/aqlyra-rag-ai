@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "Aqlyra"
     SMTP_USE_SSL: bool = True
+    SMTP_STARTTLS: bool = True
     SMTP_TIMEOUT_SECONDS: float = 10.0
 
     GOOGLE_CLIENT_ID: str = ""
@@ -424,6 +425,16 @@ class Settings(BaseSettings):
     def validate_provider_configuration(
         self,
     ) -> Self:
+        # Only disposable local SMTP sinks may use plain SMTP.
+        # Production always requires an encrypted SMTP transport.
+        if (
+            self.APP_ENV.strip().lower() == "production"
+            and not (self.SMTP_USE_SSL or self.SMTP_STARTTLS)
+        ):
+            raise ValueError(
+                "Production SMTP requires SSL or STARTTLS"
+            )
+
         if (
             self.EMBEDDING_DIMENSION
             != 384

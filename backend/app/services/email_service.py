@@ -64,8 +64,9 @@ def send_verification_email(
                 timeout=settings.SMTP_TIMEOUT_SECONDS,
             ) as smtp:
                 smtp.ehlo()
-                smtp.starttls(context=tls_context)
-                smtp.ehlo()
+                if settings.SMTP_STARTTLS:
+                    smtp.starttls(context=tls_context)
+                    smtp.ehlo()
                 smtp.login(username, password)
                 smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
