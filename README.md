@@ -2,6 +2,8 @@
 
 Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
 
+**Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
+
 **Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
 
 It has two main modes:
@@ -370,6 +372,7 @@ For the full setup, see [docs/SETUP.md](docs/SETUP.md).
 - [Setup](docs/SETUP.md)
 - [Staging and Release Gate](docs/STAGING.md)
 - [Oracle Always Free Deployment](docs/ORACLE_ALWAYS_FREE.md)
+- [Free Vercel Portfolio Demo](docs/VERCEL_PORTFOLIO_DEMO.md)
 - [Staging Performance Baseline](docs/PERFORMANCE_BASELINE.md)
 - [Retrieval Baseline](backend/evaluation/BASELINE.md)
 - [Frontend Development](frontend/README.md)
