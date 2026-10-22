@@ -1,0 +1,35 @@
+# Developer-only override: never deploy this plaintext SMTP sink publicly.
+# scripts/ops/mac_local_up.sh starts only the named local services.
+services:
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_MAX_MESSAGES: "100"
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  backend:
+    depends_on:
+      mailpit:
+        condition: service_started
+    environment:
+      APP_ENV: development
+      DEBUG: "false"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USE_SSL: "false"
+      SMTP_STARTTLS: "false"
+      SMTP_USERNAME: local@aqlyra.invalid
+      SMTP_PASSWORD: local-only-do-not-use-for-real-smtp
+      SMTP_FROM_EMAIL: local@aqlyra.invalid
+      SMTP_FROM_NAME: "Aqlyra Local"
+      EMAIL_VERIFICATION_REQUIRED: "true"
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_AQLYRA_DEMO_ONLY: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
