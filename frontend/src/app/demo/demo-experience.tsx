@@ -87,6 +87,7 @@ const architecture = [
 ] as const;
 
 export function DemoExperience() {
+  const demoOnly = process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true";
   const [section, setSection] = useState<PreviewSection>("workspace");
   const [mode, setMode] = useState<PreviewMode>("knowledge");
   const [selectedId, setSelectedId] = useState("access");
@@ -243,9 +244,20 @@ export function DemoExperience() {
           </div>
           <div className={styles.topbarActions}>
             <span className={styles.previewBadge}><span /> PUBLIC DEMO</span>
-            <Link href="/login" className={styles.signInLink}>
-              Sign in <ArrowUpRight size={14} />
-            </Link>
+            {demoOnly ? (
+              <a
+                href="https://github.com/naim-munshi/aqlyra-rag-ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.signInLink}
+              >
+                View source <ArrowUpRight size={14} />
+              </a>
+            ) : (
+              <Link href="/login" className={styles.signInLink}>
+                Sign in <ArrowUpRight size={14} />
+              </Link>
+            )}
           </div>
         </header>
 
@@ -538,9 +550,20 @@ export function DemoExperience() {
                   automated tests remain in the source repository.
                 </p>
               </div>
-              <Link href="/login" className={styles.secondaryButton}>
-                App sign in <ArrowUpRight size={15} />
-              </Link>
+              {demoOnly ? (
+                <a
+                  href="https://github.com/naim-munshi/aqlyra-rag-ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.secondaryButton}
+                >
+                  Review source <ArrowUpRight size={15} />
+                </a>
+              ) : (
+                <Link href="/login" className={styles.secondaryButton}>
+                  App sign in <ArrowUpRight size={15} />
+                </Link>
+              )}
             </section>
 
             <div className={styles.archActions}>
