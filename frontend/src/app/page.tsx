@@ -54,7 +54,9 @@ export default async function Home() {
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect("/login");
+    // Public visitors see a real, labelled portfolio preview rather than
+    // an empty login wall. The authenticated workspace remains protected.
+    redirect("/demo");
   }
 
   return (
