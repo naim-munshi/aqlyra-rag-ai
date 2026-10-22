@@ -221,7 +221,7 @@ export function DemoExperience() {
           <span className={styles.sidebarNoteIcon}><ShieldCheck size={16} /></span>
           <strong>Designed for trust</strong>
           <p>Verified identities, source-aware answers and private knowledge workflows.</p>
-          <span className={styles.sidebarNoteFoot}>Explore the architecture <ArrowUpRight size={12} /></span>
+          <button type="button" onClick={() => setSection("architecture")} className={styles.sidebarNoteFoot}>Explore the architecture <ArrowUpRight size={12} /></button>
         </div>
 
         <a
