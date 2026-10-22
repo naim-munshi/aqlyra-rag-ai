@@ -4,6 +4,7 @@ import { KnowledgeWorkspace } from "@/components/workspace/knowledge-workspace";
 import { Sidebar } from "@/components/workspace/sidebar";
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
+import { unauthenticatedLanding } from "@/lib/deployment/mode";
 import type {
   BackendError,
   UserResponse,
@@ -54,9 +55,9 @@ export default async function Home() {
   const user = await getCurrentUser();
 
   if (!user) {
-    // Public visitors see a real, labelled portfolio preview rather than
-    // an empty login wall. The authenticated workspace remains protected.
-    redirect("/demo");
+    // Portfolio-only builds redirect to the interactive preview, while the
+    // actual software takes unauthenticated visitors to real account sign-in.
+    redirect(unauthenticatedLanding(process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY));
   }
 
   return (
