@@ -51,3 +51,15 @@ computer use. No browser history is persisted as conversation messages.
 Web research can incur Tavily and model API usage charges depending on plans.
 The existing RAG endpoint rate limiter is applied when configured with Redis;
 for public service deployments, configure and verify ingress abuse protection.
+
+## Existing native Mac environment
+
+Once the branch is checked out and the isolated PostgreSQL database is
+online (port 55416), configure a real Groq/OpenAI model in `backend/.env`
+and use `bash scripts/ops/native_web_research_up.sh`. This checks the
+database schema, preserves existing uploads, starts only a verified
+Aqlyra process bound to port 8010, and opens the authenticated `/web`
+workspace on the already-running Next.js frontend. It does **not**
+start Docker, reset or migrate databases, or touch Metriqen processes.
+If no Tavily key is present, this helper explicitly enables Tavily's
+local keyless Search/Extract mode; provider limits may apply.
