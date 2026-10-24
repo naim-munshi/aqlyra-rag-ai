@@ -199,7 +199,7 @@ def research_web(
             continue
         url = item.get("url")
         content = item.get("raw_content")
-        if url in approved and isinstance(content, str) and content.strip():
+        if isinstance(url, str) and url in approved and isinstance(content, str) and content.strip():
             page_content[url] = content[:MAX_EVIDENCE_CHARS].strip()
 
     sources: list[WebResearchSource] = []
@@ -231,6 +231,8 @@ def research_web(
         input_text=json.dumps(body, ensure_ascii=False),
     )
     text = generation.text.strip()
+    if len(text) > 15_000:
+        raise WebResearchEvidenceError("Generated answer exceeds safe size limit")
     cited_numbers = {int(x) for x in CITATION_PATTERN.findall(text)}
     if not text or not cited_numbers or not cited_numbers.issubset(
         set(range(1, len(sources) + 1))

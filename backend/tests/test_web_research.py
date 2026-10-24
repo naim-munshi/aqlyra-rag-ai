@@ -166,3 +166,22 @@ def test_authenticated_web_endpoint(client: TestClient, monkeypatch) -> None:
     assert client.post("/api/v1/web/research", json={
         "question": "x", "max_sources": 100,
     }, headers={"Authorization": f"Bearer {token}"}).status_code == 422
+
+
+def test_malformed_provider_source_url_does_not_crash(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    def transport(request: httpx.Request):
+        if request.url.path == "/search":
+            return httpx.Response(200, json={"results": [
+                {"url": "https://example.com/page", "title": "Page"},
+            ]})
+        return httpx.Response(200, json={"results": [
+            {"url": ["unexpected", "list"], "raw_content": "bad"},
+            {"url": "https://example.com/page", "raw_content": "Real content"},
+        ]})
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        response = research_web(
+            "public research", client=client, provider=StubProvider()
+        )
+    assert len(response.sources) == 1
