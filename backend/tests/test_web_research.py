@@ -185,3 +185,26 @@ def test_malformed_provider_source_url_does_not_crash(monkeypatch) -> None:
             "public research", client=client, provider=StubProvider()
         )
     assert len(response.sources) == 1
+
+
+def test_explicit_keyless_mode_is_local_only(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(settings, "TAVILY_KEYLESS_ENABLED", True)
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    def transport(request: httpx.Request) -> httpx.Response:
+        assert "authorization" not in request.headers
+        assert request.headers["x-tavily-access-mode"] == "keyless"
+        if request.url.path == "/search":
+            return httpx.Response(200, json={"results": [
+                {"url": "https://example.com/page", "title": "News"}
+            ]})
+        return httpx.Response(200, json={"results": [
+            {"url": "https://example.com/page", "raw_content": "Fresh public data"}
+        ]})
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        answer = research_web("latest updates", client=client, provider=StubProvider())
+    assert answer.sources[0].citation == "[W1]"
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    with pytest.raises(WebResearchUnavailable):
+        research_web("latest updates", provider=StubProvider())

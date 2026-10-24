@@ -144,6 +144,7 @@ class Settings(BaseSettings):
     # Opt-in live web research. Never use deterministic providers as real search.
     WEB_RESEARCH_ENABLED: bool = False
     TAVILY_API_KEY: str = ""
+    TAVILY_KEYLESS_ENABLED: bool = False
 
     # Realtime voice
     LIVEKIT_URL: str = ""

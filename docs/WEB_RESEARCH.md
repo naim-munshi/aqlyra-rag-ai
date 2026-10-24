@@ -18,6 +18,11 @@ GROQ_API_KEY=REPLACE_WITH_YOUR_OWN_KEY
 LLM_MODEL=openai/gpt-oss-20b
 ```
 
+For local-only testing, Tavily's official SDK also supports keyless Search
+and Extract requests: set \`TAVILY_KEYLESS_ENABLED=true\` and leave
+\`TAVILY_API_KEY\` empty. This is opt-in and disabled for production, and
+may be rate-limited or unavailable; use a real API key for reliable service.
+
 Or use an existing configured OpenAI provider. The feature refuses to pretend
 that deterministic test models are real AI. Obtain a Tavily search API key at
 https://app.tavily.com and check your provider's free credit allowance.

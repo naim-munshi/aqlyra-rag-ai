@@ -90,9 +90,16 @@ def _tavily_json(
             endpoint,
             json=data,
             headers={
-                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                **(
+                    {"Authorization": f"Bearer {api_key}"}
+                    if api_key
+                    else {
+                        "X-Tavily-Access-Mode": "keyless",
+                        "X-Client-Source": "aqlyra-local-keyless",
+                    }
+                ),
             },
         )
         response.raise_for_status()
@@ -117,7 +124,9 @@ def research_web(
     if not settings.WEB_RESEARCH_ENABLED:
         raise WebResearchUnavailable("Web research is disabled")
     key = settings.TAVILY_API_KEY.strip()
-    if not key:
+    if not key and (
+        not settings.TAVILY_KEYLESS_ENABLED or settings.is_production
+    ):
         raise WebResearchUnavailable("TAVILY_API_KEY is not configured")
     if provider is None and settings.LLM_PROVIDER == "deterministic":
         raise WebResearchUnavailable("Real web research requires a live LLM provider")
