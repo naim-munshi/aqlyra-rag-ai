@@ -23,7 +23,7 @@ TAVILY_SEARCH = "https://api.tavily.com/search"
 TAVILY_EXTRACT = "https://api.tavily.com/extract"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_EVIDENCE_CHARS = 3_000
-CITATION_PATTERN = re.compile(r"\\[W([1-9][0-9]*)\\]", re.IGNORECASE)
+CITATION_PATTERN = re.compile(r"\[W([1-9][0-9]*)\]", re.IGNORECASE)
 WEB_INSTRUCTIONS = """
 You are Aqlyra's web research assistant. Answer the user's question
 based only on the provided public web evidence.
