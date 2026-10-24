@@ -110,7 +110,7 @@ export function ForgotPasswordForm() {
             required minLength={6} maxLength={6} pattern="[0-9]{6}"
             className={inputStyle + " text-center font-mono tracking-[0.3em]"}
             value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\\D/g, "").slice(0, 6))}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
             placeholder="000000" />
           <label className={labelStyle} htmlFor="new-password">New password</label>
           <div className="relative">
