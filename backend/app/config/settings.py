@@ -53,6 +53,12 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
 
+    PASSWORD_RESET_CODE_TTL_MINUTES: int = 10
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_COOLDOWN_SECONDS: int = 60
+    RATE_LIMIT_RESET_IP_LIMIT: int = 10
+    RATE_LIMIT_RESET_IP_WINDOW_SECONDS: int = 3600
+
     # Database
     DATABASE_URL: str
 
@@ -374,6 +380,11 @@ class Settings(BaseSettings):
         "EMAIL_VERIFICATION_MAX_ATTEMPTS",
         "EMAIL_VERIFICATION_RESEND_SECONDS",
         "SMTP_PORT",
+        "PASSWORD_RESET_CODE_TTL_MINUTES",
+        "PASSWORD_RESET_MAX_ATTEMPTS",
+        "PASSWORD_RESET_COOLDOWN_SECONDS",
+        "RATE_LIMIT_RESET_IP_LIMIT",
+        "RATE_LIMIT_RESET_IP_WINDOW_SECONDS",
     )
     @classmethod
     def validate_positive_integer(
