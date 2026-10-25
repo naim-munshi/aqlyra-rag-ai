@@ -14,7 +14,8 @@ import app.services.browser_agent_service as agent
 from app.schemas.browser_agent import BrowserRunResponse, BrowserPageEvidence
 from app.services.browser_agent_service import (
     BrowserAgentPlanError, BrowserAgentUnavailable,
-    _parse_choice, create_browser_plan, safe_browser_url, verify_browser_plan,
+    _parse_choice, _merge_link_frontier, create_browser_plan,
+    safe_browser_url, verify_browser_plan,
 )
 from datetime import datetime, timezone
 
@@ -281,3 +282,51 @@ def test_user_cannot_consume_another_users_approval(monkeypatch) -> None:
         plan.plan_token, "authorised-user"
     ))
     assert report.visited[0].url == SITE
+
+
+def test_navigation_frontier_keeps_previous_page_links() -> None:
+    home = "https://docs.example.org/home"
+    previous = [
+        {"url": "https://docs.example.org/security", "title": "Security",
+         "found_on": home},
+        {"url": "https://docs.example.org/reference", "title": "Reference",
+         "found_on": home},
+    ]
+    current = "https://docs.example.org/tutorial"
+    updated = _merge_link_frontier(
+        previous,
+        [
+            {"href": "/api", "text": "API guide"},
+            {"href": "/security", "text": "Duplicate Security"},
+            {"href": "https://evil.org/secret", "text": "Bad external"},
+            {"href": "/logout", "text": "Destructive"},
+            {"href": "/api", "text": "Duplicate API"},
+            {"href": "javascript:alert(1)", "text": "Script"},
+        ],
+        current, HOST, {home, current},
+    )
+    assert [item["url"] for item in updated] == [
+        "https://docs.example.org/api",
+        "https://docs.example.org/security",
+        "https://docs.example.org/reference",
+    ]
+    assert updated[0]["found_on"] == current
+    # After reading the API page, old Security and Reference links remain.
+    next_step = _merge_link_frontier(
+        updated, [], "https://docs.example.org/api", HOST,
+        {home, current, "https://docs.example.org/api"},
+    )
+    assert [item["title"] for item in next_step] == ["Security", "Reference"]
+
+
+def test_navigation_frontier_is_bounded_and_never_revisits() -> None:
+    current = "https://docs.example.org/index"
+    entries = [
+        {"href": f"/page-{i}", "text": f"Page {i}"}
+        for i in range(130)
+    ]
+    options = _merge_link_frontier([], entries, current, HOST, {current})
+    assert len(options) == agent.MAX_LINK_FRONTIER
+    assert len({item["url"] for item in options}) == len(options)
+    assert all(safe_browser_url(item["url"], HOST) for item in options)
+    assert options[0]["url"].endswith("/page-0")
