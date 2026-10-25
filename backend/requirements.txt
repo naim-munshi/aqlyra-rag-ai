@@ -72,7 +72,7 @@ packaging==26.2
 pandas==3.0.5
 passlib==1.7.4
 pgvector==0.5.0
-pillow==12.3.0
+pillow==13.0.0
 pluggy==1.6.0
 propcache==0.5.2
 psycopg==3.3.4
@@ -84,7 +84,7 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 pydantic_core==2.46.4
 Pygments==2.20.0
-pypdf==6.19.0
+pypdf==6.21.2
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
@@ -123,6 +123,5 @@ xlsxwriter==3.2.9
 xxhash==3.8.1
 yarl==1.24.5
 zstandard==0.25.0
-Pillow==12.3.0
 pytesseract==0.3.13
 livekit-api==1.2.0
