@@ -349,7 +349,8 @@ export function StudyAbroadWorkspace() {
       const remaining = cases.filter(item => item.id !== active.id);
       setCases(remaining);
       setActive(remaining[0] ?? null);
-      setDocuments([]); setReports([]);
+      setDocuments([]); setReports([]); setUniversities([]);
+      setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -398,9 +399,10 @@ export function StudyAbroadWorkspace() {
             {cases.length === 0 && <p className="text-xs leading-5 text-[var(--aq-muted)]">Create a journey to begin your plan.</p>}
             <div className="space-y-2">
               {cases.map(item => (
-                <button key={item.id} type="button" onClick={() => {
+                <button key={item.id} type="button" disabled={busy !== ""} onClick={() => {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
-                    setDocumentAnswer(null); setError("");
+                    setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
+                    setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
                   className={"w-full rounded-xl border p-3 text-left transition " +
