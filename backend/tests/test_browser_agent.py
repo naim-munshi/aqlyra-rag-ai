@@ -302,6 +302,7 @@ def test_navigation_frontier_keeps_previous_page_links() -> None:
             {"href": "/logout", "text": "Destructive"},
             {"href": "/api", "text": "Duplicate API"},
             {"href": "javascript:alert(1)", "text": "Script"},
+            {"href": "http://[invalid/", "text": "Malformed host"},
         ],
         current, HOST, {home, current},
     )

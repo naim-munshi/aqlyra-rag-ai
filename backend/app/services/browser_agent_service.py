@@ -292,7 +292,11 @@ def _merge_link_frontier(
     for link in raw_links[:120]:
         if not isinstance(link, dict) or not isinstance(link.get("href"), str):
             continue
-        url = urljoin(current_url, link["href"])
+        try:
+            url = urljoin(current_url, link["href"])
+        except ValueError:
+            # Malformed untrusted href must not abort an otherwise valid run.
+            continue
         if url in seen or safe_browser_url(url, approved_host) is None:
             continue
         seen.add(url)
