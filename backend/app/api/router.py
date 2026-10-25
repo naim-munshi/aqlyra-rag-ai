@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.artifacts import router as artifacts_router
 from app.api.auth import (
     router as auth_router,
 )
@@ -63,6 +64,10 @@ api_router.include_router(
 
 api_router.include_router(
     documents_router
+)
+
+api_router.include_router(
+    artifacts_router
 )
 
 api_router.include_router(
