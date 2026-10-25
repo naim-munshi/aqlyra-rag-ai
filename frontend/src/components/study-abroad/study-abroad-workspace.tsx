@@ -617,8 +617,8 @@ export function StudyAbroadWorkspace() {
                     <label className="flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
                       <input type="checkbox" className="mt-1" checked={documentConsent}
                         onChange={event => setDocumentConsent(event.target.checked)}/>
-                      I consent to sending retrieved excerpts from this journey's attached files
-                      to Aqlyra's configured AI provider. No other journeys' files are searched.
+                      I consent to sending retrieved excerpts from this journey&apos;s attached files
+                      to Aqlyra&apos;s configured AI provider. No other journeys&apos; files are searched.
                     </label>
                     <button type="submit"
                       disabled={busy !== "" || !documentConsent || documents.length === 0 ||
