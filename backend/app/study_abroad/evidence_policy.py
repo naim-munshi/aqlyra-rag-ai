@@ -80,8 +80,8 @@ def classify_sources(topic: str, destination: str, sources: list) -> list[dict]:
     return annotated
 
 
-_CITATION_RE = re.compile(r"\\[W[1-9][0-9]*\\]", re.IGNORECASE)
-_TOKEN_RE = re.compile(r"\\w+", re.UNICODE)
+_CITATION_RE = re.compile(r"\[W[1-9][0-9]*\]", re.IGNORECASE)
+_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
 class UnsupportedStudyClaims(ValueError):
@@ -114,13 +114,13 @@ def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
         if line.startswith("#"):
             flush()
             continue
-        if re.match(r"^[-*+]\\s+|^\\d+[.)]\\s+", line):
+        if re.match(r"^[-*+]\s+|^\d+[.)]\s+", line):
             flush()
             blocks.append(line)
             continue
         if line.startswith("|"):
             flush()
-            if not re.fullmatch(r"[|:\\s-]+", line):
+            if not re.fullmatch(r"[|:\s-]+", line):
                 blocks.append(line)
             continue
         prose.append(line)
