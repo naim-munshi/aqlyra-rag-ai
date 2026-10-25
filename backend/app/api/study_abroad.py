@@ -9,6 +9,11 @@ from app.core.datetime_utils import utc_now_naive
 from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.llms.types import LLMError
+from app.llms import LLMProviderRequestError, LLMProviderResponseError, LLMValidationError
+from app.embeddings import EmbeddingError
+from app.retrieval import RetrievalProviderError, RetrievalValidationError
+from app.rag import CitationValidationError, GroundedAnswerError
+from app.services.rag_answer_service import answer_question
 from app.models.document import Document
 from app.models.study_case import StudyCase, StudyCaseDocument, StudyResearchReport, StudyUniversity
 from app.models.user import User
@@ -16,6 +21,7 @@ from app.schemas.study_abroad import (
     StudyCaseCreate, StudyCaseUpdate, StudyCaseResponse, StudyChecklistUpdate,
     StudyDocumentLink, StudyDocumentResponse, StudyResearchCreate, StudyResearchResponse,
     UniversityCreate, UniversityStatusUpdate, UniversityResponse,
+    StudyDocumentQuestion, StudyDocumentCitation, StudyDocumentAnswer,
 )
 from app.services.web_research_service import (
     WebResearchEvidenceError, WebResearchUnavailable, research_web, safe_public_url,
@@ -272,3 +278,56 @@ def remove_university(case_id: str, university_id: str,
     db.delete(item)
     db.commit()
     return Response(status_code=204)
+
+@router.post("/cases/{case_id}/ask-documents", response_model=StudyDocumentAnswer,
+             dependencies=[Depends(limit_rag_request)])
+def ask_study_documents(
+    case_id: str, body: StudyDocumentQuestion,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> StudyDocumentAnswer:
+    """RAG retrieval is bounded to the authenticated case's linked documents."""
+    owned_case(db, str(user.id), case_id)
+    if not body.confirm_share_documents:
+        raise HTTPException(422, "Confirm sharing selected document excerpts with the configured AI provider")
+    ids = tuple(db.scalars(
+        select(StudyCaseDocument.document_id)
+        .join(Document, Document.id == StudyCaseDocument.document_id)
+        .where(StudyCaseDocument.case_id == case_id,
+               Document.user_id == str(user.id), Document.status == "ready")
+        .order_by(StudyCaseDocument.document_id)
+        .limit(30)
+    ).all())
+    # In generic RAG, document_ids=() means ALL user files: never pass empty.
+    if not ids:
+        raise HTTPException(409, "Attach at least one processed document to this case")
+    try:
+        result = answer_question(
+            db=db, user_id=str(user.id), question=body.question,
+            document_ids=ids, top_k=8, max_sources=6,
+            max_context_tokens=2400, max_source_tokens=600,
+        )
+    except RetrievalValidationError as exc:
+        raise HTTPException(422, "Invalid document retrieval request") from exc
+    except (RetrievalProviderError, LLMValidationError, EmbeddingError,
+            LLMProviderRequestError) as exc:
+        raise HTTPException(503, "Document AI provider is unavailable") from exc
+    except (LLMProviderResponseError, CitationValidationError,
+            GroundedAnswerError) as exc:
+        raise HTTPException(502, "Answer could not be grounded in attached documents") from exc
+    if any(source.document_id not in ids for source in result.citations):
+        raise HTTPException(502, "Answer cited a document outside this student case")
+    return StudyDocumentAnswer(
+        question=result.question,
+        answer=result.answer_text,
+        is_refusal=result.is_refusal,
+        searched_document_count=len(ids),
+        citations=[
+            StudyDocumentCitation(
+                source_id=source.source_id,
+                document_id=source.document_id,
+                filename=source.original_filename,
+                source_label=source.source_label,
+                excerpt=source.content[:1800],
+            ) for source in result.citations
+        ],
+    )

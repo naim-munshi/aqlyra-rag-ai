@@ -110,3 +110,23 @@ class UniversityResponse(BaseModel):
     notes: str
     application_status: str
     created_at: datetime
+
+class StudyDocumentQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=5, max_length=1200)
+    confirm_share_documents: bool = False
+
+class StudyDocumentCitation(BaseModel):
+    source_id: str
+    document_id: str
+    filename: str
+    source_label: str
+    excerpt: str
+
+class StudyDocumentAnswer(BaseModel):
+    question: str
+    answer: str
+    is_refusal: bool
+    citations: list[StudyDocumentCitation]
+    searched_document_count: int
+    note: str = "Only attached documents were consulted; this is not official visa or admission verification."
