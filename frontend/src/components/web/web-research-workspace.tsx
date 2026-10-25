@@ -137,6 +137,8 @@ export function WebResearchWorkspace() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [mode, setMode] = useState<ResearchMode>("search");
   const [maxSources, setMaxSources] = useState(4);
+  const [timeRange, setTimeRange] = useState("");
+  const [domainInput, setDomainInput] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -208,6 +210,10 @@ export function WebResearchWorkspace() {
           question: question.trim(),
           mode,
           max_sources: maxSources,
+          ...(mode !== "url" && timeRange ? { time_range: timeRange } : {}),
+          ...(mode !== "url" && domainInput.trim() ? {
+            include_domains: domainInput.split(",").map((domain) => domain.trim()),
+          } : {}),
           ...(mode === "url" ? { source_url: sourceUrl.trim() } : {}),
         }),
       });
@@ -509,6 +515,37 @@ export function WebResearchWorkspace() {
                 </label>
               )}
             </div>
+            {mode !== "url" && (
+              <div className="mb-2 grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)]">
+                <label className="flex flex-col gap-1 text-[11px] text-[var(--aq-muted)]">
+                  Published
+                  <select
+                    aria-label="Search time range"
+                    value={timeRange}
+                    onChange={(event) => setTimeRange(event.target.value)}
+                    className="h-9 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 text-xs text-[var(--aq-text)]"
+                  >
+                    <option value="">Any time</option>
+                    <option value="day">Last day</option>
+                    <option value="week">Last week</option>
+                    <option value="month">Last month</option>
+                    <option value="year">Last year</option>
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-col gap-1 text-[11px] text-[var(--aq-muted)]">
+                  Only these websites (optional; up to 3)
+                  <input
+                    aria-label="Trusted websites"
+                    value={domainInput}
+                    onChange={(event) => setDomainInput(event.target.value)}
+                    placeholder="arxiv.org, docs.python.org"
+                    maxLength={250}
+                    spellCheck={false}
+                    className="h-9 min-w-0 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 text-xs text-[var(--aq-text)] outline-none focus:border-[var(--aq-blue)]"
+                  />
+                </label>
+              </div>
+            )}
             {mode === "url" && (
               <input
                 ref={urlRef}
