@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -42,7 +42,7 @@ export function ChatToolsMenu({
   const menuId = useId();
   const tools = getChatTools(mode);
 
-  function updatePosition() {
+  const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -51,7 +51,7 @@ export function ChatToolsMenu({
       window.innerWidth,
       window.innerHeight,
     ));
-  }
+  }, []);
 
   function toggleMenu() {
     if (open) {
@@ -122,7 +122,7 @@ export function ChatToolsMenu({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [open]);
+  }, [open, updatePosition]);
 
   function selectTool(id: ChatToolId, href?: string) {
     setOpen(false);
