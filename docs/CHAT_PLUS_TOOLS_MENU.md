@@ -55,3 +55,22 @@ is processing, the menu trigger is temporarily disabled.
 Run frontend checks with locked dependencies. Review the pending
 dependency security audit and older stacked PRs before production merge.
 No migrations or document-data modifications are needed.
+
+## Compact popup regression fix
+
+The original absolute-positioned menu rendered inside an `overflow-hidden`
+chat panel and could become clipped or collapse into a narrow column,
+with wrapped descriptions extending below the screen.
+
+The menu now uses a React portal to `document.body` and explicit fixed
+viewport coordinates measured from the + button. It **opens above** the
+composer and remains visible outside the chat's clipping region. Width is
+280px (or viewport minus 24px on smaller screens), capped to the viewport
+edge; height is limited to available vertical space. Reposition on scroll
+and resize. All labels are **single line** with concise icons and text;
+long help is in accessible labels and hover titles, not stacked prose.
+Safari upload actions remain synchronous on the actual menu click.
+
+Placement tests cover wide desktop, narrow mobile and right-edge anchoring.
+The PR requires a frontend lint/typecheck/build regression run and manual
+Safari acceptance for the final visual positioning.
