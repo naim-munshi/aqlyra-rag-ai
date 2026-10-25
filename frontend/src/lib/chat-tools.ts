@@ -40,3 +40,34 @@ export function getChatTools(mode: "normal" | "knowledge"): ChatTool[] {
     },
   ];
 }
+
+export type ChatToolsMenuPosition = {
+  left: number;
+  bottom: number;
+  width: number;
+  maxHeight: number;
+};
+
+/**
+ * Put the popup above the + trigger, with an explicit fixed width.
+ * Fixed positioning + a body portal prevents the chat's overflow-hidden
+ * panels from clipping or shrinking the menu.
+ */
+export function getChatToolsMenuPosition(
+  anchor: { left: number; top: number },
+  viewportWidth: number,
+  viewportHeight: number,
+): ChatToolsMenuPosition {
+  const inset = 12;
+  const width = Math.max(0, Math.min(280, viewportWidth - inset * 2));
+  const left = Math.max(
+    inset,
+    Math.min(anchor.left, viewportWidth - inset - width),
+  );
+  return {
+    left,
+    width,
+    bottom: Math.max(0, viewportHeight - anchor.top + 10),
+    maxHeight: Math.max(64, Math.min(320, anchor.top - 22)),
+  };
+}

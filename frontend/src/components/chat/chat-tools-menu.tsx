@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   FileUp, Files, Globe2, MousePointer2,
   Plus, BookOpen, MessageSquareText, X,
 } from "lucide-react";
 
-import { getChatTools, type ChatToolId } from "@/lib/chat-tools";
+import {
+  getChatTools,
+  getChatToolsMenuPosition,
+  type ChatToolId,
+  type ChatToolsMenuPosition,
+} from "@/lib/chat-tools";
 
 type Props = {
   mode: "normal" | "knowledge";
@@ -30,40 +36,61 @@ export function ChatToolsMenu({
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<ChatToolsMenuPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const tools = getChatTools(mode);
 
+  function updatePosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setPosition(getChatToolsMenuPosition(
+      rect,
+      window.innerWidth,
+      window.innerHeight,
+    ));
+  }
+
+  function toggleMenu() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    updatePosition();
+    setOpen(true);
+  }
+
   useEffect(() => {
     if (!open) return;
+
     const frame = window.requestAnimationFrame(() => {
       menuRef.current?.querySelector<HTMLButtonElement>(
         'button[role="menuitem"]:not([disabled])',
       )?.focus();
     });
 
+    function isInside(target: EventTarget | null) {
+      return target instanceof Node && (
+        triggerRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      );
+    }
     function handlePointerDown(event: PointerEvent) {
-      if (event.target instanceof Node &&
-          !containerRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
+      if (!isInside(event.target)) setOpen(false);
     }
     function handleFocus(event: FocusEvent) {
-      if (event.target instanceof Node &&
-          !containerRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
+      if (!isInside(event.target)) setOpen(false);
     }
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         setOpen(false);
         triggerRef.current?.focus();
+        return;
       }
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" &&
-          event.key !== "Home" && event.key !== "End") return;
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
 
       const buttons = Array.from(
         menuRef.current?.querySelectorAll<HTMLButtonElement>(
@@ -78,24 +105,29 @@ export function ChatToolsMenu({
       if (event.key === "ArrowDown") next = (current + 1) % buttons.length;
       if (event.key === "ArrowUp") next = (current + buttons.length - 1) % buttons.length;
       event.preventDefault();
-      buttons[next].focus();
+      buttons[next]?.focus();
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("focusin", handleFocus);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
     return () => {
       window.cancelAnimationFrame(frame);
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("focusin", handleFocus);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
     };
   }, [open]);
 
   function selectTool(id: ChatToolId, href?: string) {
     setOpen(false);
     if (id === "upload") {
-      // Must happen inside this click event for Safari's native file picker.
+      // Keep Safari's native file picker inside the actual click handler.
       onUpload();
     } else if (id === "documents") {
       onOpenDocuments();
@@ -107,7 +139,7 @@ export function ChatToolsMenu({
   }
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <>
       <button
         ref={triggerRef}
         type="button"
@@ -117,53 +149,56 @@ export function ChatToolsMenu({
         aria-controls={open ? menuId : undefined}
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen(value => !value)}
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:border-[var(--aq-blue)] hover:text-[var(--aq-blue)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)] disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={toggleMenu}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:border-[var(--aq-blue)] hover:text-[var(--aq-blue)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {open ? <X size={18} /> : <Plus size={20} />}
       </button>
-      {open && (
+
+      {open && position && createPortal(
         <div
           ref={menuRef}
           id={menuId}
           role="menu"
           aria-label="Aqlyra chat tools"
-          className="aq-scrollbar absolute bottom-full left-0 z-[80] mb-3 max-h-[min(70dvh,440px)] w-[min(85vw,325px)] overflow-y-auto rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl"
+          style={{
+            position: "fixed",
+            left: position.left,
+            bottom: position.bottom,
+            width: position.width,
+            maxHeight: position.maxHeight,
+          }}
+          className="aq-scrollbar z-[9999] overflow-y-auto rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl"
         >
-          <p className="px-3 pb-2 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--aq-muted)]">
-            Attach and use tools
+          <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--aq-muted)]">
+            Tools
           </p>
-          {tools.map((tool, index) => {
+          {tools.map((tool) => {
             const Icon = tool.id === "knowledge" && mode === "knowledge"
               ? MessageSquareText
               : icons[tool.id];
             return (
-              <div key={tool.id}>
-                {index === 1 && <div className="my-2 border-t border-[var(--aq-border)]" />}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => selectTool(tool.id, tool.href)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--aq-card)] focus-visible:bg-[var(--aq-card)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]">
-                    <Icon size={17} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-[var(--aq-text)]">{tool.label}</span>
-                    <span className="mt-0.5 block text-[11px] leading-4 text-[var(--aq-muted)]">
-                      {tool.description}
-                    </span>
-                  </span>
-                </button>
-              </div>
+              <button
+                key={tool.id}
+                type="button"
+                role="menuitem"
+                title={tool.description}
+                aria-label={tool.label + ". " + tool.description}
+                onClick={() => selectTool(tool.id, tool.href)}
+                className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition hover:bg-[var(--aq-card)] focus-visible:bg-[var(--aq-card)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]">
+                  <Icon size={16} />
+                </span>
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] font-medium text-[var(--aq-text)]">
+                  {tool.label}
+                </span>
+              </button>
             );
           })}
-          <p className="px-3 pb-1 pt-2 text-[10px] leading-4 text-[var(--aq-muted)]">
-            Browser Agent opens its approval screen before it can run.
-          </p>
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
