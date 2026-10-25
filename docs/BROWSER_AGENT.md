@@ -27,9 +27,11 @@ a page-by-page evidence trail and `[B1]` citations.
 - Read-only GET requests can still cause side effects on poorly designed
   websites. Only allow vetted public documentation/news sites. HTTPS/DNS
   validation is not a substitute for network namespace/egress isolation.
-- Each approval is time-limited but is **not single-use** in v0.1.
-  Repeated approved runs are still read-only. Durable single-use approvals
-  are required before supporting any mutable action.
+- Each approval is **single-use within one local API process** and lasts
+  at most 120 seconds. A process restart clears the replay ledger; separate
+  workers do not share it. Production stays disabled until a durable,
+  centrally enforced single-use approval store exists. The local runner
+  allows one active browser task at a time, with bounded wait and duration.
 
 **NOT included:** local macOS mouse/keyboard control, Windows desktop access,
 browser login/cookies, Javascript-rich sites, typing in forms, email sending,
@@ -75,7 +77,7 @@ click **Approve and run**.
   JWT session stays HttpOnly, forwarded only server-to-server.
 - No new database migrations, uploaded file changes or chat permissions.
 
-Tests cover plan signing, user isolation, disabled production behavior, URL
+Tests cover plan signing, per-process approval replay, concurrency, user isolation, disabled production behavior, URL
 boundaries, rejection of dangerous model actions, and authenticated API
 approval. **Live Chromium smoke tests are not part of the standard CI**;
 an operator must opt in and verify a public allowed domain with a live LLM

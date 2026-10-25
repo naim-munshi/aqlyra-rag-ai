@@ -9,7 +9,10 @@ from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
 import re
+import secrets
 import socket
+import threading
+import time
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
@@ -28,6 +31,13 @@ MAX_LINKS = 25
 MAX_PAGES = 4
 MAX_DURATION_SECONDS = 55
 PLAN_TTL_SECONDS = 120
+
+# Development-only, process-local replay guard. This is intentionally NOT a
+# substitute for durable, distributed approvals in a production worker.
+_REDEEMED_PLANS: dict[str, int] = {}
+_REDEEM_LOCK = threading.Lock()
+_RUN_SLOT = asyncio.Semaphore(1)
+MAX_PENDING_REDEMPTIONS = 5000
 
 CHOOSE_INSTRUCTIONS = """
 You are a strictly READ-ONLY web navigation assistant. The user's task is
@@ -133,6 +143,7 @@ def create_browser_plan(task: str, url: str, user_id: str) -> BrowserPlanRespons
             "task": task,
             "url": url,
             "host": host,
+            "jti": secrets.token_urlsafe(24),
             "iat": now,
             "exp": expires,
         },
@@ -157,14 +168,14 @@ def create_browser_plan(task: str, url: str, user_id: str) -> BrowserPlanRespons
     )
 
 
-def verify_browser_plan(token: str, user_id: str) -> dict[str, str]:
+def verify_browser_plan(token: str, user_id: str) -> dict[str, Any]:
     _check_feature()
     try:
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
-            options={"require": ["exp", "iat", "sub"]},
+            options={"require": ["exp", "iat", "sub", "jti"]},
         )
     except JWTInvalidTokenError as exc:
         raise BrowserAgentPlanError("Approval expired or invalid") from exc
@@ -174,12 +185,43 @@ def verify_browser_plan(token: str, user_id: str) -> dict[str, str]:
         or not isinstance(payload.get("task"), str)
         or not isinstance(payload.get("url"), str)
         or not isinstance(payload.get("host"), str)
+        or not isinstance(payload.get("jti"), str)
+        or len(payload["jti"]) < 20
+        or type(payload.get("exp")) is not int
     ):
         raise BrowserAgentPlanError("Approval does not match this user")
     host = payload["host"]
     if host not in _allowed_hosts() or safe_browser_url(payload["url"], host) is None:
         raise BrowserAgentPlanError("Approved host is no longer permitted")
-    return {"task": payload["task"], "url": payload["url"], "host": host}
+    return {
+        "task": payload["task"],
+        "url": payload["url"],
+        "host": host,
+        "jti": payload["jti"],
+        "expires_at": payload["exp"],
+    }
+
+
+def _redeem_browser_plan(plan: dict[str, Any]) -> None:
+    """Atomically consume approval once in this development API process.
+
+    Distinct API processes do NOT share this memory: production browser
+    automation remains disabled until durable centralized approval storage.
+    """
+    now = int(time.time())
+    jti = plan["jti"]
+    with _REDEEM_LOCK:
+        expired = [
+            key for key, expiry in _REDEEMED_PLANS.items()
+            if expiry <= now
+        ]
+        for key in expired:
+            del _REDEEMED_PLANS[key]
+        if jti in _REDEEMED_PLANS:
+            raise BrowserAgentPlanError("Browser approval has already been used")
+        if len(_REDEEMED_PLANS) >= MAX_PENDING_REDEMPTIONS:
+            raise BrowserAgentUnavailable("Browser approval capacity exceeded")
+        _REDEEMED_PLANS[jti] = plan["expires_at"]
 
 
 def _parse_choice(value: str, link_count: int) -> int | None:
@@ -371,11 +413,24 @@ async def _run_browser(
 
 async def execute_browser_plan(token: str, user_id: str) -> BrowserRunResponse:
     payload = verify_browser_plan(token, user_id)
-    llm = create_configured_llm_provider()
     try:
-        return await asyncio.wait_for(
-            _run_browser(payload["task"], payload["url"], payload["host"], llm),
-            timeout=MAX_DURATION_SECONDS,
-        )
+        await asyncio.wait_for(_RUN_SLOT.acquire(), timeout=1.0)
     except asyncio.TimeoutError as exc:
-        raise BrowserAgentUnavailable("Read-only browser run exceeded 55 seconds") from exc
+        # Approval has not yet been consumed; user can retry this plan.
+        raise BrowserAgentUnavailable(
+            "Another browser run is active. Try again after it finishes."
+        ) from exc
+    try:
+        _redeem_browser_plan(payload)
+        llm = create_configured_llm_provider()
+        try:
+            return await asyncio.wait_for(
+                _run_browser(payload["task"], payload["url"], payload["host"], llm),
+                timeout=MAX_DURATION_SECONDS,
+            )
+        except asyncio.TimeoutError as exc:
+            raise BrowserAgentUnavailable(
+                "Read-only browser run exceeded 55 seconds"
+            ) from exc
+    finally:
+        _RUN_SLOT.release()
