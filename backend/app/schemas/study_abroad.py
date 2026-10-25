@@ -75,6 +75,7 @@ class StudyDocumentResponse(BaseModel):
 class StudyResearchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     topic: Literal["universities","admissions","scholarships","visa","embassy","predeparture"]
+    confirm_share_profile: bool = False
 
 class StudyResearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

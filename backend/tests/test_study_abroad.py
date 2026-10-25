@@ -137,8 +137,14 @@ def test_research_is_sourced_and_scoped_without_private_documents(
             provider_name="test", model_name="fake", searched_at=datetime.now(timezone.utc),
         )
     monkeypatch.setattr(study_api, "research_web", mock_research)
+    missing_consent = client.post(
+        f"/api/v1/study-abroad/cases/{case['id']}/research",
+        json={"topic": "visa"},
+    )
+    assert missing_consent.status_code == 422
+    assert captured == []
     report = client.post(f"/api/v1/study-abroad/cases/{case['id']}/research",
-                         json={"topic": "visa"})
+                         json={"topic": "visa", "confirm_share_profile": True})
     assert report.status_code == 200, report.text
     assert report.json()["verification_status"] == "needs_official_verification"
     assert report.json()["sources"][0]["citation"] == "[W1]"

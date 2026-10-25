@@ -69,3 +69,10 @@ and real source checks before inviting students.
 - Consent flows, source refresh reminders, scholarship and cost calculators
 - Case export, progress calendar, notification preferences
 - Dedicated Job Visa workflow module with its own statutory logic and tests
+
+## Research consent
+An explicit per-request `confirm_share_profile: true` is enforced server-side.
+The UI requires opt-in before invoking external Tavily and LLM services.
+Study nationality, residence, destination, degree, subject and intake are
+included in the public provider query. Document content is NOT shared.
+Read the provider privacy terms before using real student information.

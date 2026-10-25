@@ -189,6 +189,8 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
                          user: User = Depends(get_current_user),
                          db: Session = Depends(get_db)) -> StudyResearchReport:
     case = owned_case(db, str(user.id), case_id)
+    if not body.confirm_share_profile:
+        raise HTTPException(422, "Confirm sharing limited study profile fields with the research provider")
     # Never send source document contents, passport numbers, or private attachments
     # to public search. The question only uses selected non-sensitive profile fields.
     question = research_question(body.topic, case)

@@ -122,6 +122,7 @@ export function StudyAbroadWorkspace() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [uploadKey, setUploadKey] = useState("academic");
+  const [researchConsent, setResearchConsent] = useState(false);
   const [form, setForm] = useState({
     nationality: "", residence_country: "", destination_country: "",
     degree_level: "Bachelor's", study_field: "", intake: "2027",
@@ -241,7 +242,7 @@ export function StudyAbroadWorkspace() {
     setBusy("research"); setError(""); setNotice("");
     try {
       const result = await api<StudyReport>(
-        "cases/" + active.id + "/research", "POST", { topic },
+        "cases/" + active.id + "/research", "POST", { topic, confirm_share_profile: researchConsent },
       );
       setReports(previous => [result, ...previous]);
       setNotice("Research saved. Check each source against the official authority.");
@@ -503,9 +504,17 @@ export function StudyAbroadWorkspace() {
                     Uses opt-in live public Web Research. The search does not send your uploaded files.
                     Results are saved as dated evidence, not confirmed immigration or university decisions.
                   </p>
+                  <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    <input type="checkbox" checked={researchConsent}
+                      onChange={event => setResearchConsent(event.target.checked)}
+                      className="mt-1"/>
+                    I consent to share this plan's nationality, residence country, target country, degree,
+                    study subject and intake with the configured external web research/AI providers.
+                    No uploaded document content is sent.
+                  </label>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     {RESEARCH_TOPICS.map(topic => (
-                      <button type="button" key={topic.id} disabled={busy !== ""}
+                      <button type="button" key={topic.id} disabled={busy !== "" || !researchConsent}
                         onClick={() => { void research(topic.id); }}
                         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-left text-xs transition hover:bg-[var(--aq-card)] disabled:opacity-50">
                         {busy === "research" ? <LoaderCircle size={16} className="animate-spin"/> : <Globe2 size={16} className="text-[var(--aq-blue)]"/>}
