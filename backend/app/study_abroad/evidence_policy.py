@@ -4,6 +4,7 @@ This is an allowlist of authority domains, NOT a legal-rule database.
 An official domain alone does NOT prove the page is applicable, current,
 or that a particular applicant is visa-eligible.
 """
+import re
 from urllib.parse import urlsplit
 
 # Selected destinations only; future changes must be reviewed against
@@ -77,3 +78,59 @@ def classify_sources(topic: str, destination: str, sources: list) -> list[dict]:
             "Cannot provide document or visa requirements from unverified sources."
         )
     return annotated
+
+
+_CITATION_RE = re.compile(r"\\[W[1-9][0-9]*\\]", re.IGNORECASE)
+_TOKEN_RE = re.compile(r"\\w+", re.UNICODE)
+
+
+class UnsupportedStudyClaims(ValueError):
+    """A generated answer contains untraceable factual claim blocks."""
+
+
+def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
+    """Require a citation for each substantive paragraph/list entry.
+
+    This is a structural check, not semantic entailment verification.
+    It cannot prove a referenced page actually supports the claim.
+    """
+    allowed = {str(item.get("citation")) for item in sources}
+    mentioned = set(_CITATION_RE.findall(answer))
+    if not mentioned or any(cite.upper() not in allowed for cite in mentioned):
+        raise UnsupportedStudyClaims("Research lacks valid attached source references")
+    blocks: list[str] = []
+    prose: list[str] = []
+
+    def flush() -> None:
+        if prose:
+            blocks.append(" ".join(prose))
+            prose.clear()
+
+    for raw in answer.splitlines():
+        line = raw.strip()
+        if not line:
+            flush()
+            continue
+        if line.startswith("#"):
+            flush()
+            continue
+        if re.match(r"^[-*+]\\s+|^\\d+[.)]\\s+", line):
+            flush()
+            blocks.append(line)
+            continue
+        if line.startswith("|"):
+            flush()
+            if not re.fullmatch(r"[|:\\s-]+", line):
+                blocks.append(line)
+            continue
+        prose.append(line)
+    flush()
+    if any(
+        len(_TOKEN_RE.findall(block)) >= 6
+        and not _CITATION_RE.search(block)
+        and not block.endswith(":")
+        for block in blocks
+    ):
+        raise UnsupportedStudyClaims(
+            "Research has factual paragraphs without citations; try again"
+        )

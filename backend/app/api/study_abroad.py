@@ -28,7 +28,8 @@ from app.services.web_research_service import (
 )
 from app.study_abroad.workflows import WORKFLOWS, TOPICS, CHECKS, research_question, initial_checklist
 from app.study_abroad.evidence_policy import (
-    GOVERNMENT_TOPICS, OfficialEvidenceMissing, authority_domains, classify_sources,
+    GOVERNMENT_TOPICS, OfficialEvidenceMissing, UnsupportedStudyClaims,
+    authority_domains, classify_sources, validate_study_citation_coverage,
 )
 
 router = APIRouter(prefix="/study-abroad", tags=["Study Abroad"])
@@ -224,7 +225,8 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
         reviewed_sources = classify_sources(
             body.topic, case.destination_country, researched.sources,
         )
-    except OfficialEvidenceMissing as exc:
+        validate_study_citation_coverage(researched.answer, reviewed_sources)
+    except (OfficialEvidenceMissing, UnsupportedStudyClaims) as exc:
         raise HTTPException(422, str(exc)) from exc
     except WebResearchUnavailable as exc:
         raise HTTPException(503, "Live source research is not configured") from exc

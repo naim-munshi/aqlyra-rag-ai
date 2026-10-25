@@ -361,3 +361,31 @@ def test_case_document_rag_restricts_retrieval_and_citations(
     assert wrong.status_code == 502
     authenticate(outsider)
     assert client.post(uri, json=body).status_code == 404
+
+
+def test_unreferenced_study_claims_rejected():
+    import pytest
+    from app.study_abroad.evidence_policy import (
+        UnsupportedStudyClaims, validate_study_citation_coverage,
+    )
+    sources = [{"citation": "[W1]"}, {"citation": "[W2]"}]
+    validate_study_citation_coverage(
+        "## Visa requirements\n\nThe authority lists required application evidence [W1].\n\n"
+        "- The local mission may require an appointment [W2].",
+        sources,
+    )
+    with pytest.raises(UnsupportedStudyClaims):
+        validate_study_citation_coverage(
+            "The authority lists required evidence [W1].\n\n"
+            "All applicants will get a student visa automatically within one week.",
+            sources,
+        )
+    with pytest.raises(UnsupportedStudyClaims):
+        validate_study_citation_coverage(
+            "Official documents will always be enough [W99].", sources,
+        )
+    with pytest.raises(UnsupportedStudyClaims):
+        validate_study_citation_coverage(
+            "- Valid application requires nationality-specific papers.\n"
+            "- The authority lists passport requirements [W1].", sources,
+        )

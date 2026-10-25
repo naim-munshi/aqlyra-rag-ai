@@ -88,3 +88,38 @@ Checklist items can store a user-confirmed public HTTPS source link via the
 UI. A saved URL is not proof of current legal applicability or official status.
 Multiple files under one checklist category are permitted; unlinking a file
 retains a different still-linked file before resetting the category.
+
+## Evidence-first accuracy controls (not an accuracy percentage)
+
+- **Official government-domain gate:** curated destination registries are
+  used to constrain visa, embassy and pre-departure research. If the chosen
+  destination is not covered, the high-stakes research **fails closed**
+  instead of inventing requirements. Current registry examples: UK, Germany,
+  US, Canada, Australia, Japan, Netherlands, France and New Zealand.
+  This is a limited authority-domain index, **not** a complete immigration
+  rulebase; regional embassy rules must still be checked manually.
+- Hostname checks are exact/suffix-safe; `gov.uk.evil.example` is not official.
+  Search candidates are also filtered by the underlying Tavily pipeline.
+- Research source metadata distinguishes `official_authority_domain` from
+  `unverified_external_source`. A government URL is NOT proof that a
+  particular claim, nationality or case condition is legally correct.
+- The generated research answer must contain valid provider citations for
+  substantive paragraphs and list items. Uncited material is rejected
+  rather than silently saved. This is a **citation structure** check, not a
+  semantic contradiction/entailment detector.
+- Saved sources preserve the date searched and an explicit unknown
+  publication-date warning. No automatic claims of fresh/current laws.
+- **Case-scoped RAG** asks only the student's attached, processed documents.
+  Unlike the general RAG API, an empty case is rejected: it never falls back
+  to all the user's files. Recovered citations are checked against exactly
+  that case's document IDs. This is useful for transcript/OCR examination,
+  but **does not authenticate uploaded documents**.
+- Document RAG has separate per-request disclosure consent because excerpts
+  may be sent to the configured LLM provider. Public Tavily queries never
+  include document excerpts.
+
+Required next steps: evaluate real cases against labeled official documents
+with native-speaker review (English, Japanese, Bengali), add authority-aware
+entailment checking and source date refresh, verify jurisdiction and
+institution recognition, test time limits and costs, and perform privacy/
+security threat review before production. No numerical accuracy is claimed.
