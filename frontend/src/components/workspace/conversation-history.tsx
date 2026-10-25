@@ -12,6 +12,8 @@ import {
   PinOff,
   Trash2,
 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { projectsForConversation } from "@/lib/conversation/project-move";
 import {
   useCallback,
   useEffect,
@@ -80,6 +82,11 @@ export function ConversationHistory() {
     menuProjectId,
     setMenuProjectId,
   ] = useState<string | null>(null);
+  const [projectPickerChat, setProjectPickerChat] = useState<ConversationResponse | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [projectPickerBusy, setProjectPickerBusy] = useState(false);
+  const [projectPickerError, setProjectPickerError] = useState("");
 
   const [
     collapsedProjectIds,
@@ -337,16 +344,87 @@ export function ConversationHistory() {
     );
   }
 
+  function showProjectPicker(conversation: ConversationResponse) {
+    setMenuConversationId(null);
+    setProjectPickerChat(conversation);
+    setSelectedProjectId(conversation.project_id ?? "");
+    setNewProjectName("");
+    setProjectPickerError("");
+  }
+
   async function moveConversation(
     conversation: ConversationResponse,
     projectId: string | null,
   ) {
-    setMenuConversationId(null);
+    setProjectPickerBusy(true);
+    setProjectPickerError("");
+    try {
+      const response = await fetch(
+        `/api/conversations/${encodeURIComponent(conversation.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: projectId }),
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as ApiError | null;
+        const message = typeof data?.detail === "string"
+          ? data.detail : "Could not move the chat. Please retry.";
+        throw new Error(message);
+      }
+      await Promise.all([loadConversations(), loadProjects()]);
+      window.dispatchEvent(new Event("aqlyra:conversations-changed"));
+      setProjectPickerChat(null);
+    } catch (error) {
+      setProjectPickerError(error instanceof Error ? error.message : "Move failed.");
+    } finally {
+      setProjectPickerBusy(false);
+    }
+  }
 
-    await patchConversation(
-      conversation.id,
-      { project_id: projectId },
-    );
+  async function createAndMoveProject(conversation: ConversationResponse) {
+    const name = newProjectName.trim();
+    if (!name) {
+      setProjectPickerError("Enter a project name.");
+      return;
+    }
+    setProjectPickerBusy(true);
+    setProjectPickerError("");
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, mode: conversation.mode }),
+      });
+      const data = await response.json() as ProjectResponse | ApiError;
+      if (!response.ok || !isProject(data)) {
+        const detail = "detail" in data ? data.detail : null;
+        throw new Error(typeof detail === "string" ? detail : "Could not create project.");
+      }
+      await loadProjects();
+      // The project persists if chat assignment fails; keep the chooser open.
+      setSelectedProjectId(data.id);
+      setNewProjectName("");
+      const update = await fetch(
+        `/api/conversations/${encodeURIComponent(conversation.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: data.id }),
+        },
+      );
+      if (!update.ok) {
+        throw new Error("Project created, but chat was not moved. Select the project and retry.");
+      }
+      await loadConversations();
+      window.dispatchEvent(new Event("aqlyra:projects-changed"));
+      setProjectPickerChat(null);
+    } catch (error) {
+      setProjectPickerError(error instanceof Error ? error.message : "Unable to create project.");
+    } finally {
+      setProjectPickerBusy(false);
+    }
   }
 
   async function copyConversation(
@@ -718,65 +796,14 @@ export function ConversationHistory() {
 
             <div className="my-1 border-t border-[var(--aq-border)]" />
 
-            <div className="px-2.5 py-1.5">
-              <label
-                htmlFor={`project-${conversation.id}`}
-                className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold text-[var(--aq-muted)]"
-              >
-                <FolderPlus size={12} />
-                {conversation.project_id
-                  ? "Move to project"
-                  : "Add to project"}
-              </label>
-
-              {visibleProjects.length > 0 ? (
-                <select
-                  id={`project-${conversation.id}`}
-                  value={
-                    conversation.project_id
-                    ?? ""
-                  }
-                  onChange={(event) => {
-                    const projectId =
-                      event.target.value
-                        || null;
-
-                    void moveConversation(
-                      conversation,
-                      projectId,
-                    );
-                  }}
-                  className="h-8 w-full rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-2 text-[10px] text-[var(--aq-text)] outline-none"
-                >
-                  <option
-                    value=""
-                    disabled={
-                      conversation.project_id
-                      === null
-                    }
-                  >
-                    {conversation.project_id
-                      ? "Remove from project"
-                      : "Choose a project"}
-                  </option>
-
-                  {visibleProjects.map(
-                    (project) => (
-                      <option
-                        key={project.id}
-                        value={project.id}
-                      >
-                        {project.name}
-                      </option>
-                    ),
-                  )}
-                </select>
-              ) : (
-                <p className="py-1 text-[9px] text-[var(--aq-muted)]">
-                  Create a project first
-                </p>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => showProjectPicker(conversation)}
+              className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[10px] transition hover:bg-[var(--aq-control)]"
+            >
+              <FolderPlus size={13} />
+              {conversation.project_id ? "Move to project" : "Add to project"}
+            </button>
 
             <div className="my-1 border-t border-[var(--aq-border)]" />
 
@@ -927,6 +954,7 @@ export function ConversationHistory() {
       : "Knowledge";
 
   return (
+    <>
     <div className="mt-6 space-y-5">
       <section>
         <p className="mb-1 px-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--aq-muted)]">
@@ -979,5 +1007,68 @@ export function ConversationHistory() {
         )}
       </section>
     </div>
+    {projectPickerChat && createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-4"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !projectPickerBusy) setProjectPickerChat(null);
+        }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="aqlyra-project-picker-title"
+          className="w-full max-w-sm rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-5 shadow-2xl">
+          <h2 id="aqlyra-project-picker-title" className="text-base font-semibold text-[var(--aq-text)]">
+            Add chat to project
+          </h2>
+          <p className="mt-1 truncate text-xs text-[var(--aq-muted)]" title={projectPickerChat.title}>
+            {projectPickerChat.title}
+          </p>
+          <p className="mt-2 text-[11px] text-[var(--aq-muted)]">
+            Only {projectPickerChat.mode === "normal" ? "Converse" : "Knowledge"} projects can contain this chat.
+          </p>
+          <label htmlFor="aqlyra-move-project-select"
+            className="mt-4 block text-xs font-medium text-[var(--aq-text)]">
+            Choose a project
+          </label>
+          <select id="aqlyra-move-project-select"
+            value={selectedProjectId} disabled={projectPickerBusy}
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+            className="mt-1 h-11 w-full rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 text-sm text-[var(--aq-text)]">
+            <option value="">No project (regular history)</option>
+            {projectsForConversation(projects, projectPickerChat.mode).map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
+            ))}
+          </select>
+          <div className="mt-3 flex justify-end gap-2">
+            <button type="button" disabled={projectPickerBusy}
+              onClick={() => setProjectPickerChat(null)}
+              className="rounded-lg border border-[var(--aq-border)] px-4 py-2 text-xs">Cancel</button>
+            <button type="button" disabled={projectPickerBusy ||
+                selectedProjectId === (projectPickerChat.project_id ?? "")}
+              onClick={() => { void moveConversation(projectPickerChat, selectedProjectId || null); }}
+              className="rounded-lg bg-[var(--aq-blue)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+              {projectPickerBusy ? "Saving…" : "Move chat"}
+            </button>
+          </div>
+          <div className="mt-4 border-t border-[var(--aq-border)] pt-3">
+            <label htmlFor="aqlyra-create-project" className="text-xs font-medium">
+              Or create a new project
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input id="aqlyra-create-project" value={newProjectName}
+                disabled={projectPickerBusy} maxLength={120}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") void createAndMoveProject(projectPickerChat); }}
+                placeholder="Project name"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 text-sm"/>
+              <button type="button" disabled={projectPickerBusy || !newProjectName.trim()}
+                onClick={() => { void createAndMoveProject(projectPickerChat); }}
+                className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs disabled:opacity-50">
+                Create & add
+              </button>
+            </div>
+          </div>
+          {projectPickerError && <p role="alert" className="mt-3 text-xs text-red-400">{projectPickerError}</p>}
+        </div>
+      </div>, document.body,
+    )}
+    </>
   );
 }
