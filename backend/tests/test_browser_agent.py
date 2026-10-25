@@ -3,12 +3,14 @@
 Network and Chromium are not invoked by default regression tests; the live
 Playwright smoke requires explicit opt-in and a configured site.
 """
+import asyncio
 import json
 
 from fastapi.testclient import TestClient
 import pytest
 from app.config.settings import settings
 import app.api.browser_agent as api
+import app.services.browser_agent_service as agent
 from app.schemas.browser_agent import BrowserRunResponse, BrowserPageEvidence
 from app.services.browser_agent_service import (
     BrowserAgentPlanError, BrowserAgentUnavailable,
@@ -161,3 +163,116 @@ def test_invalid_task_url_and_explicit_approval(client: TestClient) -> None:
     assert client.post("/api/v1/agent/browser/execute", headers=headers, json={
         "approved": True, "plan_token": "x" * 30,
     }).status_code == 400
+
+
+def _fake_report() -> BrowserRunResponse:
+    return BrowserRunResponse(
+        task="Read official release notes",
+        answer="The release notes contain public changes [B1].",
+        visited=[BrowserPageEvidence(
+            citation="[B1]", title="Release notes",
+            url=SITE, excerpt="Release details",
+        )],
+        steps=["Read [B1]: Release notes"],
+        finished_at=datetime.now(timezone.utc),
+        model_name="test-model",
+    )
+
+
+def test_browser_approval_is_single_use_per_api_process(monkeypatch) -> None:
+    plan = create_browser_plan(
+        "Read official release notes", SITE, "single-use-user"
+    )
+    called: list[str] = []
+
+    async def mock_browser(task, url, host, llm):
+        called.append(url)
+        return _fake_report()
+
+    monkeypatch.setattr(agent, "_run_browser", mock_browser)
+    monkeypatch.setattr(
+        agent, "create_configured_llm_provider", lambda: object(),
+    )
+
+    async def scenario():
+        first = await agent.execute_browser_plan(
+            plan.plan_token, "single-use-user"
+        )
+        assert first.answer.endswith("[B1].")
+        with pytest.raises(BrowserAgentPlanError, match="already been used"):
+            await agent.execute_browser_plan(
+                plan.plan_token, "single-use-user"
+            )
+
+    asyncio.run(scenario())
+    assert called == [SITE]
+
+
+def test_browser_concurrency_limit_preserves_unused_approval(monkeypatch) -> None:
+    first = create_browser_plan(
+        "Read official release notes", SITE, "concurrent-user",
+    )
+    second = create_browser_plan(
+        "Review public documentation", SITE, "concurrent-user",
+    )
+    entered = asyncio.Event()
+    finish = asyncio.Event()
+    calls = []
+
+    async def blocked_browser(task, url, host, llm):
+        calls.append(task)
+        if task == "Read official release notes":
+            entered.set()
+            await finish.wait()
+        return _fake_report()
+
+    monkeypatch.setattr(agent, "_run_browser", blocked_browser)
+    monkeypatch.setattr(
+        agent, "create_configured_llm_provider", lambda: object(),
+    )
+
+    async def scenario():
+        active = asyncio.create_task(
+            agent.execute_browser_plan(first.plan_token, "concurrent-user")
+        )
+        await entered.wait()
+        try:
+            with pytest.raises(
+                BrowserAgentUnavailable, match="Another browser run",
+            ):
+                await agent.execute_browser_plan(
+                    second.plan_token, "concurrent-user"
+                )
+        finally:
+            finish.set()
+        await active
+        result = await agent.execute_browser_plan(
+            second.plan_token, "concurrent-user"
+        )
+        assert result.visited[0].citation == "[B1]"
+
+    asyncio.run(scenario())
+    assert calls == [
+        "Read official release notes",
+        "Review public documentation",
+    ]
+
+
+def test_user_cannot_consume_another_users_approval(monkeypatch) -> None:
+    plan = create_browser_plan(
+        "Read official release notes", SITE, "authorised-user"
+    )
+    with pytest.raises(BrowserAgentPlanError):
+        asyncio.run(agent.execute_browser_plan(plan.plan_token, "other-user"))
+
+    async def mock_browser(task, url, host, llm):
+        return _fake_report()
+
+    monkeypatch.setattr(agent, "_run_browser", mock_browser)
+    monkeypatch.setattr(
+        agent, "create_configured_llm_provider", lambda: object(),
+    )
+    report = asyncio.run(agent.execute_browser_plan(
+        plan.plan_token, "authorised-user"
+    ))
+    assert report.visited[0].url == SITE
