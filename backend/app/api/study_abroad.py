@@ -27,6 +27,9 @@ from app.services.web_research_service import (
     WebResearchEvidenceError, WebResearchUnavailable, research_web, safe_public_url,
 )
 from app.study_abroad.workflows import WORKFLOWS, TOPICS, CHECKS, research_question, initial_checklist
+from app.study_abroad.evidence_policy import (
+    GOVERNMENT_TOPICS, OfficialEvidenceMissing, authority_domains, classify_sources,
+)
 
 router = APIRouter(prefix="/study-abroad", tags=["Study Abroad"])
 
@@ -206,7 +209,23 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
     # to public search. The question only uses selected non-sensitive profile fields.
     question = research_question(body.topic, case)
     try:
-        researched = research_web(question, max_sources=4, mode="deep")
+        # Government guidance must come from a curated authority domain,
+        # not from blogs or an LLM-selected "official-looking" site.
+        official_hosts = authority_domains(case.destination_country)
+        if body.topic in GOVERNMENT_TOPICS and not official_hosts:
+            raise OfficialEvidenceMissing(
+                "No curated official authority is configured for this destination yet"
+            )
+        researched = research_web(
+            question, max_sources=4, mode="deep",
+            **({"include_domains": list(official_hosts)}
+               if body.topic in GOVERNMENT_TOPICS else {}),
+        )
+        reviewed_sources = classify_sources(
+            body.topic, case.destination_country, researched.sources,
+        )
+    except OfficialEvidenceMissing as exc:
+        raise HTTPException(422, str(exc)) from exc
     except WebResearchUnavailable as exc:
         raise HTTPException(503, "Live source research is not configured") from exc
     except WebResearchEvidenceError as exc:
@@ -216,7 +235,7 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
     # Research results are evidence snapshots, NEVER verified legal decisions.
     report = StudyResearchReport(case_id=case.id, topic=body.topic,
         question=question, answer=researched.answer,
-        sources=[source.model_dump(mode="json") for source in researched.sources],
+        sources=reviewed_sources,
         searched_at=researched.searched_at.replace(tzinfo=None))
     db.add(report)
     db.commit()
