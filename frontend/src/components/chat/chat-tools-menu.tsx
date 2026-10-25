@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   FileUp, Files, Globe2, MousePointer2,
-  Plus, BookOpen, MessageSquareText, X,
+  Plus, BookOpen, MessageSquareText, GraduationCap, X,
 } from "lucide-react";
 
 import {
@@ -29,6 +29,7 @@ const icons = {
   browser: MousePointer2,
   knowledge: BookOpen,
   documents: Files,
+  study: GraduationCap,
 } as const;
 
 export function ChatToolsMenu({
