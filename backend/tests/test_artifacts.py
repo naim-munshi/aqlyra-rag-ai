@@ -33,8 +33,8 @@ def test_all_formats_render_real_files():
     docx = Document(BytesIO(render_artifact(markdown, "docx")))
     assert any("RAG Research" in p.text for p in docx.paragraphs)
     xlsx = load_workbook(BytesIO(render_artifact(markdown, "xlsx")), data_only=False)
-    assert xlsx.active["B4"].data_type == "s"
-    assert xlsx.active["B4"].value.startswith("'=HYPERLINK")
+    assert xlsx.active["B5"].data_type == "s"
+    assert xlsx.active["B5"].value.startswith("'=HYPERLINK")
     slides = Presentation(BytesIO(render_artifact(markdown, "pptx")))
     assert len(slides.slides) >= 2
     assert render_artifact(markdown, "pdf").startswith(b"%PDF")
