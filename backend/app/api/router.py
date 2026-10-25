@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.web_research import router as web_research_router
+from app.api.browser_agent import router as browser_agent_router
 
 from app.api.auth import (
     router as auth_router,
@@ -84,3 +85,5 @@ api_router.include_router(
 )
 
 api_router.include_router(web_research_router)
+
+api_router.include_router(browser_agent_router)

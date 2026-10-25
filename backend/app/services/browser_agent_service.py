@@ -53,7 +53,7 @@ BLOCKED_PATH_WORDS = frozenset({
     "purchase", "payment", "transfer", "submit", "disable", "revoke",
     "reset", "settings", "admin", "account", "cart", "subscribe",
 })
-CITE_PATTERN = re.compile(r"\\[B([1-9][0-9]*)\\]")
+CITE_PATTERN = re.compile(r"\[B([1-9][0-9]*)\]")
 
 
 class BrowserAgentUnavailable(Exception):
@@ -186,7 +186,7 @@ def _parse_choice(value: str, link_count: int) -> int | None:
     """Index 0 means finish; index 1..N follows a link. Invalid = fail closed."""
     cleaned = value.strip()
     if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\\s*|\\s*```$", "", cleaned).strip()
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned).strip()
     try:
         data: Any = json.loads(cleaned)
     except ValueError as exc:
