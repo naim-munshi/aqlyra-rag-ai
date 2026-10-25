@@ -9,6 +9,8 @@ export type ResearchRequest = {
   max_sources: number;
   mode: ResearchMode;
   source_url?: string;
+  time_range?: "day" | "week" | "month" | "year";
+  include_domains?: string[];
 };
 
 export function parseResearchRequest(value: unknown): ResearchRequest | null {
@@ -29,6 +31,31 @@ export function parseResearchRequest(value: unknown): ResearchRequest | null {
   ) {
     return null;
   }
+
+  const timeRange = body.time_range;
+  if (
+    timeRange !== undefined &&
+    !["day", "week", "month", "year"].includes(String(timeRange))
+  ) return null;
+  const rawDomains = body.include_domains === undefined ? [] : body.include_domains;
+  if (!Array.isArray(rawDomains) || rawDomains.length > 3) return null;
+  const domainPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+  const domains: string[] = [];
+  for (const entry of rawDomains) {
+    if (typeof entry !== "string") return null;
+    const domain = entry.trim().toLowerCase().replace(/\.$/, "");
+    if (!domainPattern.test(domain) || domain.length > 253 ||
+        /\.(local|localhost|internal|test|invalid)$/.test(domain) ||
+        /^\d+\.\d+\.\d+\.\d+$/.test(domain) ||
+        domains.includes(domain)) return null;
+    domains.push(domain);
+  }
+  if (mode === "url" && (timeRange !== undefined || domains.length > 0)) return null;
+  const filters = {
+    ...(timeRange ? { time_range: timeRange as ResearchRequest["time_range"] } : {}),
+    ...(domains.length ? { include_domains: domains } : {}),
+  };
+
   if (mode === "url") {
     if (typeof body.source_url !== "string") return null;
     const sourceUrl = body.source_url.trim();
@@ -47,5 +74,5 @@ export function parseResearchRequest(value: unknown): ResearchRequest | null {
     };
   }
   if (body.source_url !== undefined) return null;
-  return { question, max_sources: maxSources, mode: mode as ResearchMode };
+  return { question, max_sources: maxSources, mode: mode as ResearchMode, ...filters };
 }

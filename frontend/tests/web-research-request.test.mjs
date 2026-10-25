@@ -50,3 +50,34 @@ test("rejects unknown modes, malformed bodies and overlong questions", () => {
     assert.equal(parseResearchRequest(input), null);
   }
 });
+
+test("bounded trusted domain filters and time windows are forwarded", () => {
+  assert.deepEqual(parseResearchRequest({
+    question: "Recent Python release security notes",
+    mode: "deep",
+    time_range: "month",
+    include_domains: [" DOCS.PYTHON.ORG ", "python.org"],
+  }), {
+    question: "Recent Python release security notes",
+    max_sources: 4,
+    mode: "deep",
+    time_range: "month",
+    include_domains: ["docs.python.org", "python.org"],
+  });
+  for (const bad of [
+    { time_range: "decade" },
+    { include_domains: ["https://example.org/"] },
+    { include_domains: ["127.0.0.1"] },
+    { include_domains: ["example.local"] },
+    { include_domains: ["example.org", "example.org"] },
+    { include_domains: ["a.com", "b.com", "c.com", "d.com"] },
+  ]) {
+    assert.equal(parseResearchRequest({ question: "Latest findings", ...bad }), null);
+  }
+  assert.equal(parseResearchRequest({
+    question: "Read this public webpage",
+    mode: "url",
+    source_url: "https://example.org",
+    time_range: "week",
+  }), null);
+});

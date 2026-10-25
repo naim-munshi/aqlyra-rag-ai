@@ -285,3 +285,99 @@ def test_request_validation_requires_url_only_in_url_mode(client: TestClient, mo
     assert client.post("/api/v1/web/research", json={
         "question": "Current research", "mode": "magic"
     }, headers=headers).status_code == 422
+
+
+def test_time_and_domain_filters_enforced_after_search(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    calls: list[str] = []
+    def provider(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(request.url.path)
+        if request.url.path == "/search":
+            assert body["time_range"] == "month"
+            assert body["include_domains"] == ["python.org", "docs.python.org"]
+            return httpx.Response(200, json={"results": [
+                {"url": "https://evil.org/unrelated", "title": "Outside"},
+                {"url": "https://notpython.org/fake", "title": "Lookalike"},
+                {"url": "https://docs.python.org/3/library/asyncio.html", "title": "Asyncio"},
+                {"url": "https://www.python.org/downloads/", "title": "Python downloads"},
+            ]})
+        assert body["urls"] == [
+            "https://docs.python.org/3/library/asyncio.html",
+            "https://www.python.org/downloads/",
+        ]
+        return httpx.Response(200, json={"results": [
+            {"url": "https://docs.python.org/3/library/asyncio.html",
+             "raw_content": "Asyncio API docs"},
+            {"url": "https://www.python.org/downloads/",
+             "raw_content": "Downloads and releases"},
+        ]})
+
+    with httpx.Client(transport=httpx.MockTransport(provider)) as client:
+        result = research_web(
+            "Latest Python documentation updates",
+            mode="search",
+            time_range="month",
+            include_domains=["PYTHON.ORG", "docs.python.org"],
+            provider=StubProvider("The official sources say this [W1] [W2]."),
+            client=client,
+        )
+    assert len(result.sources) == 2
+    assert calls == ["/search", "/extract"]
+    assert all("python.org" in entry.url for entry in result.sources)
+
+
+def test_compare_prefers_independent_web_domains(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path == "/search":
+            return httpx.Response(200, json={"results": [
+                {"url": "https://a.example.org/one", "title": "One"},
+                {"url": "https://a.example.org/two", "title": "Two"},
+                {"url": "https://b.example.org/one", "title": "Three"},
+                {"url": "https://c.example.org/one", "title": "Four"},
+            ]})
+        assert body["urls"] == [
+            "https://a.example.org/one",
+            "https://b.example.org/one",
+            "https://c.example.org/one",
+        ]
+        return httpx.Response(200, json={"results": [
+            {"url": url, "raw_content": "Independent extracted evidence"}
+            for url in body["urls"]
+        ]})
+
+    with httpx.Client(transport=httpx.MockTransport(provider)) as client:
+        result = research_web(
+            "Compare the evidence", max_sources=3, mode="compare",
+            client=client, provider=StubProvider("Compared independently [W1] [W2]."),
+        )
+    assert [x.citation for x in result.sources] == ["[W1]", "[W2]", "[W3]"]
+
+
+def test_domain_validation_and_url_mode_filter_rejection() -> None:
+    from pydantic import ValidationError
+    from app.schemas.web_research import WebResearchRequest
+    valid = WebResearchRequest(
+        question="Research model serving",
+        include_domains=[" ARXIV.ORG ", "pytorch.org"],
+        time_range="week",
+    )
+    assert valid.include_domains == ["arxiv.org", "pytorch.org"]
+    for domains in [
+        ["http://arxiv.org"], ["arxiv.org/path"], ["*.arxiv.org"],
+        ["localhost"], ["example.internal"], ["127.0.0.1"],
+        ["docs.python.org", "docs.python.org"],
+        ["a.org", "b.org", "c.org", "d.org"],
+    ]:
+        with pytest.raises(ValidationError):
+            WebResearchRequest(question="Research", include_domains=domains)
+    with pytest.raises(ValidationError):
+        WebResearchRequest(
+            question="Summarize webpage", mode="url",
+            source_url="https://example.org", time_range="day",
+        )

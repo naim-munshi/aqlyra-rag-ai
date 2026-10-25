@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, CheckCircle2, CircleAlert, Globe2, LoaderCircle,
-  LockKeyhole, MousePointer2, ShieldCheck, X,
+  LockKeyhole, MousePointer2, ShieldCheck, Download, X,
 } from "lucide-react";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 
@@ -26,6 +26,39 @@ type Report = {
   model_name: string;
   finished_at: string;
 };
+
+function exportBrowserReport(report: Report) {
+  const markdown = [
+    "# Aqlyra Browser Agent",
+    "",
+    "**Task:** " + report.task,
+    "**Finished:** " + report.finished_at,
+    "**Model:** " + report.model_name,
+    "",
+    "## Research report",
+    "",
+    report.answer,
+    "",
+    "## Navigation steps",
+    ...report.steps.map((step, index) => (index + 1) + ". " + step),
+    "",
+    "## Verified visited pages",
+    ...report.visited.map((source) =>
+      source.citation + " [" + source.title + "](" + source.url + ")"
+    ),
+    "",
+  ].join("\n");
+  const url = URL.createObjectURL(new Blob([markdown], {
+    type: "text/markdown;charset=utf-8",
+  }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "aqlyra-browser-agent-report.md";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function getError(data: unknown): string {
   if (data && typeof data === "object" && "detail" in data) {
@@ -179,9 +212,18 @@ export function BrowserAgentWorkspace() {
         {report && (
           <section className="mt-7 space-y-4">
             <article className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-5 sm:p-7">
-              <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
-                <Globe2 size={19} className="text-[var(--aq-blue)]"/> Agent report
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-lg font-semibold">
+                  <Globe2 size={19} className="text-[var(--aq-blue)]"/> Agent report
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => exportBrowserReport(report)}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 text-xs font-semibold hover:bg-[var(--aq-card)]"
+                >
+                  <Download size={15}/> Export report
+                </button>
+              </div>
               <MarkdownMessage content={report.answer}/>
               <p className="mt-5 text-xs text-[var(--aq-muted)]">
                 {report.model_name} · {new Date(report.finished_at).toLocaleString()}
