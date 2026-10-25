@@ -23,7 +23,10 @@ def research_public_web(
 ) -> WebResearchResponse:
     del current_user
     try:
-        return research_web(body.question, body.max_sources)
+        return research_web(
+            body.question, body.max_sources,
+            mode=body.mode, source_url=body.source_url,
+        )
     except WebResearchUnavailable as exc:
         raise HTTPException(
             status_code=503, detail="Web research provider unavailable or unconfigured"

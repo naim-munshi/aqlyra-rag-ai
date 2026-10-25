@@ -148,7 +148,7 @@ def test_authenticated_web_endpoint(client: TestClient, monkeypatch) -> None:
     token = login.json()["access_token"]
     from app.schemas.web_research import WebResearchResponse, WebResearchSource
     from datetime import datetime, timezone
-    monkeypatch.setattr(api, "research_web", lambda question, max_sources: WebResearchResponse(
+    monkeypatch.setattr(api, "research_web", lambda question, max_sources, **kwargs: WebResearchResponse(
         question=question,
         answer="Evidence-backed result [W1].",
         sources=[WebResearchSource(
@@ -208,3 +208,80 @@ def test_explicit_keyless_mode_is_local_only(monkeypatch) -> None:
     monkeypatch.setattr(settings, "APP_ENV", "production")
     with pytest.raises(WebResearchUnavailable):
         research_web("latest updates", provider=StubProvider())
+
+
+def test_deep_research_uses_advanced_search_and_extraction(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    steps: list[str] = []
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        steps.append(request.url.path)
+        if request.url.path == "/search":
+            assert body["search_depth"] == "advanced"
+            return httpx.Response(200, json={"results": [
+                {"url": "https://example.com/deep", "title": "Deep source"},
+            ]})
+        assert body["extract_depth"] == "advanced"
+        return httpx.Response(200, json={"results": [
+            {"url": "https://example.com/deep", "raw_content": "In-depth evidence"},
+        ]})
+
+    model = StubProvider()
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        answer = research_web("Give a detailed report", mode="deep", client=client, provider=model)
+    assert steps == ["/search", "/extract"]
+    assert model.received["research_mode"] == "deep"
+    assert answer.sources[0].citation == "[W1]"
+
+
+def test_url_mode_uses_tavily_extract_only_and_rejects_local_urls(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    paths: list[str] = []
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        assert request.url.path == "/extract"
+        assert json.loads(request.content)["urls"] == ["https://example.org/article"]
+        return httpx.Response(200, json={"results": [
+            {"url": "https://example.org/article", "raw_content": "Public article text"},
+        ]})
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        answer = research_web(
+            "Summarize the attached webpage", mode="url",
+            source_url="https://example.org/article", client=client,
+            provider=StubProvider(),
+        )
+    assert paths == ["/extract"]
+    assert len(answer.sources) == 1
+    with pytest.raises(WebResearchEvidenceError):
+        research_web(
+            "Read private page", mode="url",
+            source_url="https://127.0.0.1/admin", provider=StubProvider(),
+        )
+
+
+def test_request_validation_requires_url_only_in_url_mode(client: TestClient, monkeypatch) -> None:
+    registered = client.post("/api/v1/auth/register", json={
+        "username": "weburlresearchuser",
+        "email": "weburlresearch@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert registered.status_code == 201
+    login = client.post("/api/v1/auth/login", json={
+        "email": "weburlresearch@example.com", "password": "StrongPassword321!",
+    })
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.post("/api/v1/web/research", json={
+        "question": "Read this", "mode": "url"
+    }, headers=headers).status_code == 422
+    assert client.post("/api/v1/web/research", json={
+        "question": "Current research", "source_url": "https://example.com"
+    }, headers=headers).status_code == 422
+    assert client.post("/api/v1/web/research", json={
+        "question": "Current research", "mode": "magic"
+    }, headers=headers).status_code == 422

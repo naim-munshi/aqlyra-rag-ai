@@ -16,7 +16,11 @@ import httpx
 from app.config.settings import settings
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
-from app.schemas.web_research import WebResearchResponse, WebResearchSource
+from app.schemas.web_research import (
+    WebResearchMode,
+    WebResearchResponse,
+    WebResearchSource,
+)
 
 
 TAVILY_SEARCH = "https://api.tavily.com/search"
@@ -114,10 +118,33 @@ def _tavily_json(
     return payload
 
 
+MODE_GUIDANCE: dict[str, str] = {
+    "search": "Answer concisely with source-backed facts.",
+    "deep": (
+        "Produce a detailed research brief. Separate evidence, uncertainty, "
+        "and practical implications, citing every major factual claim."
+    ),
+    "compare": (
+        "Compare the competing findings in a clearly structured table or "
+        "sections. Distinguish agreement, disagreement and evidence gaps."
+    ),
+    "fact_check": (
+        "Evaluate the claim as supported, contradicted, mixed, or unverified. "
+        "Explicitly explain limitations and link each conclusion to evidence."
+    ),
+    "url": (
+        "Analyze only the supplied public webpage. Do not imply independent "
+        "corroboration or that you searched other websites."
+    ),
+}
+
+
 def research_web(
     question: str,
     max_sources: int = 4,
     *,
+    mode: WebResearchMode = "search",
+    source_url: str | None = None,
     client: httpx.Client | None = None,
     provider: LLMProvider | None = None,
 ) -> WebResearchResponse:
@@ -132,6 +159,13 @@ def research_web(
         raise WebResearchUnavailable("Real web research requires a live LLM provider")
     if not 1 <= max_sources <= 5:
         raise ValueError("max_sources out of bounds")
+    if mode not in MODE_GUIDANCE:
+        raise ValueError("Unknown research mode")
+    if mode == "url":
+        if not safe_public_url(source_url):
+            raise WebResearchEvidenceError("Enter a valid public HTTPS URL")
+    elif source_url is not None:
+        raise ValueError("source_url requires URL mode")
     question = question.strip()
     if not 3 <= len(question) <= 600:
         raise ValueError("question out of bounds")
@@ -143,43 +177,54 @@ def research_web(
         trust_env=False,
     )
     try:
-        search = _tavily_json(
-            client=active_client,
-            endpoint=TAVILY_SEARCH,
-            api_key=key,
-            data={
-                "query": question,
-                "search_depth": "basic",
-                "max_results": min(8, max_sources + 3),
-                "include_answer": False,
-                "include_raw_content": False,
-                "include_images": False,
-            },
-        )
-        raw_results = search.get("results")
-        if not isinstance(raw_results, list):
-            raise WebResearchUnavailable("Search returned invalid results")
         candidates: list[dict[str, str | None]] = []
-        seen: set[str] = set()
-        for entry in raw_results:
-            if not isinstance(entry, dict):
-                continue
-            url = safe_public_url(entry.get("url"))
-            if not url or url in seen:
-                continue
-            title = entry.get("title")
-            seen.add(url)
-            candidates.append({
-                "url": url,
-                "title": (title[:180] if isinstance(title, str) else url),
-                "published_date": (
-                    entry["published_date"][:32]
-                    if isinstance(entry.get("published_date"), str)
-                    else None
-                ),
-            })
-            if len(candidates) >= max_sources:
-                break
+        if mode == "url":
+            # Tavily, not Aqlyra, fetches the user-selected public webpage.
+            assert source_url is not None
+            candidates = [{
+                "url": source_url,
+                "title": urlsplit(source_url).hostname or "Public page",
+                "published_date": None,
+            }]
+        else:
+            search = _tavily_json(
+                client=active_client,
+                endpoint=TAVILY_SEARCH,
+                api_key=key,
+                data={
+                    "query": question,
+                    # Advanced mode is explicitly selected by the user and
+                    # may consume more Tavily credits than a basic search.
+                    "search_depth": "advanced" if mode == "deep" else "basic",
+                    "max_results": min(8, max_sources + 3),
+                    "include_answer": False,
+                    "include_raw_content": False,
+                    "include_images": False,
+                },
+            )
+            raw_results = search.get("results")
+            if not isinstance(raw_results, list):
+                raise WebResearchUnavailable("Search returned invalid results")
+            seen: set[str] = set()
+            for entry in raw_results:
+                if not isinstance(entry, dict):
+                    continue
+                url = safe_public_url(entry.get("url"))
+                if not url or url in seen:
+                    continue
+                title = entry.get("title")
+                seen.add(url)
+                candidates.append({
+                    "url": url,
+                    "title": (title[:180] if isinstance(title, str) else url),
+                    "published_date": (
+                        entry["published_date"][:32]
+                        if isinstance(entry.get("published_date"), str)
+                        else None
+                    ),
+                })
+                if len(candidates) >= max_sources:
+                    break
 
         if not candidates:
             raise WebResearchEvidenceError("No public web sources found")
@@ -190,7 +235,7 @@ def research_web(
             api_key=key,
             data={
                 "urls": [item["url"] for item in candidates],
-                "extract_depth": "basic",
+                "extract_depth": "advanced" if mode == "deep" else "basic",
                 "include_images": False,
             },
         )
@@ -229,6 +274,7 @@ def research_web(
 
     body = {
         "user_question": question,
+        "research_mode": mode,
         "retrieved_public_evidence": [
             source.model_dump() for source in sources
         ],
@@ -236,7 +282,7 @@ def research_web(
     # Each source is bounded; no HTML/scripts are run or directly fetched.
     llm = provider or create_configured_llm_provider()
     generation = llm.generate(
-        instructions=WEB_INSTRUCTIONS,
+        instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode],
         input_text=json.dumps(body, ensure_ascii=False),
     )
     text = generation.text.strip()
