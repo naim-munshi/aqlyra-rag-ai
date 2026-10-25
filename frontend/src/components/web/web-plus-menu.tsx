@@ -8,6 +8,7 @@ import {
   FileText,
   Globe2,
   Link2,
+  MousePointer2,
   ListChecks,
   Scale,
   Search,
@@ -143,6 +144,20 @@ export function WebPlusMenu({ onClose, onSelect }: Props) {
               </button>
             );
           })}
+          <Link
+            href="/agent/browser"
+            className="flex items-center gap-3 rounded-xl px-3 py-3 transition hover:bg-[var(--aq-card)]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]">
+              <MousePointer2 size={19} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-semibold">Browser Agent</span>
+              <span className="mt-0.5 block text-xs text-[var(--aq-muted)]">
+                Approved, read-only website navigation
+              </span>
+            </span>
+          </Link>
           <Link
             href="/"
             className="flex items-center gap-3 rounded-xl px-3 py-3 transition hover:bg-[var(--aq-card)]"

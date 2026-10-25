@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     HF_TOKEN: str = ""
 
     # Opt-in live web research. Never use deterministic providers as real search.
+    # Public browser automation MVP; deliberately off by default.
+    BROWSER_AGENT_ENABLED: bool = False
+    BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
