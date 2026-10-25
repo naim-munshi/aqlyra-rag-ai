@@ -39,8 +39,21 @@ def upgrade() -> None:
       sa.Column("sources",sa.JSON(),nullable=False),
       sa.Column("searched_at",sa.DateTime(),nullable=False))
     op.create_index("ix_study_research_reports_case_id","study_research_reports",["case_id"])
+    op.create_table("study_universities",
+      sa.Column("id",sa.String(),primary_key=True),
+      sa.Column("case_id",sa.String(),sa.ForeignKey("study_cases.id",ondelete="CASCADE"),nullable=False),
+      sa.Column("name",sa.String(160),nullable=False),
+      sa.Column("program",sa.String(160),nullable=False),
+      sa.Column("program_url",sa.String(2048),nullable=False),
+      sa.Column("application_status",sa.String(24),nullable=False),
+      sa.Column("deadline",sa.String(20),nullable=False),
+      sa.Column("notes",sa.Text(),nullable=False),
+      sa.Column("created_at",sa.DateTime(),nullable=False))
+    op.create_index("ix_study_universities_case_id","study_universities",["case_id"])
 
 def downgrade() -> None:
+    op.drop_index("ix_study_universities_case_id",table_name="study_universities")
+    op.drop_table("study_universities")
     op.drop_index("ix_study_research_reports_case_id",table_name="study_research_reports")
     op.drop_table("study_research_reports")
     op.drop_table("study_case_documents")

@@ -40,3 +40,16 @@ class StudyResearchReport(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list] = mapped_column(JSON, nullable=False)
     searched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
+
+class StudyUniversity(Base):
+    """University wishlist; data manually curated by user, not verified by Aqlyra."""
+    __tablename__ = "study_universities"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    case_id: Mapped[str] = mapped_column(String, ForeignKey("study_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    program: Mapped[str] = mapped_column(String(160), nullable=False)
+    program_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    application_status: Mapped[str] = mapped_column(String(24), nullable=False, default="researching")
+    deadline: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
