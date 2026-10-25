@@ -42,6 +42,10 @@ type StudyReport = {
     excerpt: string; published_date: string | null;
   }[];
 };
+type StudyUniversity = {
+  id: string; name: string; program: string; program_url: string;
+  application_status: string; deadline: string; notes: string;
+};
 type LinkedDocument = {
   document_id: string;
   filename: string;
@@ -108,6 +112,10 @@ export function StudyAbroadWorkspace() {
   const [cases, setCases] = useState<StudyCase[]>([]);
   const [active, setActive] = useState<StudyCase | null>(null);
   const [documents, setDocuments] = useState<LinkedDocument[]>([]);
+  const [universities, setUniversities] = useState<StudyUniversity[]>([]);
+  const [universityForm, setUniversityForm] = useState({
+    name: "", program: "", program_url: "", deadline: "",
+  });
   const [reports, setReports] = useState<StudyReport[]>([]);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState("");
@@ -138,10 +146,12 @@ export function StudyAbroadWorkspace() {
     void Promise.all([
       api<LinkedDocument[]>("cases/" + id + "/documents"),
       api<StudyReport[]>("cases/" + id + "/research"),
-    ]).then(([files, research]) => {
+      api<StudyUniversity[]>("cases/" + id + "/universities"),
+    ]).then(([files, research, shortlist]) => {
       if (disposed) return;
       setDocuments(files);
       setReports(research);
+      setUniversities(shortlist);
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
   }, [active?.id]); // Reload data only when switching cases
@@ -160,7 +170,7 @@ export function StudyAbroadWorkspace() {
       });
       setCases(previous => [created, ...previous]);
       setActive(created);
-      setDocuments([]); setReports([]);
+      setDocuments([]); setReports([]); setUniversities([]);
       setCreating(false);
       setNotice("Private student journey created.");
     } catch (e) { setError(String(e)); }
@@ -183,6 +193,45 @@ export function StudyAbroadWorkspace() {
       replaceCase(await api<StudyCase>(
         "cases/" + active.id + "/checklist/" + key, "PATCH", { state },
       ));
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function addUniversity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!active) return;
+    setBusy("university"); setError(""); setNotice("");
+    try {
+      const added = await api<StudyUniversity>(
+        "cases/" + active.id + "/universities", "POST", universityForm,
+      );
+      setUniversities(previous => [added, ...previous]);
+      setUniversityForm({ name: "", program: "", program_url: "", deadline: "" });
+      setNotice("University shortlisted. Verify program details and deadlines directly.");
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function setUniversityStatus(item: StudyUniversity, application_status: string) {
+    if (!active) return;
+    setBusy("university"); setError("");
+    try {
+      const result = await api<StudyUniversity>(
+        "cases/" + active.id + "/universities/" + item.id,
+        "PATCH", { application_status },
+      );
+      setUniversities(previous => previous.map(value =>
+        value.id === result.id ? result : value));
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function deleteUniversity(item: StudyUniversity) {
+    if (!active) return;
+    setBusy("university"); setError("");
+    try {
+      await api<void>("cases/" + active.id + "/universities/" + item.id, "DELETE");
+      setUniversities(previous => previous.filter(value => value.id !== item.id));
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -387,6 +436,66 @@ export function StudyAbroadWorkspace() {
                     onChange={event => { void updateStage(event.target.value); }}>
                     {STAGES.map(([key,label]) => <option key={key} value={key}>{label}</option>)}
                   </select>
+                </section>
+                <section className={cardStyle}>
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    <GraduationCap size={18}/> My university shortlist
+                  </h2>
+                  <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    Save official program links, manually verify admission deadlines and track applications.
+                    Search results do not automatically prove eligibility or acceptance.
+                  </p>
+                  <form onSubmit={event => { void addUniversity(event); }}
+                    className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {([
+                      ["name", "University", "Example University"],
+                      ["program", "Program", "MSc Computer Science"],
+                      ["program_url", "Program/admissions HTTPS URL", "https://university.example.edu/admissions"],
+                      ["deadline", "Deadline (verify on site)", "2027-03-31"],
+                    ] as const).map(([key,label,placeholder]) => (
+                      <label key={key} className="text-xs text-[var(--aq-muted)]">{label}
+                        <input required={key !== "deadline"} maxLength={key === "program_url" ? 2048 : 160}
+                          placeholder={placeholder}
+                          type={key === "program_url" ? "url" : "text"}
+                          value={universityForm[key]}
+                          onChange={event => setUniversityForm(old => ({
+                            ...old, [key]: event.target.value,
+                          }))}
+                          className={fieldStyle + " mt-1"}/>
+                      </label>
+                    ))}
+                    <button type="submit" disabled={busy !== ""}
+                      className="rounded-lg bg-[var(--aq-blue)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2">
+                      {busy === "university" ? "Saving…" : "Save university"}
+                    </button>
+                  </form>
+                  <div className="mt-4 space-y-2">
+                    {universities.map(item => (
+                      <div key={item.id}
+                        className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--aq-border)] p-3">
+                        <a href={item.program_url} target="_blank" rel="noopener noreferrer"
+                          className="min-w-0 flex-1 break-words text-xs hover:text-[var(--aq-blue)]">
+                          <strong className="block">{item.name}</strong>
+                          <span className="block text-[var(--aq-muted)]">
+                            {item.program} {item.deadline ? "· Deadline to verify: " + item.deadline : ""}
+                          </span>
+                        </a>
+                        <select value={item.application_status} disabled={busy !== ""}
+                          aria-label={"Application status for " + item.name}
+                          onChange={event => { void setUniversityStatus(item, event.target.value); }}
+                          className="rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-2 py-2 text-[11px]">
+                          {["researching", "shortlisted", "applied", "offer", "declined", "rejected"].map(value =>
+                            <option value={value} key={value}>{value}</option>)}
+                        </select>
+                        <button type="button" aria-label={"Remove " + item.name}
+                          disabled={busy !== ""}
+                          onClick={() => { void deleteUniversity(item); }}
+                          className="rounded-lg border border-[var(--aq-border)] p-2 disabled:opacity-50">
+                          <Trash2 size={14}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </section>
                 <section className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><Search size={18}/> Research universities, visas and embassies</h2>
