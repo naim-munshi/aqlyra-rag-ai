@@ -138,12 +138,11 @@ export function StudyAbroadWorkspace() {
     return () => { disposed = true; };
   }, []);
 
+  const activeId = active?.id;
   useEffect(() => {
-    if (!active) {
-      return;
-    }
+    if (!activeId) return;
     let disposed = false;
-    const id = encodeURIComponent(active.id);
+    const id = encodeURIComponent(activeId);
     void Promise.all([
       api<LinkedDocument[]>("cases/" + id + "/documents"),
       api<StudyReport[]>("cases/" + id + "/research"),
@@ -155,7 +154,7 @@ export function StudyAbroadWorkspace() {
       setUniversities(shortlist);
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
-  }, [active?.id]); // Reload data only when switching cases
+  }, [activeId]); // Reload only when switching cases
 
   function replaceCase(updated: StudyCase) {
     setCases(previous => previous.map(item => item.id === updated.id ? updated : item));
@@ -508,7 +507,7 @@ export function StudyAbroadWorkspace() {
                     <input type="checkbox" checked={researchConsent}
                       onChange={event => setResearchConsent(event.target.checked)}
                       className="mt-1"/>
-                    I consent to share this plan's nationality, residence country, target country, degree,
+                    I consent to share this plan&apos;s nationality, residence country, target country, degree,
                     study subject and intake with the configured external web research/AI providers.
                     No uploaded document content is sent.
                   </label>
