@@ -101,3 +101,25 @@ Frontend validation tests: `cd frontend && node --experimental-strip-types
 --test tests/*.test.mjs`. Backend tests include advanced mode and public URL
 source extraction with mocked provider requests. CI uses no real Tavily
 credits; manual testing with a real Groq/OpenAI model is still required.
+
+## Research control upgrades
+
+Search, Deep Research, Compare and Fact-check support an optional
+`time_range` of `day`, `week`, `month` or `year`, plus at most three
+`include_domains` hostnames (e.g. `arxiv.org`, `docs.python.org`).
+The Next.js proxy and FastAPI schema both validate controls. Domain scoping
+is enforced **again server-side on returned candidate URLs** so an
+out-of-scope result cannot be extracted or cited even if provider filtering
+is imperfect. Subdomains of selected sites are allowed; lookalike suffixes
+are not. URL-only extraction never accepts search filters.
+
+In Deep and Compare modes, the backend prefers independent hostnames when
+selecting up to five sources, instead of accidentally returning five pages
+from the same website. It does **not** guarantee that sources are independent
+or that each claim is true. Freshness filters are provider search hints;
+always inspect source publication dates rather than assuming all pages
+were published recently.
+
+These capabilities reuse the existing Tavily Search and Extract API. No
+additional credentials or migrations are needed. Enabling Deep Research
+still incurs the provider's advanced search/extraction credits.

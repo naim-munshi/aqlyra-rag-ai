@@ -91,3 +91,18 @@ resume/cancel, dynamic JS and website automation with fine-grained per-action
 approval, verification and redaction. Desktop control must be a separate
 opt-in local companion with narrowly scoped permissions; never run arbitrary
 model-supplied shell commands on the user's Mac.
+
+## Bounded multi-page navigation upgrade
+
+Rather than following only a single chain, the browser now tracks a bounded
+frontier of up to 60 safe links discovered on visited pages. At each step,
+the AI chooses among the first 25 eligible links, including relevant links
+found on earlier pages. All candidates must match the operator's exact
+HTTPS host allowlist, pass existing blocked-path checks, and remain unvisited.
+The task prompt includes visited-page titles and link URL paths as context.
+This improves the chance of exploring alternative documentation branches
+within the existing four-page, 55-second read-only budget.
+
+This is still **not unrestricted browsing**. The agent does not submit
+forms, run page JavaScript, use cookies, change data, or operate desktop
+applications. Production remains disabled pending real network isolation.
