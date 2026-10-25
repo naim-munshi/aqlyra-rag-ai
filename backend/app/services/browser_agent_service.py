@@ -288,6 +288,7 @@ def _merge_link_frontier(
     always validated before they can enter the model's numbered options.
     """
     fresh: list[dict[str, str]] = []
+    original_metadata = {item["url"]: item for item in existing}
     seen: set[str] = set(visited_urls)
     for link in raw_links[:120]:
         if not isinstance(link, dict) or not isinstance(link.get("href"), str):
@@ -301,7 +302,7 @@ def _merge_link_frontier(
             continue
         seen.add(url)
         title = link.get("text")
-        fresh.append({
+        fresh.append(original_metadata.get(url) or {
             "url": url,
             "title": str(title)[:140] if isinstance(title, str) and title.strip() else url[:140],
             "found_on": current_url,
