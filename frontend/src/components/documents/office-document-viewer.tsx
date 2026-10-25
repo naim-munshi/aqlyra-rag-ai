@@ -80,8 +80,15 @@ export function OfficeDocumentViewer({ document, onClose }: Props) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadUnits(0, controller.signal);
-    return () => controller.abort();
+    // Schedule the initial load after commit rather than synchronously
+    // invoking state setters from the effect body.
+    const frame = window.requestAnimationFrame(() => {
+      void loadUnits(0, controller.signal);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      controller.abort();
+    };
   }, [loadUnits]);
 
   useEffect(() => {
