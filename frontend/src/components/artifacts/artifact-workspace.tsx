@@ -81,8 +81,26 @@ export function ArtifactWorkspace() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    Promise.all([
+      fetch("/api/artifacts", { cache: "no-store" }),
+      fetch("/api/documents", { cache: "no-store" }),
+    ]).then(async ([filesResponse, docsResponse]) => {
+      if (!filesResponse.ok) throw new Error("Unable to load files");
+      const files = (await filesResponse.json()) as { items?: Artifact[] };
+      const docs = docsResponse.ok
+        ? (await docsResponse.json()) as { items?: DocumentItem[] }
+        : { items: [] as DocumentItem[] };
+      if (!active) return;
+      setItems(Array.isArray(files.items) ? files.items : []);
+      setDocuments((docs.items ?? []).filter((item) => item.status === "ready"));
+    }).catch(() => {
+      if (active) setError("Unable to load your files. Check the backend connection.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   async function openArtifact(id: string) {
     setError("");
