@@ -243,7 +243,12 @@ def research_web(
                         else None
                     ),
                 })
-                if len(candidates) >= max_sources:
+                # Comparison modes inspect more candidates to avoid relying
+                # on several links from the same publisher.
+                limit = min(10, max_sources + 5) if mode in (
+                    "compare", "deep"
+                ) else max_sources
+                if len(candidates) >= limit:
                     break
 
         if not candidates:
