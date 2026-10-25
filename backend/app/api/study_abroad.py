@@ -167,8 +167,13 @@ def unlink_study_document(case_id: str, document_id: str,
     checklist = dict(case.checklist)
     item = dict(checklist[link.checklist_key])
     if item.get("document_id") == document_id:
-        item["document_id"] = None
-        item["state"] = "needs_verification"
+        remaining = db.scalar(select(StudyCaseDocument.document_id).where(
+            StudyCaseDocument.case_id == case.id,
+            StudyCaseDocument.document_id != document_id,
+            StudyCaseDocument.checklist_key == link.checklist_key,
+        ))
+        item["document_id"] = remaining
+        item["state"] = "uploaded" if remaining is not None else "needs_verification"
     checklist[link.checklist_key] = item
     case.checklist = checklist
     case.updated_at = utc_now_naive()

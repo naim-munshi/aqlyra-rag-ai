@@ -186,12 +186,14 @@ export function StudyAbroadWorkspace() {
     finally { setBusy(""); }
   }
 
-  async function updateCheck(key: string, state: string) {
+  async function updateCheck(key: string, state: string, evidenceUrl?: string | null) {
     if (!active) return;
     setBusy(key); setError("");
     try {
       replaceCase(await api<StudyCase>(
-        "cases/" + active.id + "/checklist/" + key, "PATCH", { state },
+        "cases/" + active.id + "/checklist/" + key, "PATCH", {
+          state, ...(evidenceUrl !== undefined ? { evidence_url: evidenceUrl } : {}),
+        },
       ));
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -364,7 +366,7 @@ export function StudyAbroadWorkspace() {
             {cases.length === 0 && <p className="text-xs leading-5 text-[var(--aq-muted)]">Create a journey to begin your plan.</p>}
             <div className="space-y-2">
               {cases.map(item => (
-                <button key={item.id} type="button" onClick={() => { setActive(item); setError(""); }}
+                <button key={item.id} type="button" onClick={() => { setActive(item); setResearchConsent(false); setError(""); }}
                   aria-pressed={active?.id === item.id}
                   className={"w-full rounded-xl border p-3 text-left transition " +
                     (active?.id === item.id
@@ -566,6 +568,27 @@ export function StudyAbroadWorkspace() {
                           <span>{item.title}</span>
                           {item.document_id && <FileCheck2 size={14} className="shrink-0 text-[var(--aq-blue)]"/>}
                         </span>
+                        <div className="flex min-w-0 flex-col gap-1 sm:items-end">
+                          {item.evidence_url && (
+                            <a href={item.evidence_url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-[var(--aq-blue)] hover:underline">
+                              <ExternalLink size={12}/> Saved source
+                            </a>
+                          )}
+                          <button type="button" disabled={busy !== ""}
+                            onClick={() => {
+                              const response = window.prompt(
+                                "Public HTTPS source for this checklist item (confirm official status yourself)",
+                                item.evidence_url ?? "",
+                              );
+                              if (response !== null) {
+                                void updateCheck(key, item.state, response.trim() || null);
+                              }
+                            }}
+                            className="text-left text-[11px] text-[var(--aq-muted)] underline decoration-dotted disabled:opacity-50">
+                            {item.evidence_url ? "Edit source" : "Add source URL"}
+                          </button>
+                        </div>
                         <select value={item.state} disabled={busy !== ""}
                           aria-label={"Status for " + item.title}
                           onChange={event => { void updateCheck(key, event.target.value); }}

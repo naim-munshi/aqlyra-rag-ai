@@ -83,3 +83,8 @@ optional deadline and application status (researching/shortlisted/applied/
 offer/declined/rejected). These are student-entered data, not verified
 university records. All endpoints are protected by study-case ownership;
 removing the shortlist row does not change any university application.
+
+Checklist items can store a user-confirmed public HTTPS source link via the
+UI. A saved URL is not proof of current legal applicability or official status.
+Multiple files under one checklist category are permitted; unlinking a file
+retains a different still-linked file before resetting the category.
