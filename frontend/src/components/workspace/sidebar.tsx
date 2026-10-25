@@ -14,6 +14,7 @@ import {
   FolderPlus,
   LogOut,
   MessageSquareText,
+  MousePointer2,
   Plus,
   Settings,
   Sparkles,
@@ -332,6 +333,16 @@ export function Sidebar({
               <Globe2 size={15} />
             </span>
             Web Research
+          </Link>
+
+          <Link
+            href="/agent/browser"
+            className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-[var(--aq-muted)] transition hover:bg-[var(--aq-card)] hover:text-[var(--aq-text)]"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-panel)]">
+              <MousePointer2 size={15} />
+            </span>
+            Browser Agent
           </Link>
 
           <button
