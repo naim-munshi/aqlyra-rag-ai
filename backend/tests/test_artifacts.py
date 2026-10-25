@@ -140,3 +140,46 @@ def test_bad_identifiers_not_usable(client: TestClient):
     assert client.get(
         "/api/v1/artifacts/not-a-uuid", headers=alpha,
     ).status_code == 404
+
+
+def test_grounded_artifact_reuses_scoped_rag_and_citations(
+    client: TestClient, db_session, monkeypatch,
+):
+    from sqlalchemy import select
+    from app.models.document import Document
+
+    owner = _auth(client, "artifactgrounded")
+    uploaded = client.post("/api/v1/documents/upload", headers=owner, files={
+        "file": ("my-source.md", b"# Private evidence\nRAG content.", "text/markdown"),
+    })
+    assert uploaded.status_code == 201
+    doc_id = uploaded.json()["id"]
+    document = db_session.scalar(select(Document).where(Document.id == doc_id))
+    document.status = "ready"
+    db_session.commit()
+    calls = []
+
+    def fake_answer_question(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            is_refusal=False,
+            citations=(SimpleNamespace(source_id="S1"),),
+            answer_text="## Verified evidence\nA fact supported by [S1].",
+            provider_name="test-rag",
+            citation_count=1,
+        )
+
+    monkeypatch.setattr("app.api.artifacts.answer_question", fake_answer_question)
+    response = client.post("/api/v1/artifacts/generate", headers=owner, json={
+        "title": "Grounded", "format": "md",
+        "prompt": "Summarize the private evidence from my documents.",
+        "document_ids": [doc_id],
+    })
+    assert response.status_code == 201
+    data = response.json()
+    assert data["citation_count"] == 1
+    assert data["source_document_ids"] == [doc_id]
+    assert "[S1]" in data["content"]
+    assert len(calls) == 1
+    assert calls[0]["document_ids"] == (doc_id,)
+    assert calls[0]["user_id"] == document.user_id
