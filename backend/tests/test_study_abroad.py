@@ -126,13 +126,13 @@ def test_research_is_sourced_and_scoped_without_private_documents(
     authenticate(alice)
     case = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
     captured = []
-    def mock_research(question: str, max_sources: int, *, mode: str):
-        captured.append((question, max_sources, mode))
+    def mock_research(question: str, max_sources: int, *, mode: str, include_domains=None):
+        captured.append((question, max_sources, mode, include_domains))
         return WebResearchResponse(
             question=question, answer="Verify official rules [W1].",
             sources=[WebResearchSource(
               citation="[W1]", title="Government guide",
-              url="https://www.gov.uk/student-visa/documents-you-must-provide",
+              url="https://www.auswaertiges-amt.de/en/visa-service",
               excerpt="Official rules must be checked.", published_date=None)],
             provider_name="test", model_name="fake", searched_at=datetime.now(timezone.utc),
         )
@@ -148,10 +148,12 @@ def test_research_is_sourced_and_scoped_without_private_documents(
     assert report.status_code == 200, report.text
     assert report.json()["verification_status"] == "needs_official_verification"
     assert report.json()["sources"][0]["citation"] == "[W1]"
+    assert report.json()["sources"][0]["source_type"] == "official_authority_domain"
     assert "Bangladesh" in captured[0][0]
     assert "Japan" in captured[0][0]
     assert "Germany" in captured[0][0]
-    assert captured[0][1:] == (4, "deep")
+    assert captured[0][1:3] == (4, "deep")
+    assert "auswaertiges-amt.de" in captured[0][3]
     stored = client.get(f"/api/v1/study-abroad/cases/{case['id']}/research")
     assert len(stored.json()) == 1
     authenticate(bob)
@@ -209,3 +211,66 @@ def test_university_shortlist_privacy_and_status(client, db_session):
     authenticate(owner)
     assert client.delete(path + "/" + item["id"]).status_code == 204
     assert client.get(path).json() == []
+
+
+def test_official_source_gates_and_lookalikes():
+    from app.study_abroad.evidence_policy import (
+        OfficialEvidenceMissing, authority_domains, classify_sources,
+        matches_authority,
+    )
+    from app.schemas.web_research import WebResearchSource
+    import pytest
+    domains = authority_domains("Germany")
+    assert "auswaertiges-amt.de" in domains
+    assert matches_authority("https://www.auswaertiges-amt.de/en/visa-service", domains)
+    assert not matches_authority("https://auswaertiges-amt.de.attacker.com/visa", domains)
+    assert not matches_authority("http://auswaertiges-amt.de/visa", domains)
+    assert not matches_authority("https://auswaertiges-amt.de@evil.com/visa", domains)
+    bad = WebResearchSource(
+        citation="[W1]", title="Untrusted blog",
+        url="https://visa-help.example.com/blog", excerpt="Fake official advice",
+    )
+    good = WebResearchSource(
+        citation="[W2]", title="German Federal Foreign Office",
+        url="https://www.auswaertiges-amt.de/en/visa-service", excerpt="Visa rules",
+    )
+    with pytest.raises(OfficialEvidenceMissing):
+        classify_sources("visa", "Germany", [bad])
+    with pytest.raises(OfficialEvidenceMissing):
+        classify_sources("embassy", "Unregistered Country", [good])
+    result = classify_sources("visa", "Germany", [bad, good])
+    assert result[0]["source_type"] == "unverified_external_source"
+    assert result[1]["source_type"] == "official_authority_domain"
+    assert classify_sources("universities", "Germany", [bad])[0][
+        "source_type"] == "unverified_external_source"
+
+
+def test_sensitive_study_research_without_official_source_fails_closed(
+    client, db_session, monkeypatch,
+):
+    from app.schemas.web_research import WebResearchResponse, WebResearchSource
+    owner = user(db_session, "visa-evidence-owner@example.org")
+    authenticate(owner)
+    item = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
+    calls = []
+    def fake_provider(question: str, max_sources: int, *, mode: str, include_domains=None):
+        calls.append((question, include_domains))
+        return WebResearchResponse(
+            question=question, answer="Questionable requirements [W1].",
+            sources=[WebResearchSource(
+                citation="[W1]", title="Nonofficial source",
+                url="https://randomblog.org/requirements", excerpt="Unsupported claims",
+            )],
+            provider_name="test", model_name="fake",
+            searched_at=datetime.now(timezone.utc),
+        )
+    monkeypatch.setattr(study_api, "research_web", fake_provider)
+    response = client.post(
+        f"/api/v1/study-abroad/cases/{item['id']}/research",
+        json={"topic": "visa", "confirm_share_profile": True},
+    )
+    assert response.status_code == 422
+    assert calls[0][1] and "auswaertiges-amt.de" in calls[0][1]
+    assert client.get(
+        f"/api/v1/study-abroad/cases/{item['id']}/research"
+    ).json() == []
