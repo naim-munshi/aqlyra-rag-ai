@@ -76,3 +76,10 @@ The UI requires opt-in before invoking external Tavily and LLM services.
 Study nationality, residence, destination, degree, subject and intake are
 included in the public provider query. Document content is NOT shared.
 Read the provider privacy terms before using real student information.
+
+## University shortlist
+Students can manually save a university, course, public HTTPS program link,
+optional deadline and application status (researching/shortlisted/applied/
+offer/declined/rejected). These are student-entered data, not verified
+university records. All endpoints are protected by study-case ownership;
+removing the shortlist row does not change any university application.

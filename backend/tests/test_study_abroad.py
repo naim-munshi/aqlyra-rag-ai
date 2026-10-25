@@ -172,3 +172,40 @@ def test_research_profiles_do_not_fake_universal_requirements():
         assert "Bangladesh" in prompt and "Japan" in prompt and "Germany" in prompt
         assert len(prompt) <= 600
     assert not WORKFLOWS["job"].enabled
+
+
+def test_university_shortlist_privacy_and_status(client, db_session):
+    owner = user(db_session, "university-owner@example.org")
+    outsider = user(db_session, "university-outsider@example.org")
+    authenticate(owner)
+    case = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
+    path = f"/api/v1/study-abroad/cases/{case['id']}/universities"
+    bad = client.post(path, json={
+        "name": "Example College",
+        "program": "Computer Science",
+        "program_url": "http://127.0.0.1/internal",
+    })
+    assert bad.status_code == 422
+    saved = client.post(path, json={
+        "name": "Example College", "program": "Computer Science",
+        "program_url": "https://example.edu/program",
+        "deadline": "2027-01-15",
+    })
+    assert saved.status_code == 201, saved.text
+    item = saved.json()
+    assert item["application_status"] == "researching"
+    assert len(client.get(path).json()) == 1
+    changed = client.patch(path + "/" + item["id"],
+                          json={"application_status": "applied"})
+    assert changed.status_code == 200
+    assert changed.json()["application_status"] == "applied"
+    assert client.patch(path + "/" + item["id"],
+                        json={"application_status": "admitted_for_sure"}).status_code == 422
+    authenticate(outsider)
+    assert client.get(path).status_code == 404
+    assert client.patch(path + "/" + item["id"],
+                        json={"application_status": "offer"}).status_code == 404
+    assert client.delete(path + "/" + item["id"]).status_code == 404
+    authenticate(owner)
+    assert client.delete(path + "/" + item["id"]).status_code == 204
+    assert client.get(path).json() == []
