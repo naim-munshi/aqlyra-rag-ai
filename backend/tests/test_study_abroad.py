@@ -274,3 +274,90 @@ def test_sensitive_study_research_without_official_source_fails_closed(
     assert client.get(
         f"/api/v1/study-abroad/cases/{item['id']}/research"
     ).json() == []
+
+
+def test_case_document_rag_refuses_empty_or_unconsented_scope(
+    client, db_session, monkeypatch,
+):
+    owner = user(db_session, "rag-no-docs@example.org")
+    authenticate(owner)
+    case = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
+    uri = f"/api/v1/study-abroad/cases/{case['id']}/ask-documents"
+    def should_not_call(**kwargs):
+        raise AssertionError("Must not search all user's documents")
+    monkeypatch.setattr(study_api, "answer_question", should_not_call)
+    denied = client.post(uri, json={
+        "question": "What is my graduation date?", "confirm_share_documents": False,
+    })
+    assert denied.status_code == 422
+    empty = client.post(uri, json={
+        "question": "What is my graduation date?", "confirm_share_documents": True,
+    })
+    assert empty.status_code == 409
+
+
+def test_case_document_rag_restricts_retrieval_and_citations(
+    client, db_session, monkeypatch,
+):
+    from types import SimpleNamespace
+    owner = user(db_session, "rag-scoped@example.org")
+    outsider = user(db_session, "rag-scoped-outsider@example.org")
+    authenticate(owner)
+    my_case = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
+    other_case = client.post("/api/v1/study-abroad/cases", json=example_profile()).json()
+    ids = []
+    for i in range(2):
+        result = client.post(
+            "/api/v1/documents/upload",
+            files={"file": (f"study-record-{i}.txt",
+                BytesIO(f"Academic record number {i} in the selected case.".encode()),
+                "text/plain")},
+        )
+        assert result.status_code == 201, result.text
+        doc_id = result.json()["id"]
+        assert client.post(f"/api/v1/documents/{doc_id}/process").status_code == 200
+        case_id = my_case["id"] if i == 0 else other_case["id"]
+        linked = client.post(
+            f"/api/v1/study-abroad/cases/{case_id}/documents",
+            json={"document_id": doc_id, "checklist_key": "academic"},
+        )
+        assert linked.status_code == 201, linked.text
+        ids.append(doc_id)
+    captured = []
+    def fake_answer(**kwargs):
+        captured.append(kwargs)
+        return SimpleNamespace(
+            question=kwargs["question"],
+            answer_text="Your academic record is present [S1].",
+            is_refusal=False,
+            citations=(SimpleNamespace(
+                source_id="S1", document_id=ids[0],
+                original_filename="study-record-0.txt",
+                source_label="Paragraph 1",
+                content="Academic record number 0",
+            ),),
+        )
+    monkeypatch.setattr(study_api, "answer_question", fake_answer)
+    uri = f"/api/v1/study-abroad/cases/{my_case['id']}/ask-documents"
+    body = {
+        "question": "Which academic document is attached?",
+        "confirm_share_documents": True,
+    }
+    response = client.post(uri, json=body)
+    assert response.status_code == 200, response.text
+    assert captured[0]["document_ids"] == (ids[0],)
+    assert ids[1] not in captured[0]["document_ids"]
+    assert response.json()["citations"][0]["document_id"] == ids[0]
+    assert response.json()["searched_document_count"] == 1
+
+    def wrong_citation(**kwargs):
+        return SimpleNamespace(
+            question=kwargs["question"], answer_text="Wrong evidence [S1].",
+            is_refusal=False,
+            citations=(SimpleNamespace(document_id=ids[1]),),
+        )
+    monkeypatch.setattr(study_api, "answer_question", wrong_citation)
+    wrong = client.post(uri, json=body)
+    assert wrong.status_code == 502
+    authenticate(outsider)
+    assert client.post(uri, json=body).status_code == 404
