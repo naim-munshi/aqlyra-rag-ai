@@ -14,7 +14,7 @@ import socket
 import threading
 import time
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 import jwt
 from jwt import InvalidTokenError as JWTInvalidTokenError
@@ -85,6 +85,8 @@ def _allowed_hosts() -> set[str]:
 def safe_browser_url(url: object, allowed_host: str) -> str | None:
     if not isinstance(url, str) or not 12 <= len(url) <= 2048:
         return None
+    if any(ord(character) < 32 for character in url):
+        return None
     try:
         parsed = urlsplit(url.strip())
         host = (parsed.hostname or "").lower().rstrip(".")
@@ -107,9 +109,17 @@ def safe_browser_url(url: object, allowed_host: str) -> str | None:
             pass
         if any(not label or len(label) > 63 for label in host.split(".")):
             return None
-        if any(token in BLOCKED_PATH_WORDS for token in re.split(
-            r"[/_.?&=+%-]+", parsed.path.lower() + "?" + parsed.query.lower(),
-        )):
+        # Decode multiple escaping layers before evaluating dangerous GET
+        # endpoints. A naive path check misses /lo%67out and /%2561dmin.
+        location = parsed.path + "?" + parsed.query
+        for _ in range(3):
+            location = unquote(location)
+            if any(token in BLOCKED_PATH_WORDS for token in re.split(
+                r"[/_.?&=+%-]+", location.casefold(),
+            )):
+                return None
+        # Reject more deeply escaped path components rather than guessing.
+        if re.search(r"%[0-9a-fA-F]{2}", location):
             return None
         return parsed.geturl()
     except ValueError:

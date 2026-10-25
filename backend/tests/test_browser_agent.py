@@ -42,6 +42,11 @@ def test_safe_browser_urls_are_exact_https_public_hosts() -> None:
         "https://docs.example.org/logout",
         "https://docs.example.org/account/delete?id=1",
         "https://docs.example.org/checkout",
+        "https://docs.example.org/lo%67out",
+        "https://docs.example.org/%2561dmin",
+        "https://docs.example.org/docs?next=%252flogout",
+        "https://docs.example.org/guide%250a",
+        "https://docs.example.org/guide\nX-Injected: yes",
         "https://localhost/test",
     ):
         assert safe_browser_url(bad, HOST) is None
