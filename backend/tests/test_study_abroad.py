@@ -238,9 +238,10 @@ def test_official_source_gates_and_lookalikes():
         classify_sources("visa", "Germany", [bad])
     with pytest.raises(OfficialEvidenceMissing):
         classify_sources("embassy", "Unregistered Country", [good])
-    result = classify_sources("visa", "Germany", [bad, good])
-    assert result[0]["source_type"] == "unverified_external_source"
-    assert result[1]["source_type"] == "official_authority_domain"
+    with pytest.raises(OfficialEvidenceMissing):
+        classify_sources("visa", "Germany", [bad, good])
+    result = classify_sources("visa", "Germany", [good])
+    assert result[0]["source_type"] == "official_authority_domain"
     assert classify_sources("universities", "Germany", [bad])[0][
         "source_type"] == "unverified_external_source"
 

@@ -69,13 +69,14 @@ def classify_sources(topic: str, destination: str, sources: list) -> list[dict]:
             else "unverified_external_source"
         )
         annotated.append(value)
-    if topic in GOVERNMENT_TOPICS and not any(
-        source["source_type"] == "official_authority_domain"
-        for source in annotated
+    if topic in GOVERNMENT_TOPICS and (
+        not annotated
+        or any(source["source_type"] != "official_authority_domain"
+               for source in annotated)
     ):
         raise OfficialEvidenceMissing(
-            "No official government/mission source found. "
-            "Cannot provide document or visa requirements from unverified sources."
+            "One or more sources are not from curated official government/mission domains. "
+            "Cannot produce high-stakes visa guidance from mixed or unverified sources."
         )
     return annotated
 
