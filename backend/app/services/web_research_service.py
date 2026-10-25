@@ -18,6 +18,8 @@ from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
 from app.schemas.web_research import (
     WebResearchMode,
+    WebResearchTimeRange,
+    normalize_research_domain,
     WebResearchResponse,
     WebResearchSource,
 )
@@ -145,6 +147,8 @@ def research_web(
     *,
     mode: WebResearchMode = "search",
     source_url: str | None = None,
+    time_range: WebResearchTimeRange | None = None,
+    include_domains: list[str] | None = None,
     client: httpx.Client | None = None,
     provider: LLMProvider | None = None,
 ) -> WebResearchResponse:
@@ -166,6 +170,13 @@ def research_web(
             raise WebResearchEvidenceError("Enter a valid public HTTPS URL")
     elif source_url is not None:
         raise ValueError("source_url requires URL mode")
+    if time_range not in (None, "day", "week", "month", "year"):
+        raise ValueError("Invalid time filter")
+    domains = [normalize_research_domain(domain) for domain in (include_domains or [])]
+    if len(domains) > 3 or len(set(domains)) != len(domains):
+        raise ValueError("At most three distinct trusted domains are allowed")
+    if mode == "url" and (time_range is not None or domains):
+        raise ValueError("URL mode cannot use search filters")
     question = question.strip()
     if not 3 <= len(question) <= 600:
         raise ValueError("question out of bounds")
@@ -196,7 +207,9 @@ def research_web(
                     # Advanced mode is explicitly selected by the user and
                     # may consume more Tavily credits than a basic search.
                     "search_depth": "advanced" if mode == "deep" else "basic",
-                    "max_results": min(8, max_sources + 3),
+                    "max_results": min(10, max_sources + 5),
+                    **({"time_range": time_range} if time_range else {}),
+                    **({"include_domains": domains} if domains else {}),
                     "include_answer": False,
                     "include_raw_content": False,
                     "include_images": False,
@@ -211,6 +224,13 @@ def research_web(
                     continue
                 url = safe_public_url(entry.get("url"))
                 if not url or url in seen:
+                    continue
+                if domains and not any(
+                    (urlsplit(url).hostname or "").lower() == domain
+                    or (urlsplit(url).hostname or "").lower().endswith("." + domain)
+                    for domain in domains
+                ):
+                    # Never trust the search provider alone to enforce scope.
                     continue
                 title = entry.get("title")
                 seen.add(url)
@@ -228,6 +248,21 @@ def research_web(
 
         if not candidates:
             raise WebResearchEvidenceError("No public web sources found")
+
+        if mode in ("compare", "deep"):
+            # Prefer independent hosts when possible while preserving the
+            # original relevance order within each selected host.
+            diversified: list[dict[str, str | None]] = []
+            remaining: list[dict[str, str | None]] = []
+            covered: set[str] = set()
+            for candidate in candidates:
+                hostname = (urlsplit(str(candidate["url"])).hostname or "").lower()
+                if hostname in covered:
+                    remaining.append(candidate)
+                else:
+                    diversified.append(candidate)
+                    covered.add(hostname)
+            candidates = (diversified + remaining)[:max_sources]
 
         extracted = _tavily_json(
             client=active_client,
@@ -275,6 +310,8 @@ def research_web(
     body = {
         "user_question": question,
         "research_mode": mode,
+        "search_time_filter": time_range,
+        "included_domains": domains,
         "retrieved_public_evidence": [
             source.model_dump() for source in sources
         ],

@@ -26,6 +26,7 @@ def research_public_web(
         return research_web(
             body.question, body.max_sources,
             mode=body.mode, source_url=body.source_url,
+            time_range=body.time_range, include_domains=body.include_domains,
         )
     except WebResearchUnavailable as exc:
         raise HTTPException(
