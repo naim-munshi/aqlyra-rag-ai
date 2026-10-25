@@ -85,3 +85,27 @@ class StudyResearchResponse(BaseModel):
     sources: list
     searched_at: datetime
     verification_status: Literal["needs_official_verification"] = "needs_official_verification"
+
+class UniversityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=160)
+    program: str = Field(min_length=2, max_length=160)
+    program_url: str = Field(min_length=12, max_length=2048)
+    deadline: str = Field(default="", max_length=20)
+    notes: str = Field(default="", max_length=1000)
+
+class UniversityStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    application_status: Literal["researching", "shortlisted", "applied", "offer", "declined", "rejected"]
+
+class UniversityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    case_id: str
+    name: str
+    program: str
+    program_url: str
+    deadline: str
+    notes: str
+    application_status: str
+    created_at: datetime

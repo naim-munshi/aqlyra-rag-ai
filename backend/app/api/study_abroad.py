@@ -10,11 +10,12 @@ from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.llms.types import LLMError
 from app.models.document import Document
-from app.models.study_case import StudyCase, StudyCaseDocument, StudyResearchReport
+from app.models.study_case import StudyCase, StudyCaseDocument, StudyResearchReport, StudyUniversity
 from app.models.user import User
 from app.schemas.study_abroad import (
     StudyCaseCreate, StudyCaseUpdate, StudyCaseResponse, StudyChecklistUpdate,
     StudyDocumentLink, StudyDocumentResponse, StudyResearchCreate, StudyResearchResponse,
+    UniversityCreate, UniversityStatusUpdate, UniversityResponse,
 )
 from app.services.web_research_service import (
     WebResearchEvidenceError, WebResearchUnavailable, research_web, safe_public_url,
@@ -208,3 +209,59 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
     db.commit()
     db.refresh(report)
     return report
+
+@router.get("/cases/{case_id}/universities", response_model=list[UniversityResponse])
+def list_university_shortlist(case_id: str, user: User = Depends(get_current_user),
+                              db: Session = Depends(get_db)) -> list[StudyUniversity]:
+    owned_case(db, str(user.id), case_id)
+    return list(db.scalars(select(StudyUniversity).where(
+        StudyUniversity.case_id == case_id
+    ).order_by(StudyUniversity.created_at.desc()).limit(40)).all())
+
+
+@router.post("/cases/{case_id}/universities", response_model=UniversityResponse, status_code=201)
+def add_university(case_id: str, body: UniversityCreate,
+                   user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)) -> StudyUniversity:
+    owned_case(db, str(user.id), case_id)
+    if safe_public_url(body.program_url) is None:
+        raise HTTPException(422, "Program URL must be public HTTPS")
+    shortlist = StudyUniversity(case_id=case_id, name=body.name.strip(),
+        program=body.program.strip(), program_url=body.program_url,
+        deadline=body.deadline.strip(), notes=body.notes.strip(),
+        application_status="researching")
+    db.add(shortlist)
+    db.commit()
+    db.refresh(shortlist)
+    return shortlist
+
+
+@router.patch("/cases/{case_id}/universities/{university_id}",
+              response_model=UniversityResponse)
+def update_university_status(case_id: str, university_id: str,
+                             body: UniversityStatusUpdate,
+                             user: User = Depends(get_current_user),
+                             db: Session = Depends(get_db)) -> StudyUniversity:
+    owned_case(db, str(user.id), case_id)
+    item = db.scalar(select(StudyUniversity).where(
+        StudyUniversity.id == university_id, StudyUniversity.case_id == case_id))
+    if item is None:
+        raise HTTPException(404, "University not in your shortlist")
+    item.application_status = body.application_status
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/cases/{case_id}/universities/{university_id}", status_code=204)
+def remove_university(case_id: str, university_id: str,
+                      user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)) -> Response:
+    owned_case(db, str(user.id), case_id)
+    item = db.scalar(select(StudyUniversity).where(
+        StudyUniversity.id == university_id, StudyUniversity.case_id == case_id))
+    if item is None:
+        raise HTTPException(404, "University not in your shortlist")
+    db.delete(item)
+    db.commit()
+    return Response(status_code=204)
