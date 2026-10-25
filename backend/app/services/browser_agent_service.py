@@ -114,6 +114,8 @@ def safe_browser_url(url: object, allowed_host: str) -> str | None:
         location = parsed.path + "?" + parsed.query
         for _ in range(3):
             location = unquote(location)
+            if any(ord(character) < 32 for character in location):
+                return None
             if any(token in BLOCKED_PATH_WORDS for token in re.split(
                 r"[/_.?&=+%-]+", location.casefold(),
             )):
