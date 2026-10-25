@@ -39,12 +39,27 @@ type StudyReport = {
   verification_status: string;
   sources: {
     citation: string; title: string; url: string;
+    source_type?: "official_authority_domain" | "unverified_external_source";
     excerpt: string; published_date: string | null;
   }[];
 };
 type StudyUniversity = {
   id: string; name: string; program: string; program_url: string;
   application_status: string; deadline: string; notes: string;
+};
+type CaseRagAnswer = {
+  question: string;
+  answer: string;
+  is_refusal: boolean;
+  searched_document_count: number;
+  citations: {
+    source_id: string;
+    document_id: string;
+    filename: string;
+    source_label: string;
+    excerpt: string;
+  }[];
+  note: string;
 };
 type LinkedDocument = {
   document_id: string;
@@ -123,6 +138,9 @@ export function StudyAbroadWorkspace() {
   const [notice, setNotice] = useState("");
   const [uploadKey, setUploadKey] = useState("academic");
   const [researchConsent, setResearchConsent] = useState(false);
+  const [documentConsent, setDocumentConsent] = useState(false);
+  const [documentQuestion, setDocumentQuestion] = useState("");
+  const [documentAnswer, setDocumentAnswer] = useState<CaseRagAnswer | null>(null);
   const [form, setForm] = useState({
     nationality: "", residence_country: "", destination_country: "",
     degree_level: "Bachelor's", study_field: "", intake: "2027",
@@ -251,6 +269,20 @@ export function StudyAbroadWorkspace() {
     finally { setBusy(""); }
   }
 
+  async function askDocuments(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!active || !documentConsent || documents.length === 0) return;
+    setBusy("ask-documents"); setError(""); setDocumentAnswer(null);
+    try {
+      const answer = await api<CaseRagAnswer>(
+        "cases/" + active.id + "/ask-documents", "POST",
+        { question: documentQuestion.trim(), confirm_share_documents: documentConsent },
+      );
+      setDocumentAnswer(answer);
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
   async function uploadFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -366,7 +398,10 @@ export function StudyAbroadWorkspace() {
             {cases.length === 0 && <p className="text-xs leading-5 text-[var(--aq-muted)]">Create a journey to begin your plan.</p>}
             <div className="space-y-2">
               {cases.map(item => (
-                <button key={item.id} type="button" onClick={() => { setActive(item); setResearchConsent(false); setError(""); }}
+                <button key={item.id} type="button" onClick={() => {
+                    setActive(item); setResearchConsent(false); setDocumentConsent(false);
+                    setDocumentAnswer(null); setError("");
+                  }}
                   aria-pressed={active?.id === item.id}
                   className={"w-full rounded-xl border p-3 text-left transition " +
                     (active?.id === item.id
@@ -543,7 +578,13 @@ export function StudyAbroadWorkspace() {
                               <span className="min-w-0 break-words">
                                 <strong>{source.citation} {source.title}</strong>
                                 <span className="block text-[11px] text-[var(--aq-muted)]">
-                                  {sourceHost(source.url)} {source.published_date ? "· " + source.published_date : "· Date not verified"}
+                                  {sourceHost(source.url)}
+                                  {" · "}
+                                  {source.source_type === "official_authority_domain"
+                                    ? "Government-domain source; applicability still unverified"
+                                    : "External source (unverified)"}
+                                  {" · "}
+                                  {source.published_date ? source.published_date : "Date not verified"}
                                 </span>
                               </span>
                             </a>
@@ -552,6 +593,65 @@ export function StudyAbroadWorkspace() {
                       </details>
                     ))}
                   </div>
+                </section>
+                <section className={cardStyle}>
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    <BookOpen size={18}/> Ask your case documents (private RAG)
+                  </h2>
+                  <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    Aqlyra retrieves evidence only from processed documents linked to this journey.
+                    Answers include file/section references. An uploaded document does not prove
+                    it is genuine or accepted by an embassy.
+                  </p>
+                  <form className="mt-4 space-y-3" onSubmit={event => { void askDocuments(event); }}>
+                    <label className="block text-xs text-[var(--aq-muted)]">
+                      Your question
+                      <textarea required minLength={5} maxLength={1200} rows={2}
+                        value={documentQuestion}
+                        onChange={event => setDocumentQuestion(event.target.value)}
+                        placeholder="What degree and graduation date appear in my uploaded academic records?"
+                        className={fieldStyle + " mt-1 resize-y"}/>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                      <input type="checkbox" className="mt-1" checked={documentConsent}
+                        onChange={event => setDocumentConsent(event.target.checked)}/>
+                      I consent to sending retrieved excerpts from this journey's attached files
+                      to Aqlyra's configured AI provider. No other journeys' files are searched.
+                    </label>
+                    <button type="submit"
+                      disabled={busy !== "" || !documentConsent || documents.length === 0 ||
+                        documentQuestion.trim().length < 5}
+                      className="rounded-lg bg-[var(--aq-blue)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                      {busy === "ask-documents" ? "Checking evidence…" : "Ask attached documents"}
+                    </button>
+                    {documents.length === 0 && <p className="text-xs text-[var(--aq-muted)]">
+                      Attach and process a file below before asking a question.
+                    </p>}
+                  </form>
+                  {documentAnswer && (
+                    <div className="mt-4 space-y-3 rounded-xl border border-[var(--aq-border)] p-3">
+                      <MarkdownMessage content={documentAnswer.answer}/>
+                      {documentAnswer.is_refusal && (
+                        <p className="text-xs text-amber-400">
+                          Insufficient evidence in attached documents. Do not infer missing details.
+                        </p>
+                      )}
+                      <p className="text-[11px] text-[var(--aq-muted)]">{documentAnswer.note}</p>
+                      {documentAnswer.citations.length > 0 && (
+                        <div className="space-y-2">
+                          <h3 className="text-xs font-semibold">Document evidence</h3>
+                          {documentAnswer.citations.map(source => (
+                            <div key={source.source_id} className="rounded-lg bg-[var(--aq-card)] p-2 text-xs">
+                              <strong>{source.source_id} · {source.filename} · {source.source_label}</strong>
+                              <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">
+                                {source.excerpt}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </section>
                 <section className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileCheck2 size={18}/> Document readiness</h2>
