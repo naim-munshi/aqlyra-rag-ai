@@ -63,3 +63,41 @@ workspace on the already-running Next.js frontend. It does **not**
 start Docker, reset or migrate databases, or touch Metriqen processes.
 If no Tavily key is present, this helper explicitly enables Tavily's
 local keyless Search/Extract mode; provider limits may apply.
+
+## Mobile-first research workspace
+
+The same authenticated `/web` page now has a responsive bottom composer:
+- Open the **+** research tools sheet with accessible keyboard Escape support.
+- Select **Search**, **Deep Research**, **Compare**, **Fact-check**, or
+  **Read a public URL**. These are real backend research modes, not
+  decorative buttons or fake progress animations.
+- Deep mode explicitly uses Tavily advanced search and extraction, which
+  may spend more API credits than basic mode.
+- URL mode uses Tavily Extract only; it will **not** fetch a URL directly
+  from the Aqlyra server. Only public HTTPS URLs are allowed.
+- The **Document workspace** link returns to the original private-file
+  environment; public web research never implicitly uploads local documents.
+- Research history is **in-memory for the current tab only**; it is not
+  stored in the database or in localStorage. **Clear** discards it.
+- **Copy** writes the result to the clipboard; **Save** exports a local
+  Markdown file with original source links. Neither is a cloud save.
+- Enter submits a query; Shift+Enter enters a newline in the composer.
+
+## Security and testing
+
+Use `POST /api/v1/web/research` with
+`{"question":"...","mode":"search","max_sources":4}`. Other mode values:
+`deep`, `compare`, `fact_check`, `url`. The `url` mode requires
+`source_url`, validated as public HTTPS before Tavily Extract is called.
+No other modes accept `source_url`.
+
+All API modes require the existing authenticated Aqlyra session.
+The first-party Next.js route validates the shape; the FastAPI schema
+enforces the same contract. Provider credentials never go to the browser.
+The API surfaces errors instead of fabricating answers when search,
+extraction, or cited synthesis fails.
+
+Frontend validation tests: `cd frontend && node --experimental-strip-types
+--test tests/*.test.mjs`. Backend tests include advanced mode and public URL
+source extraction with mocked provider requests. CI uses no real Tavily
+credits; manual testing with a real Groq/OpenAI model is still required.
