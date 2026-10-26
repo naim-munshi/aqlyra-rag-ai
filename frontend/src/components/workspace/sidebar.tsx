@@ -15,7 +15,6 @@ import {
   MessageSquareText,
   Plus,
   Settings,
-  Sparkles,
 } from "lucide-react";
 
 import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
@@ -371,31 +370,6 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto pt-5">
-          <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-4">
-            <div className="flex items-center gap-2">
-              <Sparkles
-                size={16}
-                className="text-[var(--aq-cyan)]"
-              />
-
-              <p className="text-sm font-bold">
-                Aqlyra Plus
-              </p>
-            </div>
-
-            <p className="mt-3 text-xs leading-5 text-[var(--aq-muted)]">
-              Higher limits and premium workspace
-              features.
-            </p>
-
-            <button
-              type="button"
-              className="mt-4 h-10 w-full rounded-xl bg-[var(--aq-blue)] text-xs font-semibold text-white transition hover:bg-[var(--aq-blue-hover)]"
-            >
-              Upgrade
-            </button>
-          </div>
-
           <div className="relative mt-4">
             {profileMenuOpen && (
               <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-40 overflow-hidden rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl">
@@ -422,20 +396,6 @@ export function Sidebar({
                 <div className="py-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setProfileMenuOpen(false)
-                    }
-                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
-                  >
-                    <Sparkles
-                      size={15}
-                      className="text-[var(--aq-cyan)]"
-                    />
-                    Upgrade plan
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={openSettings}
                     className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
                   >
@@ -445,9 +405,10 @@ export function Sidebar({
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setProfileMenuOpen(false)
-                    }
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      router.push("/help");
+                    }}
                     className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
                   >
                     <CircleHelp size={15} />
