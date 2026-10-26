@@ -5,9 +5,11 @@ Metadata and rendered bytes share a stable per-user directory.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -52,6 +54,22 @@ def _record_path(folder: Path, artifact_id: str) -> Path:
     return folder / (_validated_uuid(artifact_id) + ".json")
 
 
+@contextmanager
+def _artifact_lock(folder: Path):
+    """Cross-process quota guard on the same persistent upload volume."""
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(folder / ".quota.lock", flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "rb+") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+    except BaseException:
+        raise
+
+
 def create_artifact(
     *, user_id: str, title: str, kind: str, content: str,
     provider_name: str, source_document_ids: list[str],
@@ -59,10 +77,9 @@ def create_artifact(
 ) -> dict:
     if kind not in MIMES:
         raise ArtifactStorageError("Unsupported format")
-    folder = _owner_dir(user_id)
-    if len(list(folder.glob("*.json"))) >= MAX_ARTIFACTS_PER_USER:
-        raise ArtifactQuotaError("Artifact limit reached (50). Delete an older file.")
+    # Render *before* reserving storage, so failures consume no slot.
     data = render_artifact(content, kind)
+    folder = _owner_dir(user_id)
     artifact_id = str(uuid4())
     filename = _name(title, kind, artifact_id)
     binary_path = folder / f"{artifact_id}.{kind}"
@@ -79,18 +96,24 @@ def create_artifact(
         "citation_count": citation_count,
         "content": content,
     }
-    try:
-        with binary_path.open("xb") as handle:
-            os.chmod(binary_path, 0o600)
-            handle.write(data)
-            handle.flush()
-        with metadata_path.open("x", encoding="utf-8") as handle:
-            os.chmod(metadata_path, 0o600)
-            json.dump(metadata, handle, ensure_ascii=False)
-    except Exception:
-        binary_path.unlink(missing_ok=True)
-        metadata_path.unlink(missing_ok=True)
-        raise
+    with _artifact_lock(folder):
+        if len(list(folder.glob("*.json"))) >= MAX_ARTIFACTS_PER_USER:
+            raise ArtifactQuotaError(
+                "Artifact limit reached. Delete an older file."
+            )
+        try:
+            with binary_path.open("xb") as handle:
+                os.chmod(binary_path, 0o600)
+                handle.write(data)
+                handle.flush()
+            with metadata_path.open("x", encoding="utf-8") as handle:
+                os.chmod(metadata_path, 0o600)
+                json.dump(metadata, handle, ensure_ascii=False)
+                handle.flush()
+        except Exception:
+            binary_path.unlink(missing_ok=True)
+            metadata_path.unlink(missing_ok=True)
+            raise
     return metadata
 
 
@@ -135,13 +158,14 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | 
 
 
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
-    item = read_artifact(user_id=user_id, artifact_id=artifact_id)
-    if item is None:
-        return False
     folder = _owner_dir(user_id)
-    path = folder / f"{_validated_uuid(artifact_id)}.{item['format']}"
-    if path.is_symlink() or not path.is_file():
-        return False
-    path.unlink()
-    _record_path(folder, artifact_id).unlink(missing_ok=True)
-    return True
+    with _artifact_lock(folder):
+        item = read_artifact(user_id=user_id, artifact_id=artifact_id)
+        if item is None:
+            return False
+        path = folder / f"{_validated_uuid(artifact_id)}.{item['format']}"
+        if path.is_symlink() or not path.is_file():
+            return False
+        path.unlink()
+        _record_path(folder, artifact_id).unlink(missing_ok=True)
+        return True
