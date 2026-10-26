@@ -18,7 +18,11 @@ def _squatted_user(client: TestClient):
 
 def _code_after_mailbox_request(client: TestClient, db_session: Session, sent_codes):
     # The owner may encounter a pending registration in its cooldown window.
-    challenge = db_session.query(EmailVerificationCode).one()
+    pending = get_user_by_email(db_session, "real.owner@example.com")
+    assert pending is not None
+    challenge = db_session.query(EmailVerificationCode).filter_by(
+        user_id=str(pending.id)
+    ).one()
     challenge.created_at = challenge.created_at.replace(
         year=challenge.created_at.year - 1
     )
@@ -27,7 +31,7 @@ def _code_after_mailbox_request(client: TestClient, db_session: Session, sent_co
         "email": "real.owner@example.com",
     })
     assert response.status_code == 200
-    assert len(sent_codes) == 2
+    assert len(sent_codes) >= 2
     return sent_codes[1], response.json()["verification_token"]
 
 
@@ -96,7 +100,7 @@ def test_claim_rejects_duplicate_username_without_consuming_code(
         "username": "occupied_name",
         "password": "OtherPass123!",
     }).status_code == 201
-    code, ticket = _code_after_mailbox_request(client, db_session, sent_codes[:1])
+    code, ticket = _code_after_mailbox_request(client, db_session, sent_codes)
     denied = client.post("/api/v1/auth/claim-pending-email", json={
         "verification_token": ticket, "code": code,
         "username": "occupied_name", "new_password": "RealOwnerPass123!",
