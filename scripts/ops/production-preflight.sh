@@ -112,6 +112,21 @@ if llm_provider not in {
         "in production"
     )
 
+embedding_provider = require(
+    "EMBEDDING_PROVIDER"
+).casefold()
+
+require("EMBEDDING_MODEL")
+
+if embedding_provider not in {
+    "huggingface",
+    "openai",
+}:
+    errors.append(
+        "EMBEDDING_PROVIDER must be huggingface or openai "
+        "in production"
+    )
+
 
 grounding_enabled = values.get(
     "RAG_GROUNDING_VERIFIER_ENABLED",

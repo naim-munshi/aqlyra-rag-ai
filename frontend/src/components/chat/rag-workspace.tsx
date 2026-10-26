@@ -5,7 +5,6 @@ import {
   Copy,
   LoaderCircle,
   PanelLeft,
-  Paperclip,
   Send,
   Sparkles,
   X,
@@ -19,6 +18,7 @@ import {
 } from "react";
 
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
+import { ChatToolsMenu } from "@/components/chat/chat-tools-menu";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
@@ -655,6 +655,25 @@ export function RAGWorkspace({
       focusChat,
     );
 
+    // Sidebar controls on AI Files/other pages navigate here with an
+    // explicit intent; the destination must process it after mounting.
+    const pageUrl = new URL(window.location.href);
+    const intent = pageUrl.searchParams.get("aqlyraIntent");
+    if (intent === "documents") {
+      openDocuments();
+    } else if (intent === "new-chat") {
+      resetChat();
+    } else if (intent === "focus") {
+      focusChat();
+    }
+    if (["documents", "new-chat", "focus"].includes(intent ?? "")) {
+      pageUrl.searchParams.delete("aqlyraIntent");
+      window.history.replaceState(
+        window.history.state, "",
+        pageUrl.pathname + pageUrl.search + pageUrl.hash,
+      );
+    }
+
     return () => {
       window.removeEventListener(
         "aqlyra:new-chat",
@@ -901,6 +920,31 @@ export function RAGWorkspace({
     } catch {
       window.localStorage.removeItem(
         storageKey,
+      );
+    }
+
+    // A project created on a different page passes its new conversation
+    // through a short-lived navigation intent. The message endpoint remains
+    // owner-checked and is responsible for authorizing the requested ID.
+    const navigationUrl = new URL(window.location.href);
+    const requestedId = navigationUrl.searchParams.get("aqlyraConversationId");
+    const requestedMode = navigationUrl.searchParams.get("aqlyraConversationMode");
+    if (
+      requestedId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedId) &&
+      (requestedMode === "normal" || requestedMode === "knowledge")
+    ) {
+      restoredMode = requestedMode;
+      restoredConversationId = requestedId;
+      restoredDraft = "";
+    }
+    if (requestedId !== null || requestedMode !== null) {
+      navigationUrl.searchParams.delete("aqlyraConversationId");
+      navigationUrl.searchParams.delete("aqlyraConversationMode");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        navigationUrl.pathname + navigationUrl.search + navigationUrl.hash,
       );
     }
 
@@ -1976,29 +2020,18 @@ export function RAGWorkspace({
         />
 
         <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            aria-label="Attach document"
-            disabled={
-              uploadState !== "idle"
-            }
-            title="Attach document"
-            onClick={() =>
-              fileInputRef.current?.click()
-            }
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-muted)] transition hover:text-[var(--aq-blue)] disabled:opacity-50"
-          >
-            {uploadState === "idle" ? (
-              <Paperclip
-                size={16}
-              />
-            ) : (
-              <LoaderCircle
-                size={16}
-                className="animate-spin"
-              />
+          <ChatToolsMenu
+            mode={chatMode}
+            disabled={ragLoading || uploadState !== "idle"}
+            onUpload={() => fileInputRef.current?.click()}
+            onOpenDocuments={() => {
+              setEvidenceDrawerOpen(false);
+              setDocumentDrawerOpen(true);
+            }}
+            onSwitchMode={() => switchChatMode(
+              chatMode === "knowledge" ? "normal" : "knowledge",
             )}
-          </button>
+          />
 
           {uploadState !==
             "idle" && (
@@ -2011,18 +2044,6 @@ export function RAGWorkspace({
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              className="flex h-10 items-center gap-2 rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-xs font-semibold text-[var(--aq-text)] transition hover:bg-[var(--aq-control)]"
-            >
-              <Sparkles
-                size={14}
-                className="text-[var(--aq-cyan)]"
-              />
-
-              Upgrade
-            </button>
-
             <VoiceCallButton
               mode={chatMode}
               conversationId={

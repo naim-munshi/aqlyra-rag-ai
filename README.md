@@ -4,7 +4,7 @@ Aqlyra is a full-stack AI knowledge application for private-document workflows a
 
 **Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
 
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
+**Release status:** Pre-production. Follow the [release acceptance and security gate](docs/RELEASE_ACCEPTANCE.md) before any merge, staging rollout or production deployment; this is the full Aqlyra RAG AI application, not a separately hosted portfolio demo.  Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
 
 It has two main modes:
 
