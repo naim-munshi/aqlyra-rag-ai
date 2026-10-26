@@ -32,7 +32,7 @@ def _code_after_mailbox_request(client: TestClient, db_session: Session, sent_co
     })
     assert response.status_code == 200
     assert len(sent_codes) >= 2
-    return sent_codes[1], response.json()["verification_token"]
+    return sent_codes[-1], response.json()["verification_token"]
 
 
 def test_mailbox_owner_can_claim_pending_registration_atomically(
