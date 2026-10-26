@@ -9,6 +9,7 @@ import {
   Mail,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
@@ -120,12 +121,12 @@ export function LoginForm() {
             Password
           </label>
 
-          <button
-            type="button"
+          <Link
+            href="/forgot-password"
             className="text-xs font-semibold text-[var(--aq-blue)]"
           >
             Forgot password?
-          </button>
+          </Link>
         </div>
 
         <div className="mt-2 flex h-12 items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 focus-within:border-[var(--aq-blue)]">

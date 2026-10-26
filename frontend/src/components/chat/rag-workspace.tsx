@@ -5,7 +5,6 @@ import {
   Copy,
   LoaderCircle,
   PanelLeft,
-  Paperclip,
   Send,
   Sparkles,
   X,
@@ -19,6 +18,7 @@ import {
 } from "react";
 
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
+import { ChatToolsMenu } from "@/components/chat/chat-tools-menu";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
@@ -1976,29 +1976,18 @@ export function RAGWorkspace({
         />
 
         <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            aria-label="Attach document"
-            disabled={
-              uploadState !== "idle"
-            }
-            title="Attach document"
-            onClick={() =>
-              fileInputRef.current?.click()
-            }
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-muted)] transition hover:text-[var(--aq-blue)] disabled:opacity-50"
-          >
-            {uploadState === "idle" ? (
-              <Paperclip
-                size={16}
-              />
-            ) : (
-              <LoaderCircle
-                size={16}
-                className="animate-spin"
-              />
+          <ChatToolsMenu
+            mode={chatMode}
+            disabled={ragLoading || uploadState !== "idle"}
+            onUpload={() => fileInputRef.current?.click()}
+            onOpenDocuments={() => {
+              setEvidenceDrawerOpen(false);
+              setDocumentDrawerOpen(true);
+            }}
+            onSwitchMode={() => switchChatMode(
+              chatMode === "knowledge" ? "normal" : "knowledge",
             )}
-          </button>
+          />
 
           {uploadState !==
             "idle" && (
