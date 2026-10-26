@@ -161,6 +161,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": wrong_code,
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -171,6 +172,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -191,6 +193,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -240,6 +243,7 @@ def test_email_otp_locks_after_maximum_wrong_attempts(
             json={
                 "code": wrong_code,
                 "verification_token": verification_token,
+            "password": USER_DATA["password"],
             },
         )
         assert rejected.status_code == 400
@@ -249,6 +253,7 @@ def test_email_otp_locks_after_maximum_wrong_attempts(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -369,6 +374,7 @@ def test_duplicate_pending_registration_cannot_overwrite_credentials(
         json={
             "code": sent_codes[0],
             "verification_token": original.json()["verification_token"],
+            "password": "OriginalPass123!",
         },
     )
     assert verified.status_code == 200

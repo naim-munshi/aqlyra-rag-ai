@@ -221,6 +221,7 @@ def verify_email(
             user_id=user_id,
             challenge_id=challenge_id,
             code=request_data.code,
+            existing_password=request_data.password,
         )
     except (
         InvalidVerificationTokenError,

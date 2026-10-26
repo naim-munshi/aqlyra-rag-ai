@@ -45,6 +45,7 @@ export async function POST(request: Request) {
         headers: backendHeaders,
         body: JSON.stringify({
           code: body.code,
+          password: body.password,
           verification_token: verificationToken,
         }),
         cache: "no-store",

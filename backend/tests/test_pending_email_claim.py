@@ -83,7 +83,8 @@ def test_mailbox_owner_can_claim_pending_registration_atomically(
         "new_password": "AnotherPass123!",
     }).status_code == 400
     assert client.post("/api/v1/auth/verify-email", json={
-        "verification_token": original_ticket, "code": sent_codes[0]
+        "verification_token": original_ticket, "code": sent_codes[0],
+        "password": "AttackerPass123!"
     }).status_code == 400
 
 
@@ -124,3 +125,37 @@ def test_claim_malformed_input_cannot_mutate_account(
         "username": "??", "new_password": "short",
     })
     assert response.status_code == 422
+
+
+def test_mailbox_otp_alone_cannot_activate_squatter_credentials(
+    client: TestClient, db_session: Session, monkeypatch
+):
+    sent_codes = []
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
+    monkeypatch.setattr(
+        auth_api, "send_verification_email",
+        lambda *, recipient_email, code: sent_codes.append(code),
+    )
+    assert _squatted_user(client).status_code == 201
+    code, ticket = _code_after_mailbox_request(client, db_session, sent_codes)
+    assert client.post("/api/v1/auth/verify-email", json={
+        "code": code, "verification_token": ticket,
+    }).status_code == 422
+    assert client.post("/api/v1/auth/verify-email", json={
+        "code": code, "verification_token": ticket,
+        "password": "VictimPassword123!",
+    }).status_code == 400
+    assert get_user_by_email(
+        db_session, "real.owner@example.com"
+    ).email_verified_at is None
+    assert client.post("/api/v1/auth/login", json={
+        "email": "real.owner@example.com", "password": "AttackerPass123!",
+    }).status_code == 403
+    recovered = client.post("/api/v1/auth/claim-pending-email", json={
+        "code": code, "verification_token": ticket,
+        "username": "real_owner", "new_password": "VictimPassword123!",
+    })
+    assert recovered.status_code == 200
+    assert client.post("/api/v1/auth/login", json={
+        "email": "real.owner@example.com", "password": "AttackerPass123!",
+    }).status_code == 401

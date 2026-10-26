@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.auth.security import hash_password
+from app.auth.security import hash_password, verify_password
 from app.core.datetime_utils import utc_now_naive
 from app.models.email_verification_code import (
     EmailVerificationCode,
@@ -162,10 +162,15 @@ def verify_email_code(
     code: str,
     claim_username: str | None = None,
     claim_password: str | None = None,
+    existing_password: str | None = None,
 ) -> User:
     """Verify ownership and optionally claim a squatted pending account atomically."""
     if (claim_username is None) != (claim_password is None):
         raise VerificationCodeError("Invalid verification claim")
+    if claim_username is None and existing_password is None:
+        raise VerificationCodeError("Password proof required for verification")
+    if claim_username is not None and existing_password is not None:
+        raise VerificationCodeError("Cannot mix verification and recovery")
     user = db.scalar(
         select(User).where(User.id == user_id).with_for_update()
     )
@@ -214,6 +219,16 @@ def verify_email_code(
         raise VerificationCodeError(
             "Invalid or expired verification code"
         )
+
+    if claim_username is None and not verify_password(
+        existing_password or "", user.hashed_password
+    ):
+        # Email OTP alone must not activate a squatter-chosen password.
+        verification_code.failed_attempts += 1
+        if verification_code.failed_attempts >= settings.EMAIL_VERIFICATION_MAX_ATTEMPTS:
+            verification_code.consumed_at = now
+        db.commit()
+        raise VerificationCodeError("Invalid or expired verification code")
 
     if claim_username is not None and claim_password is not None:
         username = claim_username.strip().lower()

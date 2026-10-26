@@ -9,8 +9,11 @@ The test suite also checks a number of failure and adversarial cases.
 ## Authentication and ownership
 
 Email syntax alone is not treated as proof of mailbox ownership.
-New password accounts remain unverified until a one-time code is
-accepted. Verification codes:
+New password accounts remain unverified until both a one-time code and
+the original registration password are accepted on the ordinary verify
+path. This prevents accidental activation of attacker-chosen credentials.
+A mailbox holder who did not register must use claim-pending-email to
+replace the untrusted password. Verification codes:
 
 - contain six digits and expire after ten minutes;
 - are stored as keyed HMAC digests, never as plaintext;

@@ -16,7 +16,7 @@ class RegistrationResponse(UserResponse):
     verification_token: str | None = None
 
 
-class EmailVerificationRequest(BaseModel):
+class EmailVerificationChallenge(BaseModel):
     code: str = Field(
         min_length=6,
         max_length=6,
@@ -28,7 +28,11 @@ class EmailVerificationRequest(BaseModel):
     )
 
 
-class PendingEmailClaimRequest(EmailVerificationRequest):
+class EmailVerificationRequest(EmailVerificationChallenge):
+    password: str = Field(min_length=8, max_length=72)
+
+
+class PendingEmailClaimRequest(EmailVerificationChallenge):
     """Mailbox proof is required to replace a pending registration."""
     username: str = Field(
         min_length=3,
