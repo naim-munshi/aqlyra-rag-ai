@@ -4,7 +4,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   CircleHelp,
@@ -40,6 +40,7 @@ export function Sidebar({
   user,
 }: SidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const [settingsOpen, setSettingsOpen] =
     useState(false);
@@ -90,6 +91,10 @@ export function Sidebar({
 
   function startNewChat() {
     setProfileMenuOpen(false);
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=new-chat");
+      return;
+    }
 
     window.dispatchEvent(
       new Event("aqlyra:new-chat"),
@@ -235,12 +240,20 @@ export function Sidebar({
   }
 
   function openDocuments() {
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=documents");
+      return;
+    }
     window.dispatchEvent(
       new Event("aqlyra:open-documents"),
     );
   }
 
   function focusChat() {
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=focus");
+      return;
+    }
     window.dispatchEvent(
       new Event("aqlyra:focus-chat"),
     );
