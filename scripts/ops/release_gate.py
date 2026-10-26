@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         main_data = github_api("/branches/main")
-        release_data = github_api("/branches/" + quote(RELEASE_BRANCH, safe="/"))
+        release_data = github_api("/branches/" + quote(RELEASE_BRANCH, safe=""))
         run_data = github_api(
             "/actions/runs?branch=" + quote(RELEASE_BRANCH, safe="")
             + "&per_page=100"
