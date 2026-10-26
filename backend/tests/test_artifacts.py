@@ -163,7 +163,10 @@ def test_grounded_artifact_reuses_scoped_rag_and_citations(
         calls.append(kwargs)
         return SimpleNamespace(
             is_refusal=False,
-            citations=(SimpleNamespace(source_id="S1"),),
+            citations=(SimpleNamespace(
+                source_id="S1", original_filename="my-source.md",
+                start_page=1, document_id=doc_id,
+            ),),
             answer_text="## Verified evidence\nA fact supported by [S1].",
             provider_name="test-rag",
             citation_count=1,
@@ -180,6 +183,53 @@ def test_grounded_artifact_reuses_scoped_rag_and_citations(
     assert data["citation_count"] == 1
     assert data["source_document_ids"] == [doc_id]
     assert "[S1]" in data["content"]
+    assert "## Source references" in data["content"]
+    assert "my-source.md" in data["content"]
+    assert doc_id in data["content"]
     assert len(calls) == 1
     assert calls[0]["document_ids"] == (doc_id,)
     assert calls[0]["user_id"] == document.user_id
+
+
+def test_renderer_never_silently_truncates_source_or_slides():
+    import pytest
+    from app.services.artifact_rendering import render_artifact
+
+    with pytest.raises(ValueError, match="450 source lines"):
+        render_artifact("# Long\\n" + ("short\\n" * 451), "docx")
+    with pytest.raises(ValueError, match="12 columns"):
+        render_artifact("| " + " | ".join(str(x) for x in range(13)) + " |", "xlsx")
+    with pytest.raises(ValueError, match="25 slides"):
+        parts = ["# Title"]
+        for index in range(30):
+            parts.extend([f"## Section {index}", "- Point"])
+        render_artifact("\\n".join(parts), "pptx")
+
+
+def test_artifact_storage_quota_is_atomic(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from uuid import uuid4
+    from app.services import artifact_storage
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(artifact_storage, "MAX_ARTIFACTS_PER_USER", 2)
+    owner = str(uuid4())
+
+    def attempt(index):
+        try:
+            artifact_storage.create_artifact(
+                user_id=owner, title=f"Concurrent {index}",
+                kind="md", content="# Test\\nUntrusted content",
+                provider_name="test", source_document_ids=[],
+                citation_count=0,
+            )
+            return True
+        except artifact_storage.ArtifactQuotaError:
+            return False
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(attempt, range(12)))
+    assert results.count(True) == 2
+    assert results.count(False) == 10
+    assert len(artifact_storage.list_artifacts(user_id=owner)) == 2
