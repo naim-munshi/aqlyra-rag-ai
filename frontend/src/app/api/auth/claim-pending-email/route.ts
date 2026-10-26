@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trustedProxyClientIp } from "@/lib/security/client-ip";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import {
@@ -30,9 +31,12 @@ export async function POST(request: Request) {
   }
 
   try {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    const clientIp = trustedProxyClientIp(request);
+    if (clientIp) headers.set("X-Aqlyra-Client-IP", clientIp);
     const response = await fetch(backendUrl("/auth/claim-pending-email"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ ...body, verification_token: ticket }),
       cache: "no-store",
     });
