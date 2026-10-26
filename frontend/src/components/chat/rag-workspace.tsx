@@ -655,6 +655,25 @@ export function RAGWorkspace({
       focusChat,
     );
 
+    // Sidebar controls on AI Files/other pages navigate here with an
+    // explicit intent; the destination must process it after mounting.
+    const pageUrl = new URL(window.location.href);
+    const intent = pageUrl.searchParams.get("aqlyraIntent");
+    if (intent === "documents") {
+      openDocuments();
+    } else if (intent === "new-chat") {
+      resetChat();
+    } else if (intent === "focus") {
+      focusChat();
+    }
+    if (["documents", "new-chat", "focus"].includes(intent ?? "")) {
+      pageUrl.searchParams.delete("aqlyraIntent");
+      window.history.replaceState(
+        null, "",
+        pageUrl.pathname + pageUrl.search + pageUrl.hash,
+      );
+    }
+
     return () => {
       window.removeEventListener(
         "aqlyra:new-chat",
