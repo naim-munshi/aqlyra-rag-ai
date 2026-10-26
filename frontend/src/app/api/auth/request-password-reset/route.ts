@@ -27,12 +27,12 @@ export async function POST(request: Request) {
       cache: "no-store",
     });
     const data = await readJson(upstream);
-    const headers = new Headers({ "Cache-Control": "no-store" });
+    const responseHeaders = new Headers({ "Cache-Control": "no-store" });
     const retryAfter = upstream.headers.get("retry-after");
-    if (retryAfter) headers.set("Retry-After", retryAfter);
+    if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
     return NextResponse.json(
       data ?? { detail: "Backend returned an invalid response" },
-      { status: upstream.status, headers }
+      { status: upstream.status, headers: responseHeaders }
     );
   } catch {
     return NextResponse.json(
