@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from app.api.dependencies import get_current_user
+from app.models.user import User
 from sqlalchemy.orm import Session
 
 from app.auth.security import (
@@ -352,6 +355,26 @@ def google_login(
             token_version=user.auth_epoch,
         )
     )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def revoke_user_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Server-side revoke all previously issued JWT sessions for this user.
+
+    Uses the existing auth_epoch added by the password-reset migration.
+    Works across API processes, without a Redis availability dependency.
+    """
+    user = db.scalar(
+        select(User).where(User.id == str(current_user.id)).with_for_update()
+    )
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Session is no longer valid")
+    user.auth_epoch += 1
+    db.commit()
+    return {"success": True}
 
 
 @router.post(

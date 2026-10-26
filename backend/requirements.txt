@@ -94,6 +94,7 @@ python-multipart==0.0.32
 python-pptx==1.0.2
 PyYAML==6.0.3
 redis==8.0.1
+reportlab==5.1.0
 regex==2026.7.19
 requests==2.34.2
 requests-toolbelt==1.0.0
