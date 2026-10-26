@@ -126,6 +126,7 @@ def test_no_external_users_document_leak(client: TestClient):
         "title": "Attempt", "format": "docx",
         "prompt": "Generate report from another user document.",
         "document_ids": [document_id],
+        "confirm_share_documents": True,
     })
     assert result.status_code == 422
     assert client.get("/api/v1/artifacts", headers=beta).json()["total"] == 0
@@ -173,10 +174,19 @@ def test_grounded_artifact_reuses_scoped_rag_and_citations(
         )
 
     monkeypatch.setattr("app.api.artifacts.answer_question", fake_answer_question)
+    no_consent = client.post("/api/v1/artifacts/generate", headers=owner, json={
+        "title": "Grounded", "format": "md",
+        "prompt": "Summarize the private evidence from my documents.",
+        "document_ids": [doc_id],
+    })
+    assert no_consent.status_code == 422
+    assert len(calls) == 0
+
     response = client.post("/api/v1/artifacts/generate", headers=owner, json={
         "title": "Grounded", "format": "md",
         "prompt": "Summarize the private evidence from my documents.",
         "document_ids": [doc_id],
+        "confirm_share_documents": True,
     })
     assert response.status_code == 201
     data = response.json()

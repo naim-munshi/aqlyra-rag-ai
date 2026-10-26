@@ -52,6 +52,7 @@ export function ArtifactWorkspace() {
   const [format, setFormat] = useState<ArtifactKind>("docx");
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [sourceIds, setSourceIds] = useState<string[]>([]);
+  const [confirmShareDocuments, setConfirmShareDocuments] = useState(false);
   const [items, setItems] = useState<Artifact[]>([]);
   const [selected, setSelected] = useState<Artifact | null>(null);
   const [draft, setDraft] = useState("");
@@ -134,6 +135,7 @@ export function ArtifactWorkspace() {
           prompt: prompt.trim(),
           format,
           document_ids: sourceIds,
+          confirm_share_documents: sourceIds.length > 0 && confirmShareDocuments,
         }),
       });
       const data = (await response.json()) as Artifact & ApiError;
@@ -274,13 +276,20 @@ export function ArtifactWorkspace() {
                     </label>
                   ))}
                 </div>
+                {sourceIds.length > 0 && (
+                  <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    <input type="checkbox" className="mt-1" checked={confirmShareDocuments}
+                      onChange={(event) => setConfirmShareDocuments(event.target.checked)} />
+                    <span>I consent to sharing relevant excerpts of these selected private documents with the configured AI provider to generate this file.</span>
+                  </label>
+                )}
               </fieldset>
             )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 text-xs text-[var(--aq-muted)]">
                 <ShieldCheck size={14} /> Private by account
               </div>
-              <button type="submit" disabled={busy || !prompt.trim() || !title.trim()}
+              <button type="submit" disabled={busy || !prompt.trim() || !title.trim() || (sourceIds.length > 0 && !confirmShareDocuments)}
                 className="flex items-center gap-2 rounded-xl bg-[var(--aq-blue)] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
                 {busy ? <LoaderCircle size={16} className="animate-spin" /> : <FilePlus2 size={16} />}
                 Generate file

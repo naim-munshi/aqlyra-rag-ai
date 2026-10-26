@@ -36,6 +36,7 @@ class GenerateArtifactRequest(BaseModel):
     format: ArtifactFormat
     title: str = Field(default="Aqlyra document", min_length=1, max_length=120)
     document_ids: list[str] = Field(default_factory=list, max_length=5)
+    confirm_share_documents: bool = False
 
 
 class RenderArtifactRequest(BaseModel):
@@ -74,6 +75,14 @@ def generate(
         raise HTTPException(status_code=422, detail="Prompt too short")
     ids = list(dict.fromkeys(request.document_ids))
     if ids:
+        if not request.confirm_share_documents:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Explicit consent is required before selected private "
+                    "document excerpts are sent to the configured AI provider."
+                ),
+            )
         for document_id in ids:
             document = get_user_document(
                 db=db, user_id=user_id, document_id=document_id,
