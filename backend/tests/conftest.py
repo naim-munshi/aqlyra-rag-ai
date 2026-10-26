@@ -46,6 +46,7 @@ from app.models import (
     Memory,
     MemoryEmbedding,
     Message,
+    PasswordResetCode,
     User,
 )
 

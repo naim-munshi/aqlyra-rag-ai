@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from app.api.dependencies import get_current_user
+from app.models.user import User
 from sqlalchemy.orm import Session
 
 from app.auth.security import (
@@ -12,6 +15,7 @@ from app.core.rate_limit import (
     limit_login_request,
     limit_resend_request,
     limit_register_request,
+    limit_password_reset_request,
     limit_verify_request,
 )
 from app.config.settings import settings
@@ -19,8 +23,12 @@ from app.database.connection import get_db
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationResendRequest,
+    PendingEmailClaimRequest,
     GoogleCredentialRequest,
     RegistrationResponse,
+    PasswordResetRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetMessage,
     TokenResponse,
     VerificationDispatchResponse,
 )
@@ -28,6 +36,7 @@ from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.email_service import (
     EmailDeliveryError,
     send_verification_email,
+    send_password_reset_email,
 )
 from app.services.email_verification_service import (
     VerificationCodeError,
@@ -39,6 +48,12 @@ from app.services.email_verification_service import (
 from app.services.google_identity_service import (
     InvalidGoogleCredentialError,
     verify_google_credential,
+)
+from app.services.password_reset_service import (
+    PasswordResetError,
+    issue_password_reset,
+    discard_password_reset,
+    reset_password,
 )
 from app.services.user_service import (
     DuplicateUserError,
@@ -175,6 +190,7 @@ def login_user(
 
     access_token = create_access_token(
         subject=str(user.id),
+        token_version=user.auth_epoch,
     )
 
     return TokenResponse(
@@ -224,6 +240,42 @@ def verify_email(
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
+            token_version=user.auth_epoch,
+        )
+    )
+
+
+@router.post(
+    "/claim-pending-email",
+    response_model=TokenResponse,
+    dependencies=[Depends(limit_verify_request)],
+)
+def claim_pending_email(
+    request_data: PendingEmailClaimRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """The mailbox holder replaces untrusted pending credentials after OTP proof."""
+    try:
+        user_id, challenge_id = decode_email_verification_token(
+            request_data.verification_token
+        )
+        user = verify_email_code(
+            db,
+            user_id=user_id,
+            challenge_id=challenge_id,
+            code=request_data.code,
+            claim_username=request_data.username,
+            claim_password=request_data.new_password,
+        )
+    except (InvalidVerificationTokenError, VerificationCodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return TokenResponse(
+        access_token=create_access_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
         )
     )
 
@@ -336,5 +388,73 @@ def google_login(
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
+            token_version=user.auth_epoch,
         )
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def revoke_user_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Server-side revoke all previously issued JWT sessions for this user.
+
+    Uses the existing auth_epoch added by the password-reset migration.
+    Works across API processes, without a Redis availability dependency.
+    """
+    user = db.scalar(
+        select(User).where(User.id == str(current_user.id)).with_for_update()
+    )
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Session is no longer valid")
+    user.auth_epoch += 1
+    db.commit()
+    return {"success": True}
+
+
+@router.post(
+    "/request-password-reset",
+    response_model=PasswordResetMessage,
+    dependencies=[Depends(limit_password_reset_request)],
+)
+def request_password_reset(
+    body: PasswordResetRequest,
+    db: Session = Depends(get_db),
+) -> PasswordResetMessage:
+    # Generic response prevents account enumeration.
+    generic = PasswordResetMessage(
+        message="If this email has an eligible account, a reset code will be sent."
+    )
+    email = str(body.email).strip().lower()
+    issued = issue_password_reset(db, email)
+    if issued is None:
+        return generic
+    try:
+        send_password_reset_email(recipient_email=issued[0], code=issued[1])
+    except EmailDeliveryError:
+        discard_password_reset(db, email)
+    return generic
+
+
+@router.post(
+    "/reset-password",
+    response_model=PasswordResetMessage,
+    dependencies=[Depends(limit_password_reset_request)],
+)
+def confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    db: Session = Depends(get_db),
+) -> PasswordResetMessage:
+    try:
+        reset_password(
+            db, str(body.email).strip().lower(), body.code, body.new_password
+        )
+    except PasswordResetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset code",
+        ) from exc
+    return PasswordResetMessage(
+        message="Password updated. Please sign in with your new password."
     )
