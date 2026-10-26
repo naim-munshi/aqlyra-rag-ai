@@ -212,6 +212,16 @@ export function Sidebar({
         ),
       );
 
+      if (pathname !== "/") {
+        router.push(
+          "/?aqlyraConversationId=" +
+            encodeURIComponent(conversation.id) +
+            "&aqlyraConversationMode=" +
+            encodeURIComponent(conversation.mode),
+        );
+        return;
+      }
+
       window.dispatchEvent(
         new CustomEvent(
           "aqlyra:open-conversation",
