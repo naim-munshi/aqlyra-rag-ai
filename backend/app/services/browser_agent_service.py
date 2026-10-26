@@ -261,7 +261,14 @@ def _parse_choice(value: str, link_count: int) -> int | None:
     raise BrowserAgentPlanError("Navigation model requested a forbidden action")
 
 
-async def _validate_public_dns(host: str) -> None:
+async def _validate_public_dns(host: str) -> str:
+    """Resolve and pin one public IPv4 address *before* Chromium launches.
+
+    Validating DNS then making Chromium resolve a second time leaves a
+    DNS-rebinding window. For now IPv6-only sites fail closed rather than
+    pretend unpinned addresses are safe. Production remains disabled until
+    independent network egress isolation is available.
+    """
     try:
         infos = await asyncio.wait_for(
             asyncio.to_thread(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM),
@@ -269,10 +276,20 @@ async def _validate_public_dns(host: str) -> None:
         )
     except (OSError, asyncio.TimeoutError) as exc:
         raise BrowserAgentPlanError("Approved site cannot be resolved") from exc
-    if not infos or any(
-        not ipaddress.ip_address(item[4][0]).is_global for item in infos
-    ):
+    if not infos:
+        raise BrowserAgentPlanError("Approved site cannot be resolved")
+    addresses = [ipaddress.ip_address(item[4][0]) for item in infos]
+    if any(not address.is_global for address in addresses):
         raise BrowserAgentPlanError("Destination resolves to non-public IP space")
+    public_ipv4 = next(
+        (str(address) for address in addresses if address.version == 4),
+        None,
+    )
+    if public_ipv4 is None:
+        raise BrowserAgentPlanError(
+            "Approved host has no pinnable public IPv4 address"
+        )
+    return public_ipv4
 
 
 def _merge_link_frontier(
@@ -336,8 +353,17 @@ async def _run_browser(
     frontier: list[dict[str, str]] = []
 
     try:
+        # Pin HTTPS hostname to a validated public address inside Chromium.
+        # Prevent DNS rebinding between validation and browser navigation.
+        pinned_ip = await _validate_public_dns(host)
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=[
+                    f"--host-resolver-rules=MAP {host} {pinned_ip}",
+                    "--no-proxy-server",
+                ],
+            )
             try:
                 context = await browser.new_context(
                     javascript_enabled=False,
@@ -366,7 +392,6 @@ async def _run_browser(
                             break
                         if safe_browser_url(next_url, host) is None:
                             raise BrowserAgentPlanError("Browser tried to leave approved host")
-                        await _validate_public_dns(host)
                         response = await page.goto(
                             next_url, wait_until="domcontentloaded", timeout=12000,
                         )
