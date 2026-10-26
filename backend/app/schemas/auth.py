@@ -28,6 +28,16 @@ class EmailVerificationRequest(BaseModel):
     )
 
 
+class PendingEmailClaimRequest(EmailVerificationRequest):
+    """Mailbox proof is required to replace a pending registration."""
+    username: str = Field(
+        min_length=3,
+        max_length=50,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class EmailVerificationResendRequest(BaseModel):
     email: EmailStr
 
