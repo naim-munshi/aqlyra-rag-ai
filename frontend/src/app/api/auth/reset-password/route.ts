@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trustedProxyClientIp } from "@/lib/security/client-ip";
 import { backendUrl, readJson } from "@/lib/api/backend";
 
 export async function POST(request: Request) {
@@ -17,9 +18,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Invalid reset request" }, { status: 400 });
   }
   try {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    const clientIp = trustedProxyClientIp(request);
+    if (clientIp) headers.set("X-Aqlyra-Client-IP", clientIp);
     const upstream = await fetch(backendUrl("/auth/reset-password"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         email: body.email,
         code: body.code,
