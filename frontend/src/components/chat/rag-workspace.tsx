@@ -2044,18 +2044,6 @@ export function RAGWorkspace({
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              className="flex h-10 items-center gap-2 rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-xs font-semibold text-[var(--aq-text)] transition hover:bg-[var(--aq-control)]"
-            >
-              <Sparkles
-                size={14}
-                className="text-[var(--aq-cyan)]"
-              />
-
-              Upgrade
-            </button>
-
             <VoiceCallButton
               mode={chatMode}
               conversationId={
