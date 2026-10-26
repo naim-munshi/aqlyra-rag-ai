@@ -7,8 +7,14 @@ do not confuse an always-on CI job with enforced branch protection.
 
 ## Owner action - create one enforced ruleset
 
-Open https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules
-and choose **New ruleset > New branch ruleset**.
+Open https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules.
+**Fastest:** choose **New ruleset > Import a ruleset** and select
+[the ready-to-import Aqlyra ruleset JSON](aqlyra-main.ruleset.json).
+Review all settings and select **Create**. This imports the 11 job checks,
+requires an independent PR review, and enables force-push/deletion protection.
+If import is unavailable, use **New branch ruleset** and the fields below.
+Do not include an admin bypass; if GitHub rejects any imported field,
+review it explicitly instead of silently downgrading enforcement.
 
 - Ruleset name: `aqlyra-main-production-gate`
 - Enforcement: **Active**, not Evaluate or Disabled.
