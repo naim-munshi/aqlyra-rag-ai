@@ -329,86 +329,60 @@ def test_registration_stays_unverified_when_email_delivery_fails(
     assert login_user(client).status_code == 403
 
 
-def test_new_registration_replaces_unverified_squatted_account(
+def test_duplicate_pending_registration_cannot_overwrite_credentials(
     client: TestClient,
     monkeypatch,
 ) -> None:
+    """Unauthenticated registration must never take control of pending account."""
     sent_codes: list[str] = []
-
-    monkeypatch.setattr(
-        settings,
-        "EMAIL_VERIFICATION_REQUIRED",
-        True,
-    )
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
     monkeypatch.setattr(
         auth_api,
         "send_verification_email",
-        lambda *, recipient_email, code: sent_codes.append(
-            code
-        ),
+        lambda *, recipient_email, code: sent_codes.append(code),
     )
 
-    attacker = client.post(
+    original = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "pending_owner",
+            "email": "pending@example.com",
+            "password": "OriginalPass123!",
+        },
+    )
+    replacement = client.post(
         "/api/v1/auth/register",
         json={
             "username": "attacker_name",
-            "email": "victim@gmail.com",
+            "email": "pending@example.com",
             "password": "AttackerPass123!",
         },
     )
-    owner = client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": "real_owner",
-            "email": "victim@gmail.com",
-            "password": "OwnerPass123!",
-        },
-    )
 
-    assert attacker.status_code == 201
-    assert owner.status_code == 201
+    assert original.status_code == 201
+    assert replacement.status_code == 409
+    assert len(sent_codes) == 1
 
-    stale = client.post(
-        "/api/v1/auth/verify-email",
-        json={
-            "code": sent_codes[0],
-            "verification_token": attacker.json()[
-                "verification_token"
-            ],
-        },
-    )
-
-    assert stale.status_code == 400
-
+    # Original mailbox holder can still redeem the original code.
     verified = client.post(
         "/api/v1/auth/verify-email",
         json={
-            "code": sent_codes[1],
-            "verification_token": owner.json()[
-                "verification_token"
-            ],
+            "code": sent_codes[0],
+            "verification_token": original.json()["verification_token"],
         },
     )
-
     assert verified.status_code == 200
 
-    attacker_login = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": "victim@gmail.com",
-            "password": "AttackerPass123!",
-        },
-    )
     owner_login = client.post(
         "/api/v1/auth/login",
-        json={
-            "email": "victim@gmail.com",
-            "password": "OwnerPass123!",
-        },
+        json={"email": "pending@example.com", "password": "OriginalPass123!"},
     )
-
-    assert attacker_login.status_code == 401
+    attacker_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pending@example.com", "password": "AttackerPass123!"},
+    )
     assert owner_login.status_code == 200
+    assert attacker_login.status_code == 401
 
 
 def test_verified_google_credential_creates_stable_account(

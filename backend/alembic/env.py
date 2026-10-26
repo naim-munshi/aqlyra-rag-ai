@@ -13,6 +13,7 @@ from app.models import (
     MemoryEmbedding,
     Message,
     Project,
+    PasswordResetCode,
     User,
 )
 
@@ -38,6 +39,7 @@ _ = (
     MemoryEmbedding,
     Message,
     Project,
+    PasswordResetCode,
     User,
 )
 target_metadata = Base.metadata
