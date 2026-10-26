@@ -736,6 +736,12 @@ class Settings(BaseSettings):
                 "deterministic in production"
             )
 
+        if self.EMBEDDING_PROVIDER == "deterministic":
+            raise ValueError(
+                "EMBEDDING_PROVIDER must not be "
+                "deterministic in production"
+            )
+
         if self.DEBUG:
             raise ValueError(
                 "DEBUG must be false in production"
