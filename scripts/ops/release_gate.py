@@ -24,6 +24,7 @@ REQUIRED = frozenset({
     "Native ARM64 Full-stack Predeploy",
     "Documentation Consistency",
     "Always-on Merge Gate",
+    "Static Security Analysis",
 })
 
 
