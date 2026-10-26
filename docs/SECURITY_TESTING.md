@@ -19,10 +19,12 @@ accepted. Verification codes:
 - are bound to a short-lived signed verification ticket stored in an
   HttpOnly, SameSite cookie by the frontend session layer.
 
-An unverified registration can be safely restarted. This prevents an
-attacker from pre-registering another person's email with an
-attacker-chosen password and later benefiting when the real mailbox
-owner verifies it.
+A second unauthenticated registration for an existing unverified email is
+rejected instead of allowing its password or username to be overwritten.
+The original verification challenge remains bound to the pending account.
+This avoids an account pre-hijack race, but a mailbox-proof claim/recovery
+flow for addresses that were registered by someone else is still a release
+follow-up; do not ask users to retry with a different password as a workaround.
 
 Google credentials are verified on the backend for signature,
 audience, issuer, subject, and verified email before an Aqlyra session
@@ -149,7 +151,7 @@ The production configuration rejects unsafe settings such as:
 - weak application secrets;
 - weak/default database credentials;
 - disabled rate limiting;
-- deterministic production LLM configuration;
+- deterministic production LLM or embedding configuration;
 - disabled grounding verification.
 
 Production API docs/OpenAPI are disabled. Next.js also checks trusted
@@ -187,10 +189,14 @@ The alert worker is tested for:
 
 ## Test suite
 
-The repository contains 73 backend `test_*.py` modules as of this audit.
-The latest verified backend CI run reported **380 passing tests**
-([run details](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)).
-These tests do not establish a successful public production deployment.
+The full integration release candidate has **451 passing backend tests
+with one warning** on the reviewed GitHub branch
+(`integration/security-release-candidate-20261026`, verified CI head
+`11597ee9f422a6a72e8dccb1035e1d4fc128dba6` before final UI/help
+fixes). This is automated regression evidence, not live production proof.
+Use the latest GitHub Actions run on the actual release SHA before approval.
+The final application requires real-provider, staging, privacy and recovery
+acceptance in addition to passing tests.
 
 Coverage includes:
 
