@@ -196,14 +196,14 @@ def test_renderer_never_silently_truncates_source_or_slides():
     from app.services.artifact_rendering import render_artifact
 
     with pytest.raises(ValueError, match="450 source lines"):
-        render_artifact("# Long\\n" + ("short\\n" * 451), "docx")
+        render_artifact("# Long\n" + ("short\n" * 451), "docx")
     with pytest.raises(ValueError, match="12 columns"):
         render_artifact("| " + " | ".join(str(x) for x in range(13)) + " |", "xlsx")
     with pytest.raises(ValueError, match="25 slides"):
         parts = ["# Title"]
         for index in range(30):
             parts.extend([f"## Section {index}", "- Point"])
-        render_artifact("\\n".join(parts), "pptx")
+        render_artifact("\n".join(parts), "pptx")
 
 
 def test_artifact_storage_quota_is_atomic(tmp_path, monkeypatch):
@@ -220,7 +220,7 @@ def test_artifact_storage_quota_is_atomic(tmp_path, monkeypatch):
         try:
             artifact_storage.create_artifact(
                 user_id=owner, title=f"Concurrent {index}",
-                kind="md", content="# Test\\nUntrusted content",
+                kind="md", content="# Test\nUntrusted content",
                 provider_name="test", source_document_ids=[],
                 citation_count=0,
             )
