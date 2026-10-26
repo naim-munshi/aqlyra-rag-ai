@@ -23,6 +23,7 @@ from app.database.connection import get_db
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationResendRequest,
+    PendingEmailClaimRequest,
     GoogleCredentialRequest,
     RegistrationResponse,
     PasswordResetRequest,
@@ -236,6 +237,41 @@ def verify_email(
             detail="User account is inactive",
         )
 
+    return TokenResponse(
+        access_token=create_access_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
+        )
+    )
+
+
+@router.post(
+    "/claim-pending-email",
+    response_model=TokenResponse,
+    dependencies=[Depends(limit_verify_request)],
+)
+def claim_pending_email(
+    request_data: PendingEmailClaimRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """The mailbox holder replaces untrusted pending credentials after OTP proof."""
+    try:
+        user_id, challenge_id = decode_email_verification_token(
+            request_data.verification_token
+        )
+        user = verify_email_code(
+            db,
+            user_id=user_id,
+            challenge_id=challenge_id,
+            code=request_data.code,
+            claim_username=request_data.username,
+            claim_password=request_data.new_password,
+        )
+    except (InvalidVerificationTokenError, VerificationCodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
