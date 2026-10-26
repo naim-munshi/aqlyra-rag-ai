@@ -6,9 +6,11 @@ import math
 import secrets
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
+from app.auth.security import hash_password
 from app.core.datetime_utils import utc_now_naive
 from app.models.email_verification_code import (
     EmailVerificationCode,
@@ -139,9 +141,10 @@ def discard_verification_code(
     *,
     challenge_id: str,
 ) -> None:
-    verification_code = db.get(
-        EmailVerificationCode,
-        challenge_id,
+    verification_code = db.scalar(
+        select(EmailVerificationCode)
+        .where(EmailVerificationCode.id == challenge_id)
+        .with_for_update()
     )
 
     if verification_code is None:
@@ -157,13 +160,17 @@ def verify_email_code(
     user_id: str,
     challenge_id: str,
     code: str,
+    claim_username: str | None = None,
+    claim_password: str | None = None,
 ) -> User:
-    user = db.get(
-        User,
-        user_id,
+    """Verify ownership and optionally claim a squatted pending account atomically."""
+    if (claim_username is None) != (claim_password is None):
+        raise VerificationCodeError("Invalid verification claim")
+    user = db.scalar(
+        select(User).where(User.id == user_id).with_for_update()
     )
 
-    if user is None or user.email_verified_at is not None:
+    if user is None or user.email_verified_at is not None or not user.is_active:
         raise VerificationCodeError(
             "Invalid or expired verification code"
         )
@@ -208,9 +215,29 @@ def verify_email_code(
             "Invalid or expired verification code"
         )
 
+    if claim_username is not None and claim_password is not None:
+        username = claim_username.strip().lower()
+        # The email OTP—not account possession—authorizes this recovery.
+        # Do not overwrite credentials until mailbox ownership is proven.
+        duplicate_username = db.scalar(
+            select(User.id).where(
+                User.username == username,
+                User.id != str(user.id),
+            )
+        )
+        if duplicate_username is not None:
+            raise VerificationCodeError("Requested username is unavailable")
+        user.username = username
+        user.hashed_password = hash_password(claim_password)
+        user.auth_epoch += 1
+
     verification_code.consumed_at = now
     user.email_verified_at = now
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise VerificationCodeError("Requested username is unavailable") from exc
     db.refresh(user)
 
     return user
