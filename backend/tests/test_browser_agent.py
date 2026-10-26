@@ -331,3 +331,39 @@ def test_navigation_frontier_is_bounded_and_never_revisits() -> None:
     assert len({item["url"] for item in options}) == len(options)
     assert all(safe_browser_url(item["url"], HOST) for item in options)
     assert options[0]["url"].endswith("/page-0")
+
+
+def test_dns_pin_rejects_private_and_mixed_resolution(monkeypatch):
+    import socket
+
+    def fake_dns_public(*args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 443)),
+        ]
+
+    monkeypatch.setattr(agent.socket, "getaddrinfo", fake_dns_public)
+    pinned = asyncio.run(agent._validate_public_dns(HOST))
+    assert pinned == "93.184.215.14"
+
+    def fake_dns_rebinding(*args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+        ]
+
+    monkeypatch.setattr(agent.socket, "getaddrinfo", fake_dns_rebinding)
+    with pytest.raises(BrowserAgentPlanError, match="non-public"):
+        asyncio.run(agent._validate_public_dns(HOST))
+
+
+def test_dns_pin_rejects_ipv6_only_until_safe_pinning_is_available(monkeypatch):
+    import socket
+    monkeypatch.setattr(
+        agent.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700:4700::1111", 443, 0, 0)),
+        ],
+    )
+    with pytest.raises(BrowserAgentPlanError, match="IPv4"):
+        asyncio.run(agent._validate_public_dns(HOST))
