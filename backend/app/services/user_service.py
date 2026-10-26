@@ -82,40 +82,10 @@ def create_user(
     )
 
     if existing_email_user is not None:
-        if (
-            not email_verified
-            and existing_email_user.email_verified_at is None
-        ):
-            username_owner = get_user_by_username(
-                db,
-                normalized_username,
-            )
-
-            if (
-                username_owner is not None
-                and username_owner.id
-                != existing_email_user.id
-            ):
-                raise DuplicateUserError("username")
-
-            existing_email_user.username = (
-                normalized_username
-            )
-            existing_email_user.hashed_password = (
-                hash_password(user_data.password)
-            )
-
-            try:
-                db.commit()
-                db.refresh(existing_email_user)
-            except IntegrityError as exc:
-                db.rollback()
-                raise DuplicateUserError(
-                    "email or username",
-                ) from exc
-
-            return existing_email_user
-
+        # A pending email registration has NOT proven mailbox control.
+        # Allowing an unauthenticated second registration to replace its
+        # password would enable verification-code races and account
+        # pre-hijacking. Recovery requires a separate mailbox-verified flow.
         raise DuplicateUserError("email")
 
     if get_user_by_username(db, normalized_username):
