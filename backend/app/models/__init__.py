@@ -9,6 +9,7 @@ from app.models.memory import Memory
 from app.models.memory_embedding import MemoryEmbedding
 from app.models.message import Message
 from app.models.message_attachment import MessageAttachment
+from app.models.password_reset_code import PasswordResetCode
 from app.models.project import Project
 from app.models.user import User
 
@@ -24,6 +25,7 @@ __all__ = [
     "MemoryEmbedding",
     "Message",
     "MessageAttachment",
+    "PasswordResetCode",
     "Project",
     "User",
 ]

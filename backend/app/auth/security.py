@@ -39,6 +39,7 @@ def verify_password(
 def create_access_token(
     subject: str,
     expires_delta: timedelta | None = None,
+    token_version: int = 0,
 ) -> str:
     now = datetime.now(timezone.utc)
 
@@ -52,6 +53,7 @@ def create_access_token(
 
     payload: dict[str, Any] = {
         "sub": subject,
+        "ver": token_version,
         "type": "access",
         "iat": now,
         "exp": expires_at,
@@ -64,7 +66,7 @@ def create_access_token(
     )
 
 
-def decode_access_token(token: str) -> str:
+def decode_access_token_with_version(token: str) -> tuple[str, int]:
     try:
         payload = jwt.decode(
             token,
@@ -89,6 +91,14 @@ def decode_access_token(token: str) -> str:
             "Invalid token type",
         )
 
+    version = payload.get("ver", 0)
+    if type(version) is not int or version < 0:
+        raise InvalidTokenError("Invalid token version")
+    return subject, version
+
+
+def decode_access_token(token: str) -> str:
+    subject, _ = decode_access_token_with_version(token)
     return subject
 
 

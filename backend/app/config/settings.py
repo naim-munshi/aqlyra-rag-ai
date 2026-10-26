@@ -53,6 +53,12 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
 
+    PASSWORD_RESET_CODE_TTL_MINUTES: int = 10
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_COOLDOWN_SECONDS: int = 60
+    RATE_LIMIT_RESET_IP_LIMIT: int = 10
+    RATE_LIMIT_RESET_IP_WINDOW_SECONDS: int = 3600
+
     # Database
     DATABASE_URL: str
 
@@ -134,6 +140,14 @@ class Settings(BaseSettings):
         "qwen/qwen3.6-27b"
     )
     HF_TOKEN: str = ""
+
+    # Opt-in live web research. Never use deterministic providers as real search.
+    # Public browser automation MVP; deliberately off by default.
+    BROWSER_AGENT_ENABLED: bool = False
+    BROWSER_AGENT_ALLOWED_HOSTS: str = ""
+    WEB_RESEARCH_ENABLED: bool = False
+    TAVILY_API_KEY: str = ""
+    TAVILY_KEYLESS_ENABLED: bool = False
 
     # Realtime voice
     LIVEKIT_URL: str = ""
@@ -374,6 +388,11 @@ class Settings(BaseSettings):
         "EMAIL_VERIFICATION_MAX_ATTEMPTS",
         "EMAIL_VERIFICATION_RESEND_SECONDS",
         "SMTP_PORT",
+        "PASSWORD_RESET_CODE_TTL_MINUTES",
+        "PASSWORD_RESET_MAX_ATTEMPTS",
+        "PASSWORD_RESET_COOLDOWN_SECONDS",
+        "RATE_LIMIT_RESET_IP_LIMIT",
+        "RATE_LIMIT_RESET_IP_WINDOW_SECONDS",
     )
     @classmethod
     def validate_positive_integer(
@@ -714,6 +733,12 @@ class Settings(BaseSettings):
         if self.LLM_PROVIDER == "deterministic":
             raise ValueError(
                 "LLM_PROVIDER must not be "
+                "deterministic in production"
+            )
+
+        if self.EMBEDDING_PROVIDER == "deterministic":
+            raise ValueError(
+                "EMBEDDING_PROVIDER must not be "
                 "deterministic in production"
             )
 
