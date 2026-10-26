@@ -153,6 +153,23 @@ After successful deployment, rerun the smoke check and manually verify
 critical authenticated flows. Promote to production only when all release
 checks have recorded evidence.
 
+## Client-IP rate-limit trust boundary
+
+The Next.js authentication proxy does **not** forward
+`X-Aqlyra-Client-IP` from arbitrary HTTP clients by default.
+A browser-supplied IP header can otherwise evade the FastAPI
+per-IP login/registration rate limiter.
+
+Only the Caddy-backed Docker Compose deployment opts in with
+`AQLYRA_TRUST_CADDY_IP_HEADER=true`, because its Caddyfile
+overwrites inbound `X-Aqlyra-Client-IP` with `{remote_host}` before
+requests reach Next.js. Direct public Next.js or Vercel ingress
+**must not** enable this flag without an equally trusted upstream
+that strips/replaces client-provided headers. The fallback to
+backend socket IP is conservative, but multiple users can share
+an egress IP; verify correct per-client rate limiting at the actual
+production ingress before enabling public sign-ups.
+
 ## Reverse-proxy hardening
 
 Caddy limits incoming request bodies to 32 MB before Next.js parses
