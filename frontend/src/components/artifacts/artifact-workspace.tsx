@@ -197,10 +197,16 @@ export function ArtifactWorkspace() {
   }
 
   function toggleSource(id: string) {
+    if (!sourceIds.includes(id) && sourceIds.length >= 5) {
+      return;
+    }
+    // Consent is specific to the currently selected set of private files.
+    // Any addition or removal requires fresh affirmative consent.
+    setConfirmShareDocuments(false);
     setSourceIds((previous) =>
       previous.includes(id)
         ? previous.filter((item) => item !== id)
-        : previous.length < 5 ? [...previous, id] : previous,
+        : [...previous, id],
     );
   }
 
