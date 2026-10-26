@@ -100,7 +100,22 @@ def generate(
             )
         # Use the existing citation- and grounding-validated RAG answer
         # directly; a second free-form LLM pass could invent references.
-        content = f"# {request.title.strip()}\n\n{answer.answer_text}"
+        appendix = ["## Source references", ""]
+        for source in answer.citations:
+            filename = " ".join(source.original_filename.split())[:160]
+            filename = filename.replace("[", "(").replace("]", ")")
+            page = (
+                f", page {source.start_page}"
+                if source.start_page is not None else ""
+            )
+            appendix.append(
+                f"- [{source.source_id}] {filename}{page} "
+                f"(document ID: {source.document_id})"
+            )
+        content = (
+            f"# {request.title.strip()}\n\n{answer.answer_text}"
+            "\n\n" + "\n".join(appendix)
+        )
         provider = answer.provider_name
         citations = answer.citation_count
     else:
@@ -132,7 +147,10 @@ def generate(
         provider = generation.provider_name
         citations = 0
     if len(content) > 24_000:
-        content = content[:24_000]
+        raise HTTPException(
+            status_code=422,
+            detail="Generated source exceeds the maximum length; use a shorter request.",
+        )
     try:
         return _persist(
             user_id=user_id, title=request.title, format=request.format,
