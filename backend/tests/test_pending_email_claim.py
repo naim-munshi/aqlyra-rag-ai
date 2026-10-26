@@ -159,3 +159,34 @@ def test_mailbox_otp_alone_cannot_activate_squatter_credentials(
     assert client.post("/api/v1/auth/login", json={
         "email": "real.owner@example.com", "password": "AttackerPass123!",
     }).status_code == 401
+
+
+def test_wrong_registration_password_consumes_verification_attempts(
+    client: TestClient, db_session: Session, monkeypatch
+):
+    sent_codes = []
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(
+        auth_api, "send_verification_email",
+        lambda *, recipient_email, code: sent_codes.append(code),
+    )
+    assert _squatted_user(client).status_code == 201
+    code, ticket = _code_after_mailbox_request(client, db_session, sent_codes)
+    for _ in range(2):
+        denied = client.post("/api/v1/auth/verify-email", json={
+            "verification_token": ticket,
+            "code": code,
+            "password": "IncorrectPass123!",
+        })
+        assert denied.status_code == 400
+
+    # Exhausted attempts make even a valid password/OTP unusable.
+    assert client.post("/api/v1/auth/verify-email", json={
+        "verification_token": ticket,
+        "code": code,
+        "password": "AttackerPass123!",
+    }).status_code == 400
+    assert get_user_by_email(
+        db_session, "real.owner@example.com"
+    ).email_verified_at is None
