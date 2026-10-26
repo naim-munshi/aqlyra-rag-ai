@@ -27,13 +27,16 @@ MIMES = {
     "pdf": "application/pdf",
 }
 MAX_CONTENT_CHARS = 24_000
-MAX_TABLE_ROWS = 200
+MAX_TABLE_ROWS = 450
 MAX_TABLE_COLUMNS = 12
 MAX_SLIDES = 25
 
 
 def _lines(content: str) -> list[str]:
-    return [line.strip()[:500] for line in content.splitlines()[:450]]
+    lines = content.splitlines()
+    if len(lines) > 450:
+        raise ValueError("Artifact exceeds the maximum 450 source lines")
+    return [line.strip() for line in lines]
 
 
 def _strip(text: str) -> str:
@@ -41,7 +44,10 @@ def _strip(text: str) -> str:
 
 
 def _table_cells(line: str) -> list[str]:
-    return [_strip(v)[:220] for v in line.strip().strip("|").split("|")][:MAX_TABLE_COLUMNS]
+    cells = line.strip().strip("|").split("|")
+    if len(cells) > MAX_TABLE_COLUMNS:
+        raise ValueError("Artifact table exceeds 12 columns")
+    return [_strip(value) for value in cells]
 
 
 def _is_separator(line: str) -> bool:
@@ -95,7 +101,7 @@ def render_xlsx(content: str) -> bytes:
         if not line or _is_separator(line):
             continue
         if row > MAX_TABLE_ROWS:
-            break
+            raise ValueError("Artifact spreadsheet exceeds the row limit")
         items = _table_cells(line) if line.startswith("|") else [_strip(line)]
         for col, value in enumerate(items[:MAX_TABLE_COLUMNS], 1):
             if _is_formula(value):
@@ -129,16 +135,21 @@ def render_pptx(content: str) -> bytes:
 
     def flush() -> None:
         nonlocal bullets
-        if not bullets or len(presentation.slides) >= MAX_SLIDES:
-            bullets = []
+        if not bullets:
             return
+        if len(presentation.slides) >= MAX_SLIDES:
+            raise ValueError("Presentation exceeds 25 slides")
         slide = presentation.slides.add_slide(presentation.slide_layouts[1])
-        slide.shapes.title.text = _strip(current_title[:100])
+        if len(current_title) > 100:
+            raise ValueError("Slide heading is too long")
+        slide.shapes.title.text = _strip(current_title)
         frame = slide.placeholders[1].text_frame
         frame.clear()
         for index, item in enumerate(bullets[:7]):
             paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
-            paragraph.text = _strip(item[:200])
+            if len(item) > 200:
+                raise ValueError("Slide bullet is too long for readable layout")
+            paragraph.text = _strip(item)
             paragraph.level = 0
             paragraph.font.size = Pt(20)
         bullets = []
