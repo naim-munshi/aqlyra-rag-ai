@@ -16,7 +16,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 REPO = "naim-munshi/aqlyra-rag-ai"
-RELEASE_BRANCH = "integration/security-release-candidate-20261026"
+RELEASE_BRANCH = "fix/verify-email-prehijack-and-release-gate-20261027"
 REQUIRED = frozenset({
     "Backend Tests",
     "Frontend and Deployment Checks",
@@ -150,12 +150,16 @@ def evaluate(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="Machine-readable result")
+    parser.add_argument(
+        "--release-branch", default=RELEASE_BRANCH,
+        help="Exact GitHub release-candidate branch to verify (default: Draft PR #35)",
+    )
     args = parser.parse_args(argv)
     try:
         main_data = github_api("/branches/main")
-        release_data = github_api("/branches/" + quote(RELEASE_BRANCH, safe="/"))
+        release_data = github_api("/branches/" + quote(args.release_branch, safe="/"))
         run_data = github_api(
-            "/actions/runs?branch=" + quote(RELEASE_BRANCH, safe="")
+            "/actions/runs?branch=" + quote(args.release_branch, safe="")
             + "&per_page=100"
         )
         summaries = github_api("/rulesets")
@@ -178,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         ok, errors, sha = False, ["GitHub verification unavailable: " + type(exc).__name__], ""
     report = {
         "repository": REPO,
-        "release_branch": RELEASE_BRANCH,
+        "release_branch": args.release_branch,
         "head_sha": sha,
         "automated_gate_passed": ok,
         "production_approved": False,

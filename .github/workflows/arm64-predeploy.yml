@@ -12,13 +12,6 @@ on:
       - ".github/workflows/arm64-predeploy.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "docker-compose.yml"
-      - "Caddyfile"
-      - "scripts/ops/**"
-      - ".github/workflows/arm64-predeploy.yml"
   workflow_dispatch:
 
 permissions:

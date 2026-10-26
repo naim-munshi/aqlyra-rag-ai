@@ -3,9 +3,6 @@ name: Static Security Analysis
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "backend/app/**"
-      - ".github/workflows/security-static.yml"
   push:
     branches: [main]
     paths:

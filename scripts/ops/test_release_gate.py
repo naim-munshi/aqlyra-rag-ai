@@ -121,6 +121,51 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("Required CI not green" in x for x in errors))
 
+    def test_release_gate_defaults_to_current_pr35_branch(self):
+        self.assertEqual(
+            gate.RELEASE_BRANCH,
+            "fix/verify-email-prehijack-and-release-gate-20261027",
+        )
+
+    def test_cli_respects_candidate_branch_and_uses_exact_sha(self):
+        from unittest.mock import patch
+        import contextlib
+        import io
+        import json
+
+        calls = []
+
+        def mocked_github_api(path):
+            calls.append(path)
+            if path == "/branches/main":
+                return self.main
+            if path == "/branches/release-candidate-test":
+                return self.release
+            if path == "/actions/runs?branch=release-candidate-test&per_page=100":
+                return self.runs
+            if path == "/rulesets":
+                return [{"id": 42, "target": "branch", "enforcement": "active"}]
+            if path == "/rulesets/42":
+                return self.rulesets[0]
+            raise AssertionError("Unexpected API path: " + path)
+
+        stream = io.StringIO()
+        with patch.object(gate, "github_api", side_effect=mocked_github_api):
+            with contextlib.redirect_stdout(stream):
+                result = gate.main([
+                    "--json", "--release-branch", "release-candidate-test"
+                ])
+        report = json.loads(stream.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(report["release_branch"], "release-candidate-test")
+        self.assertEqual(report["head_sha"], self.sha)
+        self.assertTrue(report["automated_gate_passed"])
+        self.assertFalse(report["production_approved"])
+        self.assertIn(
+            "/actions/runs?branch=release-candidate-test&per_page=100",
+            calls,
+        )
+
     def test_branch_specific_ruleset_does_not_protect_main(self):
         self.rulesets[0]["conditions"]["ref_name"]["include"] = [
             "refs/heads/development"

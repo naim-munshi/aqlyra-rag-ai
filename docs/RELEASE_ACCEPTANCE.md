@@ -3,9 +3,9 @@
 **Repository:** `naim-munshi/aqlyra-rag-ai` only. This is the **full-stack**
 application, not the separate `aqlyrax` Vercel portfolio demonstration.
 
-**Source candidate:** Draft PR #33
-(`integration/security-release-candidate-20261026`), plus draft PR #35
-for pending-email pre-hijack remediation, pending owner's
+**Source candidate:** Draft PR #35
+(`fix/verify-email-prehijack-and-release-gate-20261027`) includes the full
+PR #33 integration plus subsequent security fixes, pending owner's
 review and acceptance. Production is **not** live until all external
 acceptance gates below are verified on the exact release commit.
 
@@ -27,6 +27,8 @@ On a checkout of the intended release branch:
 ```bash
 python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v
 python3 scripts/ops/release_gate.py --json
+# For another explicitly selected release candidate:
+# python3 scripts/ops/release_gate.py --release-branch BRANCH_NAME --json
 ```
 
 The release script verifies that (1) `main` reports protected,
@@ -37,6 +39,7 @@ passed against the **exact** current release branch HEAD. It does
 not deploy or approve production, and always reports
 `production_approved=false`.
 
+Follow [the exact main-branch Ruleset setup](GITHUB_RULESET.md) first.
 The owner must use [GitHub Rulesets](https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules)
 to apply an **active** `main` ruleset, require pull requests/reviews
 and the required job checks, restrict deletions/force pushes and verify rules
