@@ -669,7 +669,7 @@ export function RAGWorkspace({
     if (["documents", "new-chat", "focus"].includes(intent ?? "")) {
       pageUrl.searchParams.delete("aqlyraIntent");
       window.history.replaceState(
-        null, "",
+        window.history.state, "",
         pageUrl.pathname + pageUrl.search + pageUrl.hash,
       );
     }
