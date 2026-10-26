@@ -11,7 +11,7 @@ acceptance gates below are verified on the exact release commit.
 ## What the automated checks have established
 
 The integration branch has a CI-backed baseline for Python/Postgres,
-JavaScript/Next.js, audited dependency pins, an ARM64 Caddy -> Next.js ->
+JavaScript/Next.js, high-severity Python SAST, audited dependency pins, an ARM64 Caddy -> Next.js ->
 FastAPI -> Postgres/Redis smoke, fresh-volume Docker readiness,
 owner-scoped RAG/auth, generated Office files, Study Abroad, and browser
 agent fail-closed behavior. **Always verify the current head's checks**,
@@ -29,7 +29,7 @@ python3 scripts/ops/release_gate.py --json
 ```
 
 The release script verifies that (1) `main` reports protected and
-(2) all six required workflows completed successfully against the
+(2) all seven required workflows completed successfully against the
 **exact** current release branch HEAD. It has no ability to deploy or
 approve production. It deliberately reports `production_approved=false`.
 
