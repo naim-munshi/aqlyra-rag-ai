@@ -9,7 +9,7 @@ conversations, project ownership, or database migrations.
 ## Routes
 
 - Page: /artifacts (signed-in, routed from sidebar "AI Files")
-- POST /api/v1/artifacts/generate: {title, prompt, format, document_ids?}
+- POST /api/v1/artifacts/generate: {title, prompt, format, document_ids?, confirm_share_documents?}
 - POST /api/v1/artifacts/render: {title, content, format} (user edits)
 - GET /api/v1/artifacts: list owner files (max 50)
 - GET /api/v1/artifacts/{id}: editable Markdown source and metadata
@@ -34,6 +34,11 @@ proxies under /api/artifacts and checks request origins on mutations.
 - Excel formula-like strings are written as escaped literal text.
   Formulas are not evaluated. If numeric formulas are required,
   add a separate safe, approved formula interpreter in a later PR.
+- Private-document generation requires explicit consent from the user
+  (`confirm_share_documents=true`). Selected excerpts may be transmitted
+  to the configured AI service; missing consent fails closed with HTTP 422
+  before retrieval/model execution. The UI does not permit generation
+  with private sources until the user checks the consent control.
 - If document_ids is nonempty, every referenced document must be
   owned by the user and indexed (status ready). The backend calls the
   existing answer_question() service with an explicit document scope.
