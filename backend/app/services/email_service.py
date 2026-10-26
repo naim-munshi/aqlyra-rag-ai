@@ -45,6 +45,10 @@ def send_verification_email(
         "you can ignore this email."
     )
 
+    _send_message(message, username, password)
+
+
+def _send_message(message: EmailMessage, username: str, password: str) -> None:
     tls_context = ssl.create_default_context()
 
     try:
@@ -71,5 +75,26 @@ def send_verification_email(
                 smtp.send_message(message)
     except (OSError, smtplib.SMTPException) as exc:
         raise EmailDeliveryError(
-            "Verification email delivery failed"
+            "Authentication email delivery failed"
         ) from exc
+
+
+def send_password_reset_email(*, recipient_email: str, code: str) -> None:
+    username = settings.SMTP_USERNAME.strip()
+    password = settings.SMTP_PASSWORD.strip()
+    from_email = settings.SMTP_FROM_EMAIL.strip() or username
+    if not username or not password or not from_email:
+        raise EmailDeliveryError("Email delivery is not configured")
+
+    message = EmailMessage()
+    message["Subject"] = "Reset your Aqlyra password"
+    message["From"] = formataddr((settings.SMTP_FROM_NAME.strip(), from_email))
+    message["To"] = recipient_email
+    message.set_content(
+        "You requested to reset your Aqlyra password.\n\n"
+        f"Your password reset code is: {code}\n\n"
+        f"This code expires in {settings.PASSWORD_RESET_CODE_TTL_MINUTES} minutes. "
+        "If you did not request this, ignore this email. "
+        "Never share this code with anyone."
+    )
+    _send_message(message, username, password)

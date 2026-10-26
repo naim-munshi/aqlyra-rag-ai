@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.auth.security import InvalidTokenError, decode_access_token
+from app.auth.security import InvalidTokenError, decode_access_token_with_version
 from app.database.connection import get_db
 from app.models.user import User
 from app.services.user_service import get_user_by_id
@@ -31,7 +31,7 @@ def get_current_user(
         raise credentials_exception
 
     try:
-        user_id = decode_access_token(
+        user_id, token_version = decode_access_token_with_version(
             credentials.credentials,
         )
     except InvalidTokenError as exc:
@@ -42,7 +42,7 @@ def get_current_user(
         user_id=user_id,
     )
 
-    if user is None:
+    if user is None or token_version != user.auth_epoch:
         raise credentials_exception
 
     if not user.is_active:

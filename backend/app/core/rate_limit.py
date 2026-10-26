@@ -514,3 +514,11 @@ def limit_voice_request(
             .RATE_LIMIT_VOICE_USER_WINDOW_SECONDS
         ),
     )
+
+def limit_password_reset_request(request: Request) -> None:
+    _enforce_ip_limit(
+        request=request,
+        bucket="password-reset-ip",
+        limit=settings.RATE_LIMIT_RESET_IP_LIMIT,
+        window_seconds=settings.RATE_LIMIT_RESET_IP_WINDOW_SECONDS,
+    )
