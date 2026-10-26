@@ -923,6 +923,31 @@ export function RAGWorkspace({
       );
     }
 
+    // A project created on a different page passes its new conversation
+    // through a short-lived navigation intent. The message endpoint remains
+    // owner-checked and is responsible for authorizing the requested ID.
+    const navigationUrl = new URL(window.location.href);
+    const requestedId = navigationUrl.searchParams.get("aqlyraConversationId");
+    const requestedMode = navigationUrl.searchParams.get("aqlyraConversationMode");
+    if (
+      requestedId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedId) &&
+      (requestedMode === "normal" || requestedMode === "knowledge")
+    ) {
+      restoredMode = requestedMode;
+      restoredConversationId = requestedId;
+      restoredDraft = "";
+    }
+    if (requestedId !== null || requestedMode !== null) {
+      navigationUrl.searchParams.delete("aqlyraConversationId");
+      navigationUrl.searchParams.delete("aqlyraConversationMode");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        navigationUrl.pathname + navigationUrl.search + navigationUrl.hash,
+      );
+    }
+
     const restoreTimer =
       window.setTimeout(() => {
         setChatMode(restoredMode);
