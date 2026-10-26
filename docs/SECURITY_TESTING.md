@@ -22,9 +22,16 @@ accepted. Verification codes:
 A second unauthenticated registration for an existing unverified email is
 rejected instead of allowing its password or username to be overwritten.
 The original verification challenge remains bound to the pending account.
-This avoids an account pre-hijack race, but a mailbox-proof claim/recovery
-flow for addresses that were registered by someone else is still a release
-follow-up; do not ask users to retry with a different password as a workaround.
+For pending-email squatting, the mailbox owner can request a new code
+(`/auth/resend-verification`) and use
+`/auth/claim-pending-email` with the resulting verification ticket,
+six-digit code, and new username/password. Under a database row lock the
+credentials are replaced and the address is marked verified **in the same
+transaction**. The old unverified password cannot be used afterward;
+stale OTP challenges and replayed tokens are rejected. The browser keeps the
+verification ticket in an HttpOnly cookie. A verified account cannot be
+claimed this way; it must use the password-reset flow.
+This recovery path requires real SMTP acceptance tests before release.
 
 Google credentials are verified on the backend for signature,
 audience, issuer, subject, and verified email before an Aqlyra session
