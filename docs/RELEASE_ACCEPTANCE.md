@@ -4,7 +4,8 @@
 application, not the separate `aqlyrax` Vercel portfolio demonstration.
 
 **Source candidate:** Draft PR #33
-(`integration/security-release-candidate-20261026`), pending owner's
+(`integration/security-release-candidate-20261026`), plus draft PR #35
+for pending-email pre-hijack remediation, pending owner's
 review and acceptance. Production is **not** live until all external
 acceptance gates below are verified on the exact release commit.
 
@@ -28,14 +29,17 @@ python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v
 python3 scripts/ops/release_gate.py --json
 ```
 
-The release script verifies that (1) `main` reports protected and
-(2) all seven required workflows completed successfully against the
-**exact** current release branch HEAD. It has no ability to deploy or
-approve production. It deliberately reports `production_approved=false`.
+The release script verifies that (1) `main` reports protected,
+(2) an **active enforced ruleset targeting main** requires PR review,
+all 11 expected job check contexts, and non-fast-forward/deletion
+restrictions, and (3) the latest attempts of all seven required workflows
+passed against the **exact** current release branch HEAD. It does
+not deploy or approve production, and always reports
+`production_approved=false`.
 
 The owner must use [GitHub Rulesets](https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules)
 to apply an **active** `main` ruleset, require pull requests/reviews
-and the six checks, restrict deletions/force pushes and verify rules
+and the required job checks, restrict deletions/force pushes and verify rules
 are enforced (including bypass permissions). A green GitHub workflow
 named "Merge Gate" **does not** protect an unprotected branch.
 
