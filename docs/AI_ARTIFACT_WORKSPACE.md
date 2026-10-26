@@ -71,3 +71,18 @@ Back up actual mounted UPLOAD_DIR, and validate staging retention and
 migration policy before production rollout.
 
 PR is draft. Do not merge or deploy without explicit owner approval.
+
+
+## Audit hardening follow-up
+
+- All source Markdown line counts, XLSX table widths/row counts and PPTX slide
+  counts fail with a clear error rather than silently discard excess content.
+- Document-grounded AI exports append owner-private citation provenance:
+  filenames, page numbers where available, and referenced document IDs.
+- Per-user artifact quota now uses filesystem flock on the same persistent
+  volume across parallel workers. Deploying independent, non-shared upload
+  volumes is still not supported by this coordination scheme.
+- Generic AI outputs over the 24,000-character limit fail; requests must be
+  shortened. There is **not yet** a map/reduce multi-section long-report job.
+- PDF complex-script font coverage, worker isolation and full WYSIWYG editing
+  remain outstanding release gates. Do not label this as production-ready.
