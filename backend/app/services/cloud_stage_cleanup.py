@@ -1,7 +1,7 @@
 """Bounded, operator-only staging object cleanup. Never touches final keys."""
 from dataclasses import dataclass
 from datetime import timedelta
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 from app.config.settings import Settings, settings
 from app.core.datetime_utils import utc_now_naive
@@ -31,9 +31,19 @@ def cleanup_stale_staging(
     if not 3600 <= grace_seconds <= 604800 or not 1 <= limit <= 50:
         raise ValueError("Cleanup bounds are invalid")
     cutoff = utc_now_naive() - timedelta(seconds=grace_seconds)
+    # A "completed" label alone does not prove a durable final object
+    # binding. Keep inconsistent rows for reconciliation, never GC them.
+    eligible_state = or_(
+        CloudUploadIntent.status == "issued",
+        and_(
+            CloudUploadIntent.status == "completed",
+            CloudUploadIntent.final_object_key.is_not(None),
+            CloudUploadIntent.document_id.is_not(None),
+        ),
+    )
     ids = list(db.scalars(
         select(CloudUploadIntent.id).where(
-            CloudUploadIntent.status.in_(("completed", "issued")),
+            eligible_state,
             CloudUploadIntent.expires_at < cutoff,
             CloudUploadIntent.stage_deleted_at.is_(None),
         ).order_by(CloudUploadIntent.expires_at, CloudUploadIntent.id).limit(limit)
@@ -48,7 +58,7 @@ def cleanup_stale_staging(
             record = db.scalar(
                 select(CloudUploadIntent).where(
                     CloudUploadIntent.id == row_id,
-                    CloudUploadIntent.status.in_(("completed", "issued")),
+                    eligible_state,
                     CloudUploadIntent.expires_at < cutoff,
                     CloudUploadIntent.stage_deleted_at.is_(None),
                 ).with_for_update(skip_locked=True)
