@@ -250,3 +250,32 @@ def test_disabled_storage_rejects_promotion_and_cleanup():
             owner_id=owner, final_key=final, cfg=cfg, client=store,
         )
     assert store.operations == []
+
+
+@pytest.mark.parametrize("which", ["read", "corrupt", "put"])
+def test_reserved_final_key_is_never_compensated_on_error(which):
+    """Durably reserved final bytes may already be linked by another worker."""
+    data = b"hello cloud"
+    owner, stage, store = arranged(data)
+    reserved = final_object_key(
+        owner_id=owner, object_id=str(uuid4()), extension=".txt",
+    )
+    if which == "read":
+        store.fail_final_get = True
+    elif which == "corrupt":
+        store.corrupt_final = True
+    else:
+        store.fail_put = True
+
+    with pytest.raises(PrivateObjectStorageError) as error:
+        promote_verified_private_upload(
+            owner_id=owner, staging_key=stage,
+            expected_size=len(data),
+            expected_sha256=hashlib.sha256(data).hexdigest(),
+            final_key=reserved, cfg=storage_settings(), client=store,
+        )
+    assert "SECRET" not in str(error.value)
+    assert ("delete", reserved) not in store.operations
+    assert store.objects[stage] == data
+    if which != "put":
+        assert store.objects[reserved] == data
