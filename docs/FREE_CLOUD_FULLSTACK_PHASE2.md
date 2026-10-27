@@ -51,8 +51,13 @@ https://resend.com/docs/api-reference/emails/send-email .
    entrypoint; migrate exactly once using Neon's **direct**
    connection on an isolated disposable staging database with
    a backup. Serve normal queries from a pooled SSL URL using
-   bounded SQLAlchemy connections and `pool_pre_ping`. Check
-   permission for `CREATE EXTENSION vector`.
+   bounded SQLAlchemy connections and `pool_pre_ping`. The core API
+   now accepts `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`,
+   `DATABASE_POOL_TIMEOUT_SECONDS` and
+   `DATABASE_POOL_RECYCLE_SECONDS` without changing existing
+   defaults; start at 2/1/10/300 for a small trial and tune using
+   measured concurrency. Use `-pooler` only for app traffic, not
+   migration/pg_dump. Check permission for `CREATE EXTENSION vector`.
 4. **Serverless runtime**: Python function has a 500 MB uncompressed
    bundle limit; current `backend/requirements.txt` contains large
    data tooling. OCR depends on Tesseract language packs installed
@@ -96,6 +101,10 @@ SMTP_FROM_NAME=Aqlyra
 GOOGLE_CLIENT_ID=<staging OAuth client>
 REDIS_URL=rediss://<tls redis endpoint>
 DATABASE_URL=postgresql+psycopg://<staging pooled endpoint>
+DATABASE_POOL_SIZE=2
+DATABASE_MAX_OVERFLOW=1
+DATABASE_POOL_TIMEOUT_SECONDS=10
+DATABASE_POOL_RECYCLE_SECONDS=300
 RAG_GROUNDING_VERIFIER_ENABLED=true
 BROWSER_AGENT_ENABLED=false
 ```

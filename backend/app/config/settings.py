@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import (
+    Field,
     field_validator,
     model_validator,
 )
@@ -63,6 +64,10 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    DATABASE_POOL_SIZE: int = Field(default=5, ge=1, le=32)
+    DATABASE_MAX_OVERFLOW: int = Field(default=10, ge=0, le=32)
+    DATABASE_POOL_TIMEOUT_SECONDS: float = Field(default=30, gt=0, le=60)
+    DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60, le=7200)
 
     # Redis
     REDIS_URL: str = (
