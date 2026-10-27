@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config.settings import settings
 from app.database.base import Base
 from app.models import (
+    CloudUploadIntent,
     Conversation,
     Document,
     EmailVerificationCode,
@@ -32,6 +33,7 @@ if config.config_file_name is not None:
 
 # Importing the models registers their tables with Base.metadata.
 _ = (
+    CloudUploadIntent,
     Conversation,
     Document,
     EmailVerificationCode,

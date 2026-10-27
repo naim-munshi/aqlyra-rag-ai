@@ -37,6 +37,7 @@ from app.database.base import Base
 from app.database.connection import get_db
 from app.main import app
 from app.models import (
+    CloudUploadIntent,
     Conversation,
     Document,
     DocumentChunk,
@@ -52,6 +53,7 @@ from app.models import (
 
 _REGISTERED_MODELS = (
     User,
+    CloudUploadIntent,
     Conversation,
     Message,
     Document,

@@ -108,6 +108,36 @@ https://neon.com/docs/storage/get-started (private S3-compatible
 buckets and path-style clients). Storage currently supports AWS
 Singapore `aws-ap-southeast-1` among documented regions.
 
+## Cloud upload intent ledger (PR branch only, NOT migrated to live DB)
+
+`backend/app/models/cloud_upload_intent.py` and additive Alembic
+revision `6ec42b8f19ad` add one **new** `cloud_upload_intents` table;
+existing users, documents, RAG embeddings and pgvector tables are unchanged.
+The migration has **not been applied to any live database**.
+
+The internal service `cloud_upload_intent_service.py` reserves private
+signed staging keys only for **active, email-verified** users, validates
+the exact-size/SHA-256 manifest, stores a 10-minute expiring intent,
+and atomically changes `issued -> claimed -> completed/failed` using
+owner-scoped SQL UPDATE...RETURNING. Expired, foreign, invalid or replayed
+claims fail closed, including concurrent requests against the same row.
+Credentials and signed URLs are not stored in the table.
+
+**Release gate:** signed `PUT` is valid for 120 seconds but can be
+rewritten by the holder until expiry. Before marking completed, server
+must stream and verify all bytes and metadata, then promote the file
+to a separate immutable owner-scoped key with **no outstanding write
+grant** and persist document metadata. Full promotion, crash recovery,
+orphan cleanup, authenticated download, AI-file persistence and
+worker processing are **NOT implemented**. Therefore there are no
+public upload-intent endpoints and private storage flag remains
+`PRIVATE_OBJECT_STORAGE_ENABLED=false`.
+
+Do **not** run this migration automatically against the original
+production DB or `alembic downgrade`: rehearse on an isolated staging
+database, compare schema and verify backup/restore before owner-approved
+production release. The migration only creates a table and indexes.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**

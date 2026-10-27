@@ -1,3 +1,4 @@
+from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.conversation import Conversation
 from app.models.conversation_document import ConversationDocument
 from app.models.document import Document
@@ -14,6 +15,7 @@ from app.models.project import Project
 from app.models.user import User
 
 __all__ = [
+    "CloudUploadIntent",
     "Conversation",
     "ConversationDocument",
     "Document",
