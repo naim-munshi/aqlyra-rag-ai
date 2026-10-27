@@ -24,9 +24,14 @@ concurrency:
 
 jobs:
   test:
-    name: Python 3.13 / PostgreSQL 16
+    name: Python 3.13 / PostgreSQL ${{ matrix.postgres-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: [16, 18]
 
     env:
       PYTHONUNBUFFERED: "1"
@@ -47,7 +52,7 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg${{ matrix.postgres-version }}
 
         env:
           POSTGRES_USER: postgres
