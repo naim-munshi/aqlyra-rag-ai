@@ -573,3 +573,51 @@ def test_stale_scan_excludes_linked_and_missing_timestamp_rows(
     row.claimed_at = None
     db_session.commit()
     assert all(x.id != grant.intent_id for x in list_stale_claimed_uploads(db=db_session))
+
+
+def test_transient_final_verification_failure_preserves_crash_recovery(
+    client: TestClient, db_session: Session,
+):
+    """A durable final key must survive failure after a successful remote PUT.
+
+    Another worker can be recovering this object while the original worker
+    observes a transient provider error. No compensating DELETE is safe.
+    """
+    owner, _ = make_user(client, db_session, "verify_retry")
+    store = InMemoryS3(b"data that must survive recovery")
+    grant = reserve(db_session, owner, store)
+    original_get = store.get_object
+
+    def transient_final_error(*, Bucket, Key):
+        if Key.startswith("final/"):
+            raise RuntimeError("SECRET_PRIVATE_PROVIDER_ERROR")
+        return original_get(Bucket=Bucket, Key=Key)
+
+    store.get_object = transient_final_error
+    with pytest.raises(PrivateObjectStorageError) as error:
+        finalize_cloud_upload(
+            db=db_session, owner=owner, intent_id=grant.intent_id,
+            cfg=configured(), client=store,
+        )
+    assert "SECRET" not in str(error.value)
+    db_session.expire_all()
+    claimed = db_session.get(CloudUploadIntent, grant.intent_id)
+    assert claimed is not None
+    assert claimed.status == "claimed"
+    assert claimed.final_object_key is not None
+    assert claimed.final_object_key in store.objects
+    assert ("DELETE", claimed.final_object_key) not in store.requests
+    assert db_session.query(Document).count() == 0
+
+    # Retry uses the durable reserved key, rehashes the existing object,
+    # then commits Document and intent atomically without a second PUT.
+    store.get_object = original_get
+    restored = recover_promoted_cloud_document(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    assert restored.recovered is True
+    assert restored.final_object_key == claimed.final_object_key
+    assert restored.final_object_key in store.objects
+    assert db_session.get(CloudUploadIntent, grant.intent_id).status == "completed"
+    assert db_session.query(Document).count() == 1
