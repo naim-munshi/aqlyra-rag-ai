@@ -27,5 +27,12 @@ export type AdminOverview = {
     rate_limit_exceeded: number;
     routes: TrafficRoute[];
   };
+  cloud_storage: {
+    claimed: number;
+    stale_claimed: number;
+    cleanup_candidates: number;
+    failed_intents: number;
+    scope: "database_aggregate";
+  };
   generated_at: string;
 };

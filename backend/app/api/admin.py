@@ -12,6 +12,7 @@ from app.core.datetime_utils import utc_now_naive
 from app.core.monitoring import admin_http_snapshot
 from app.database.connection import get_db
 from app.models.conversation import Conversation
+from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
 from app.models.user import User
 
@@ -70,6 +71,34 @@ def admin_overview(
         for day in range(7)
     ]
 
+    # Aggregate storage lifecycle indicators only. No object keys, filenames
+    # or tenant IDs are returned to browsers, even for administrators.
+    stale_since = utc_now_naive() - timedelta(minutes=5)
+    sweep_since = utc_now_naive() - timedelta(hours=24)
+    claimed = db.scalar(
+        select(func.count()).select_from(CloudUploadIntent).where(
+            CloudUploadIntent.status == "claimed",
+        )
+    ) or 0
+    stale_claimed = db.scalar(
+        select(func.count()).select_from(CloudUploadIntent).where(
+            CloudUploadIntent.status == "claimed",
+            CloudUploadIntent.claimed_at < stale_since,
+        )
+    ) or 0
+    staging_cleanup_candidates = db.scalar(
+        select(func.count()).select_from(CloudUploadIntent).where(
+            CloudUploadIntent.status.in_(("completed", "issued")),
+            CloudUploadIntent.stage_deleted_at.is_(None),
+            CloudUploadIntent.expires_at < sweep_since,
+        )
+    ) or 0
+    failed_uploads = db.scalar(
+        select(func.count()).select_from(CloudUploadIntent).where(
+            CloudUploadIntent.status == "failed",
+        )
+    ) or 0
+
     return JSONResponse(
         {
             "users": {
@@ -81,6 +110,13 @@ def admin_overview(
                 "signups_last_7_days": signup_days,
             },
             "traffic": admin_http_snapshot(),
+            "cloud_storage": {
+                "claimed": int(claimed),
+                "stale_claimed": int(stale_claimed),
+                "cleanup_candidates": int(staging_cleanup_candidates),
+                "failed_intents": int(failed_uploads),
+                "scope": "database_aggregate",
+            },
             "generated_at": utc_now_naive().isoformat() + "Z",
         },
         headers={"Cache-Control": "no-store, private"},

@@ -64,6 +64,9 @@ def test_owner_can_read_only_aggregates(
     assert len(body["users"]["signups_last_7_days"]) == 7
     assert sum(day["count"] for day in body["users"]["signups_last_7_days"]) == 2
     assert body["traffic"]["scope"] == "single_backend_process"
+    assert body["cloud_storage"]["scope"] == "database_aggregate"
+    for metric in ("claimed", "stale_claimed", "cleanup_candidates", "failed_intents"):
+        assert body["cloud_storage"][metric] == 0
     assert "request_total" in body["traffic"]
     serialized = allowed.text
     for private in (admin_id, user_id, admin_token, user_token, "@example.com"):

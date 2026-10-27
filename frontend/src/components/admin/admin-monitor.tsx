@@ -121,6 +121,23 @@ export function AdminMonitor({ initialData }: { initialData: AdminOverview }) {
           </div>
         </section>
 
+        <section className="mt-9" aria-label="Cloud object storage lifecycle">
+          <div className="mb-4 flex items-center gap-2">
+            <Database size={18} className="text-cyan-300" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Cloud storage integrity</h2>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Claimed uploads" value={integer.format(data.cloud_storage.claimed)} description="May include active verification" />
+            <StatCard label="Stale claims" value={integer.format(data.cloud_storage.stale_claimed)} description="Claimed more than 5 min ago; review" />
+            <StatCard label="Staging cleanup" value={integer.format(data.cloud_storage.cleanup_candidates)} description="Expired candidates after 24h grace" />
+            <StatCard label="Failed intents" value={integer.format(data.cloud_storage.failed_intents)} description="Operator review; not auto-deleted" />
+          </div>
+          <p className="mt-3 text-xs text-slate-400">
+            Database aggregate counts, not inspected remote objects. Cleanup and
+            recovery require explicit operator approval; no automatic deletion.
+          </p>
+        </section>
+
         <div className="mt-9 grid gap-5 lg:grid-cols-2">
           <section className="rounded-2xl border border-white/10 bg-[#101827] p-5" aria-labelledby="signup-title">
             <h2 id="signup-title" className="font-semibold">New users · last 7 days</h2>

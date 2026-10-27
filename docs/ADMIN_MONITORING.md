@@ -79,3 +79,16 @@ URLs or session tokens**.
 
 GitHub `main` is protected. **No merge and no production rollout**
 without approved review and existing release gates.
+
+## Cloud storage integrity aggregates (Phase 2)
+
+The owner-only dashboard now includes counts from the new
+`cloud_upload_intents` table: claimed uploads, claims older than five
+minutes, expired completed/issued staging objects eligible for review
+after a 24-hour grace period, and failed intents. These metrics are
+read-only SQL aggregates and **do not query object storage**, so they
+do not prove that a remote file still exists. No individual user IDs,
+object keys, filenames, or provider credentials are exposed. The
+separate operator cleanup command is dry-run by default, and a final
+object is never eligible for its staging-key cleanup. Full orphan
+reconciliation and backups remain deployment blockers.
