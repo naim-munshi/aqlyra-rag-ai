@@ -10,10 +10,13 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.config.settings import settings
+from app.services.cloud_document_access import private_document_read_grant
+from app.services.private_object_storage import PrivateObjectStorageError
 from app.core.logging import app_logger
 from app.core.rate_limit import (
     limit_process_request,
@@ -381,13 +384,29 @@ def read_document_content(
             detail="Document not found",
         )
 
-    # Cloud objects require owner-scoped remote lifecycle operations.
-    # Do not reinterpret cloud keys as local paths or delete DB metadata
-    # before verified remote deletion/worker support exists.
+    # Only a completed, owner-bound cloud Document can obtain a 45s GET.
+    # The browser transfers bytes directly from private storage rather
+    # than routing a 25MB response through a Vercel Function.
     if document.storage_path.startswith("cloud://"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cloud document operation is not available yet",
+        if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise HTTPException(
+                status_code=409, detail="Cloud document operation is not available yet"
+            )
+        try:
+            url = private_document_read_grant(
+                db=db, owner_id=str(current_user.id), document=document,
+            )
+        except PrivateObjectStorageError as exc:
+            raise HTTPException(
+                status_code=409, detail="Private cloud document unavailable"
+            ) from exc
+        return RedirectResponse(
+            url=url, status_code=307,
+            headers={
+                "Cache-Control": "private, no-store",
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     try:

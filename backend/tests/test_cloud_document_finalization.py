@@ -331,3 +331,66 @@ def test_disabled_feature_is_fail_closed(client: TestClient, db_session: Session
             cfg=configured(PRIVATE_OBJECT_STORAGE_ENABLED=False),
         )
     assert db_session.get(CloudUploadIntent, grant.intent_id).status == "issued"
+
+
+def test_private_cloud_download_uses_owner_checked_45s_redirect(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services.cloud_document_access import private_document_read_grant
+
+    owner, headers = make_user(client, db_session, "download")
+    other, other_headers = make_user(client, db_session, "not_owner")
+    store = InMemoryS3()
+    issued = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=issued.intent_id,
+        cfg=configured(), client=store,
+    )
+    document = db_session.get(Document, result.document_id)
+    assert document is not None
+
+    class ReadGrantStore:
+        def generate_presigned_url(self, method, **kwargs):
+            assert method == "get_object"
+            assert kwargs["ExpiresIn"] == 45
+            assert kwargs["HttpMethod"] == "GET"
+            assert kwargs["Params"]["Key"] == result.final_object_key
+            assert kwargs["Params"]["ResponseContentDisposition"] == "attachment"
+            return f"{ENDPOINT}/private-documents/{result.final_object_key}?X-Amz-Signature=read"
+
+    grant = private_document_read_grant(
+        db=db_session, owner_id=owner.id, document=document,
+        cfg=configured(), client=ReadGrantStore(),
+    )
+    assert grant.startswith(ENDPOINT)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", ENDPOINT)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    from app.services import cloud_document_access
+    monkeypatch.setattr(cloud_document_access, "_client", lambda _cfg: ReadGrantStore())
+
+    response = client.get(
+        f"/api/v1/documents/{document.id}/content",
+        headers=headers, follow_redirects=False,
+    )
+    assert response.status_code == 307
+    assert response.headers["location"] == grant
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert client.get(
+        f"/api/v1/documents/{document.id}/content",
+        headers=other_headers, follow_redirects=False,
+    ).status_code == 404
+    assert client.get(
+        f"/api/v1/documents/{document.id}/content",
+        follow_redirects=False,
+    ).status_code == 401
+
+    # Inconsistent DB metadata must never yield a signed URL.
+    document.content_type = "application/octet-stream"
+    db_session.commit()
+    assert client.get(
+        f"/api/v1/documents/{document.id}/content",
+        headers=headers, follow_redirects=False,
+    ).status_code == 409

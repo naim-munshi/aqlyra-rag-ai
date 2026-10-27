@@ -228,6 +228,32 @@ data durability. Database migrations have **not** been applied outside
 ephemeral CI and should not be applied to production without explicit
 review, backup, and owner approval.
 
+## Owner-authorized private cloud download (review-only)
+
+New `cloud_document_access.py` verifies that the authenticated
+account owns the requested `Document`, that its private final
+object key is structurally valid, and that an existing
+`cloud_upload_intents` record is `completed`, has the same
+owner, `document_id`, key, size, SHA-256 and content type.
+Only then can it issue a **45-second presigned private GET**.
+
+The `/documents/{document_id}/content` backend endpoint returns a
+no-store, no-referrer 307 redirect to this private grant when
+`PRIVATE_OBJECT_STORAGE_ENABLED=true`. For other accounts it returns
+404. If storage is not enabled, it returns 409. The Next.js document
+API uses `redirect: manual`, accepts HTTPS Neon storage hostnames
+only, and forwards the signed redirect directly to the browser.
+**The Next.js Function does not buffer or proxy 25 MB downloads.**
+Existing local downloads still use their previous streaming route.
+
+This path has tests, but **full cloud uploads, processing and
+deletion are NOT enabled for public traffic**. A signed GET URL
+confers read access until its short expiry and must not be logged,
+shared or included in analytics. The S3-compatible provider must
+confirm that `ResponseContentDisposition` and private presigned
+GETs work in staging. If a provider's signed requests behave
+differently, disable this feature before release.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**
