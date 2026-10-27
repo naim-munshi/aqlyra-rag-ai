@@ -3,6 +3,8 @@ from email.utils import formataddr
 import smtplib
 import ssl
 
+import httpx
+
 from app.config.settings import settings
 
 
@@ -22,10 +24,11 @@ def send_verification_email(
         or username
     )
 
-    if not username or not password or not from_email:
-        raise EmailDeliveryError(
-            "Email delivery is not configured"
-        )
+    if not from_email or (
+        settings.EMAIL_DELIVERY_PROVIDER == "smtp"
+        and (not username or not password)
+    ):
+        raise EmailDeliveryError("Email delivery is not configured")
 
     message = EmailMessage()
     message["Subject"] = "Your Aqlyra verification code"
@@ -49,6 +52,10 @@ def send_verification_email(
 
 
 def _send_message(message: EmailMessage, username: str, password: str) -> None:
+    if settings.EMAIL_DELIVERY_PROVIDER == "resend":
+        _send_via_resend(message)
+        return
+
     tls_context = ssl.create_default_context()
 
     try:
@@ -79,11 +86,48 @@ def _send_message(message: EmailMessage, username: str, password: str) -> None:
         ) from exc
 
 
+def _send_via_resend(message: EmailMessage) -> None:
+    """HTTPS transactional email for serverless hosts without SMTP ports."""
+    api_key = settings.RESEND_API_KEY.strip()
+    if not api_key or not settings.SMTP_FROM_EMAIL.strip():
+        raise EmailDeliveryError("Email delivery is not configured")
+
+    recipient = message.get("To")
+    subject = message.get("Subject")
+    if not recipient or not subject:
+        raise EmailDeliveryError("Invalid outgoing email metadata")
+    try:
+        response = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent": "Aqlyra-RAG-AI/1.0",
+                "Accept": "application/json",
+            },
+            json={
+                "from": str(message["From"]),
+                "to": [str(recipient)],
+                "subject": str(subject),
+                "text": message.get_content(),
+            },
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        )
+    except httpx.HTTPError as exc:
+        raise EmailDeliveryError("Authentication email delivery failed") from exc
+    if response.status_code != 200:
+        # Never leak the provider response: it may include sensitive metadata.
+        raise EmailDeliveryError("Authentication email delivery failed")
+
+
 def send_password_reset_email(*, recipient_email: str, code: str) -> None:
     username = settings.SMTP_USERNAME.strip()
     password = settings.SMTP_PASSWORD.strip()
     from_email = settings.SMTP_FROM_EMAIL.strip() or username
-    if not username or not password or not from_email:
+    if not from_email or (
+        settings.EMAIL_DELIVERY_PROVIDER == "smtp"
+        and (not username or not password)
+    ):
         raise EmailDeliveryError("Email delivery is not configured")
 
     message = EmailMessage()

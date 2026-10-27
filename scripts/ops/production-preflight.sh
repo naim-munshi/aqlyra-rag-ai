@@ -241,13 +241,15 @@ for key in (
         )
 
 
-for key in (
-    "SMTP_HOST",
-    "SMTP_USERNAME",
-    "SMTP_PASSWORD",
-    "SMTP_FROM_EMAIL",
-    "SMTP_FROM_NAME",
-):
+email_delivery_provider = values.get("EMAIL_DELIVERY_PROVIDER", "smtp").casefold()
+if email_delivery_provider not in {"smtp", "resend"}:
+    errors.append("EMAIL_DELIVERY_PROVIDER must be smtp or resend")
+if email_delivery_provider == "smtp":
+    for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"):
+        require(key)
+elif email_delivery_provider == "resend":
+    require("RESEND_API_KEY")
+for key in ("SMTP_FROM_EMAIL", "SMTP_FROM_NAME"):
     require(key)
 
 

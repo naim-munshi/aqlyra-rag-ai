@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
     EMAIL_VERIFICATION_RESEND_SECONDS: int = 60
 
+    EMAIL_DELIVERY_PROVIDER: str = "smtp"
+    RESEND_API_KEY: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USERNAME: str = ""
@@ -448,6 +450,7 @@ class Settings(BaseSettings):
         # Production always requires an encrypted SMTP transport.
         if (
             self.APP_ENV.strip().lower() == "production"
+            and self.EMAIL_DELIVERY_PROVIDER == "smtp"
             and not (self.SMTP_USE_SSL or self.SMTP_STARTTLS)
         ):
             raise ValueError(
@@ -685,6 +688,14 @@ class Settings(BaseSettings):
 
         return self
 
+    @field_validator("EMAIL_DELIVERY_PROVIDER")
+    @classmethod
+    def validate_email_delivery_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"smtp", "resend"}:
+            raise ValueError("EMAIL_DELIVERY_PROVIDER must be smtp or resend")
+        return normalized
+
     @field_validator("APP_ENV")
     @classmethod
     def validate_app_env(
@@ -753,14 +764,18 @@ class Settings(BaseSettings):
                 "true in production"
             )
 
-        smtp_values = {
-            "SMTP_USERNAME": self.SMTP_USERNAME,
-            "SMTP_PASSWORD": self.SMTP_PASSWORD,
+        email_values = {
             "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
             "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
         }
-
-        for setting_name, setting_value in smtp_values.items():
+        if self.EMAIL_DELIVERY_PROVIDER == "smtp":
+            email_values.update({
+                "SMTP_USERNAME": self.SMTP_USERNAME,
+                "SMTP_PASSWORD": self.SMTP_PASSWORD,
+            })
+        else:
+            email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
+        for setting_name, setting_value in email_values.items():
             if not setting_value.strip():
                 raise ValueError(
                     f"{setting_name} is required in production"
