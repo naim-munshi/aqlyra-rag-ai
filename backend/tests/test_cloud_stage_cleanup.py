@@ -270,3 +270,57 @@ def test_invalid_completed_document_binding_retains_stage(
     assert (summary.eligible, summary.deleted, summary.failed) == (0, 0, 0)
     assert stage_key in store.objects
     assert result.final_object_key in store.objects
+
+
+def test_final_object_delete_failure_keeps_document_retryable(
+    client, db_session, monkeypatch,
+):
+    """A failed final DELETE must never commit orphaned Document metadata."""
+    from app.config.settings import settings
+    from app.models.document import Document
+    from app.services import cloud_document_deletion
+
+    owner, headers = make_user(client, db_session, "delete_final_fail")
+    store = InMemoryS3(b"privacy-sensitive final object")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    intent = db_session.get(CloudUploadIntent, grant.intent_id)
+    stage_key = intent.object_key
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_document_deletion, "_client", lambda cfg: store)
+    original_delete = store.delete_object
+
+    def reject_final(*, Bucket, Key):
+        if Key == result.final_object_key:
+            raise RuntimeError("PRIVATE_PROVIDER_CREDENTIALS_NEVER_LOG")
+        return original_delete(Bucket=Bucket, Key=Key)
+
+    store.delete_object = reject_final
+    url = f"/api/v1/documents/{result.document_id}"
+    failed = client.delete(url, headers=headers)
+    assert failed.status_code == 503
+    assert "CREDENTIALS" not in failed.text
+    db_session.expire_all()
+    assert db_session.get(Document, result.document_id) is not None
+    intent = db_session.get(CloudUploadIntent, grant.intent_id)
+    assert intent.deleted_at is None
+    assert intent.document_id == result.document_id
+    assert result.final_object_key in store.objects
+    # The staging copy may already have been removed. Remote-first deletes
+    # are idempotent; SQL linkage must remain intact for a later retry.
+    assert stage_key not in store.objects
+
+    store.delete_object = original_delete
+    retried = client.delete(url, headers=headers)
+    assert retried.status_code == 204, retried.text
+    db_session.expire_all()
+    assert db_session.get(Document, result.document_id) is None
+    intent = db_session.get(CloudUploadIntent, grant.intent_id)
+    assert intent.deleted_at is not None
+    assert intent.document_id is None
+    assert result.final_object_key not in store.objects
+    assert stage_key not in store.objects
