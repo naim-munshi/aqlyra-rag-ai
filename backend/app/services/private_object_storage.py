@@ -206,14 +206,20 @@ def verified_private_temporary_file(
         checksum = hashlib.sha256()
         total = 0
         with tmp:
-            for chunk in result["Body"].iter_chunks(chunk_size=1024 * 1024):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > expected_size:
-                    raise PrivateObjectStorageError("Stored object exceeds size limit")
-                checksum.update(chunk)
-                tmp.write(chunk)
+            body = result["Body"]
+            try:
+                for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > expected_size:
+                        raise PrivateObjectStorageError("Stored object exceeds size limit")
+                    checksum.update(chunk)
+                    tmp.write(chunk)
+            finally:
+                close = getattr(body, "close", None)
+                if callable(close):
+                    close()
         if total != expected_size or checksum.hexdigest() != expected_sha256:
             raise PrivateObjectStorageError("Stored object checksum mismatch")
         _validate_file_content(temporary_path, extension)

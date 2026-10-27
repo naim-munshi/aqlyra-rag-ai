@@ -138,6 +138,36 @@ production DB or `alembic downgrade`: rehearse on an isolated staging
 database, compare schema and verify backup/restore before owner-approved
 production release. The migration only creates a table and indexes.
 
+## Private object promotion primitive (not publicly callable)
+
+`backend/app/services/private_object_promotion.py` implements a bounded
+internal promotion step after an owner-authorized upload intent is claimed:
+it reads the staging object **with size, SHA-256 and magic validation**,
+streams the verified bytes into a distinct unpredictable
+`final/documents/<owner UUID>/<object UUID>.<extension>` key that has
+**never been granted a browser-writable signed PUT URL**, and re-reads
+the final key to confirm the size and full SHA-256 hash. It does not
+rely on provider ETag checksums. Provider response streams are closed.
+On an in-process promotion/verification failure it attempts a
+compensating delete of the final key and fails closed. Staging keys
+are **retained until an explicit safe cleanup policy is ready**;
+no user files are silently deleted.
+
+Unit tests cover two-account isolation, distinct final keys, bad size
+and checksum, malformed content, injected storage errors, stream
+closing, orphan recovery requirements and guarded deletion.
+
+**Crucial scope:** private storage is still OFF by default. This is
+a primitive, NOT an end-to-end finalizer. Promotion does **not**
+create a `Document`, complete a `CloudUploadIntent`, persist the
+final object key, implement a worker, or guarantee atomic
+cross-service writes. Staging keys can be rewritten until their
+120-second signature expires, although distinct final keys cannot
+be written through that staging URL. Crashes and failed remote
+deletion can leave an orphan; a durable reconciliation worker and
+DB/object consistency protocol remain mandatory. There is no
+public cloud upload API or client-side direct PUT workflow.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**
