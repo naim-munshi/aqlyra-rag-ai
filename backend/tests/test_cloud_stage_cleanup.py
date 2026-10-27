@@ -141,3 +141,22 @@ def test_inconsistent_completed_record_is_not_swept(client, db_session):
     assert stage_key in store.objects
     assert finished.final_object_key in store.objects
     assert db_session.get(CloudUploadIntent, granted.intent_id).stage_deleted_at is None
+
+
+def test_issued_with_reserved_final_key_is_not_swept(client, db_session):
+    """An inconsistent issued row may have recoverable object state."""
+    owner, _ = make_user(client, db_session, "sweep_issued_reserved")
+    store = InMemoryS3()
+    granted = reserve(db_session, owner, store)
+    record = db_session.get(CloudUploadIntent, granted.intent_id)
+    stage_key = record.object_key
+    record.final_object_key = "reserved-final-key-for-reconciliation"
+    db_session.commit()
+    expire_intent(db_session, granted.intent_id)
+
+    result = cleanup_stale_staging(
+        db=db_session, cfg=configured(), store=store, dry_run=False,
+    )
+    assert (result.eligible, result.deleted, result.failed) == (0, 0, 0)
+    assert stage_key in store.objects
+    assert db_session.get(CloudUploadIntent, granted.intent_id).stage_deleted_at is None
