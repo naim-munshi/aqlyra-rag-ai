@@ -484,7 +484,7 @@ def test_private_cloud_prepare_finalize_api_is_explicitly_gated(
     assert client.post(finalize, headers=other_headers).status_code == 409
     completed = client.post(finalize, headers=headers)
     assert completed.status_code == 201, completed.text
-    assert db_session.get(Document, completed.json()["document_id"]) is not None
+    assert db_session.get(Document, completed.json()["id"]) is not None
     assert client.post(finalize, headers=headers).status_code == 409
     assert owner.id != outsider.id
 
