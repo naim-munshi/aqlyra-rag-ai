@@ -28,6 +28,43 @@ Source verification (2026-10-27):
 - https://upstash.com/pricing/redis
 - https://resend.com/pricing
 
+## Verified staging account inventory (2026-10-28)
+
+- The **new disposable Neon Free** project is named `aqlyra-staging`
+  (project ID `rough-river-66110449`, Singapore, PostgreSQL 18).
+  User-provided Neon project overview confirms this project's existence.
+  It shows one **default branch named `production`**; that branch name is
+  Neon-generated and does **not** authorize application production use.
+  Do not treat the name as approval to migrate or populate real data.
+- Neon overview displayed **0 KB** object storage usage. **This does not
+  establish that a private bucket, access credentials, or storage CORS
+  are correctly provisioned.** Verify all three before enabling uploads.
+- Neon ChatGPT management actions are currently mis-scoped: requesting
+  project `rough-river-66110449` is rejected because the connection scope
+  is the GitHub repository URL, not a Neon project ID. Omitting project ID
+  fails validation. No Neon schema or bucket action was performed.
+- Vercel project `aqlyra` is accessible, with no live deployment.
+  Branch-specific **Preview only** environment variable
+  `NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED=false` was created and verified on
+  `release/core-without-study-abroad-20261027`. No production target
+  environment variable was changed.
+- Render Free workspace currently contains only the unrelated
+  `sakuraglam-private-preview` service. Do **not** repurpose it.
+  No Aqlyra backend service has been created yet.
+
+Before preview: inspect the Neon project's Storage page to **confirm a
+private `private-documents` bucket exists**, create it manually only if
+missing, and verify the branch-specific credential scope. Do not use public
+read access. Set exact origin-limited CORS for signed browser PUT after a
+protected preview URL exists. Handle secrets solely in provider dashboards,
+never in PRs, chat messages, screenshots or CI logs.
+
+**PostgreSQL 18 gate:** GitHub Backend Tests on this PR must pass using
+both `pgvector/pgvector:pg16` and `pgvector/pgvector:pg18` containers;
+a successful PostgreSQL 16-only run is not sufficient evidence for the
+new PostgreSQL 18 Neon staging project. The real Neon migrations remain a
+separate manual acceptance gate after isolated backup/restore rehearsal.
+
 ## Exact prerequisites before any preview
 
 1. **Neon:** connect a personal Free account in a supported object
@@ -160,7 +197,8 @@ content, IPs, API keys, signed URLs, DB URLs, or personal email addresses.
 - All 7 GitHub workflows not PASS on exact PR head
 - Independent review missing; repository `main` protected
 
-**State:** Phase 2 IN PROGRESS, no full-cloud deployment or acceptance.
-Neon connector currently reports `list_projects` and `search` actions
-unavailable, preventing connected account provisioning. Completing the
-code cannot replace these externally controlled prerequisites.
+**State:** Phase 2 IN PROGRESS. New isolated Neon Free project
+exists, but no real schema migration, bucket credential verification,
+Render/Vercel staging deployment, or two-user acceptance has occurred.
+Neon ChatGPT connector remains mis-scoped to a GitHub URL; repository
+CI cannot substitute for provider-owned prerequisites.
