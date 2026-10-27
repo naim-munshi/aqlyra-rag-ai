@@ -113,3 +113,31 @@ def test_stale_cleanup_bounds_and_disabled_default(client, db_session):
             cfg=configured(PRIVATE_OBJECT_STORAGE_ENABLED=False),
             store=store,
         )
+
+
+def test_inconsistent_completed_record_is_not_swept(client, db_session):
+    """A completed status without a durable Document link is not sufficient."""
+    owner, _ = make_user(client, db_session, "sweep_inconsistent")
+    store = InMemoryS3(b"data stays in final object")
+    granted = reserve(db_session, owner, store)
+    finished = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=granted.intent_id,
+        cfg=configured(), client=store,
+    )
+    record = db_session.get(CloudUploadIntent, granted.intent_id)
+    stage_key = record.object_key
+    # Simulate an inconsistent legacy/partial state. Never delete stage
+    # bytes while final-to-document linkage cannot be established.
+    record.document_id = None
+    db_session.commit()
+    expire_intent(db_session, granted.intent_id)
+
+    dry = cleanup_stale_staging(db=db_session, cfg=configured(), store=store)
+    live = cleanup_stale_staging(
+        db=db_session, cfg=configured(), store=store, dry_run=False,
+    )
+    assert dry.eligible == 0
+    assert (live.eligible, live.deleted, live.failed) == (0, 0, 0)
+    assert stage_key in store.objects
+    assert finished.final_object_key in store.objects
+    assert db_session.get(CloudUploadIntent, granted.intent_id).stage_deleted_at is None
