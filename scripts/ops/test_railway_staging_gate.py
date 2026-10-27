@@ -24,7 +24,8 @@ def inventory():
     frontend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.CORE_BRANCH, "commitSha": SHA}
     frontend["variableNames"] = sorted(gate.REQUIRED_FRONTEND_VARIABLE_NAMES)
     frontend["domains"]["serviceDomains"] = [{"domain": "example.up.railway.app"}]
-    return {"project": {"name": "Aqlyra-Staging"},
+    return {"storageSecurity": {"backendUploadRWAsUID10001Verified": True, "backendRunningAsRoot": False},
+            "project": {"name": "Aqlyra-Staging"},
             "environment": {"name": "staging"}, "staged": None,
             "services": [postgres, backend, frontend, service("aqlyra-redis")]}
 
@@ -32,6 +33,16 @@ def inventory():
 class TestRailwayStagingGate(unittest.TestCase):
     def test_healthy_synthetic_inventory_passes_structural_gate_only(self):
         self.assertEqual(gate.assess(inventory(), SHA), [])
+
+    def test_nonroot_volume_write_proof_required(self):
+        data = inventory()
+        data.pop("storageSecurity")
+        self.assertTrue(any("UID 10001" in e for e in gate.assess(data, SHA)))
+
+    def test_root_runtime_rejected(self):
+        data = inventory()
+        data["storageSecurity"]["backendRunningAsRoot"] = True
+        self.assertTrue(any("root runtime" in e for e in gate.assess(data, SHA)))
 
     def test_pending_changes_fail(self):
         data = inventory()

@@ -57,6 +57,19 @@ around these restrictions by removing PostgreSQL or upload
 persistence, exposing a database port, or combining unrelated database
 and application processes into a single container.
 
+**Additional confirmed Railway incompatibility:** Railway volume mounts
+are root-owned, and Railway documents `RAILWAY_RUN_UID=0` for non-root
+images. Aqlyra's reviewed backend Dockerfile deliberately runs as
+UID **10001**. Making the backend root merely to gain write access is
+not an acceptable security fix. Therefore the current Railway upload
+volume is **not verified writable by Aqlyra**. Full-stack Railway
+staging remains blocked even if quota is upgraded. The read-only
+structural gate requires independently demonstrated
+`storageSecurity.backendUploadRWAsUID10001Verified=true` and refuses
+known-root runtime. Never attest to this without an actual host test.
+Prefer OCI Ubuntu Docker Compose to preserve non-root runtime with
+the existing shared storage design.
+
 The backend and voice worker both mount the same local upload volume
 in Docker Compose, whereas Railway volumes are attached to one
 service. Before running the independent voice worker on Railway,
@@ -66,7 +79,7 @@ core RAG persistence.
 
 ## Host decision (no automatic plan upgrade)
 
-1. **Railway upgrade / adequate quota:** Owner must explicitly approve
+1. **Railway upgrade / adequate quota AND non-root storage solution:** Owner must explicitly approve
    any paid plan and estimate before provisioning more resources.
    Verify the plan supports at least 4 services (pgvector, Redis,
    backend, frontend) and 2 separately mounted volumes in the project.
@@ -132,14 +145,16 @@ The offline read-only gate checks a sanitized inventory of
 `describe-environment` plus `describe-service` results. Include
 `project`, `environment`, `staged`, `services` with each
 service's `config`, `state`, `volumes`, `domains`,
-`tcpProxies`, `variableNames`, and `latestDeployment`.
+`tcpProxies`, `variableNames`, and `latestDeployment` plus separately documented
+`storageSecurity.backendUploadRWAsUID10001Verified` and
+`storageSecurity.backendRunningAsRoot` values.
 **Do not copy real variable values, tokens or registry secrets.**
 
 ```bash
 python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v
 python3 scripts/ops/railway_staging_gate.py \
   /path/to/sanitized-railway-inventory.json \
-  --commit b5fa5666790b711d081f250bf1c44c8c6c22b8d8 --json
+  --commit "$(git rev-parse HEAD)" --json
 ```
 
 A structural PASS still does not prove TLS, provider-backed RAG,

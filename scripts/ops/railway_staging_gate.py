@@ -60,6 +60,14 @@ def assess(snapshot: dict, commit: str) -> list[str]:
         if deployment.get("status") != "SUCCESS":
             errors.append(name + " has no verified SUCCESS deployment")
 
+    # Railway volumes are root-owned; never silently run Aqlyra as root.
+    # UID 10001 upload writeability requires independent runtime evidence.
+    storage_evidence = snapshot.get("storageSecurity") or {}
+    if storage_evidence.get("backendUploadRWAsUID10001Verified") is not True:
+        errors.append("Non-root (UID 10001) persistent uploads are not independently verified")
+    if storage_evidence.get("backendRunningAsRoot") is True:
+        errors.append("Backend root runtime is prohibited, including RAILWAY_RUN_UID=0")
+
     for name, mount in (("aqlyra-postgres-pgvector", "/var/lib/postgresql/data"),
                         ("aqlyra-backend", "/app/uploads")):
         item = by_name.get(name, {})
