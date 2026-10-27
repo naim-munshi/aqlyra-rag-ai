@@ -36,9 +36,12 @@ Source verification (2026-10-27):
   It shows one **default branch named `production`**; that branch name is
   Neon-generated and does **not** authorize application production use.
   Do not treat the name as approval to migrate or populate real data.
-- Neon overview displayed **0 KB** object storage usage. **This does not
-  establish that a private bucket, access credentials, or storage CORS
-  are correctly provisioned.** Verify all three before enabling uploads.
+- A 2026-10-28 Neon Storage screenshot confirms bucket
+  **`private-documents`** on the default branch, with
+  **Visibility: Private**. This verifies the named bucket and its UI
+  privacy setting only: credentials, anonymous-network denial, CORS,
+  signed PUT/GET correctness and lifecycle have **not** been tested.
+  Do not enable public upload based on a console screenshot alone.
 - Neon ChatGPT management actions are currently mis-scoped: requesting
   project `rough-river-66110449` is rejected because the connection scope
   is the GitHub repository URL, not a Neon project ID. Omitting project ID
@@ -52,12 +55,21 @@ Source verification (2026-10-27):
   `sakuraglam-private-preview` service. Do **not** repurpose it.
   No Aqlyra backend service has been created yet.
 
-Before preview: inspect the Neon project's Storage page to **confirm a
-private `private-documents` bucket exists**, create it manually only if
-missing, and verify the branch-specific credential scope. Do not use public
-read access. Set exact origin-limited CORS for signed browser PUT after a
-protected preview URL exists. Handle secrets solely in provider dashboards,
-never in PRs, chat messages, screenshots or CI logs.
+Before preview: bucket existence and private visibility are confirmed
+on the default Neon branch. **Next:** select the intended disposable
+application branch (the Neon default branch is named `production` even
+though this is a staging-only project), verify the bucket exists on that
+branch, and establish least-privilege **branch-scoped** access in the
+Neon dashboard. Transfer secrets directly to the staging backend
+provider's encrypted environment fields; do not submit tokens, signed
+URLs or database connection strings in GitHub, chat, images or logs.
+
+Use an application **pooled** PostgreSQL connection for FastAPI and a
+separate **direct** connection for backup/migrations; never run migrations
+through a pooled endpoint. Keep storage and cloud-upload feature flags
+disabled until private anonymous-access denial, key scoping, exact-origin
+CORS, owner isolation, signed PUT/GET and deletion replay checks pass.
+Set CORS only after the actual protected preview origin is known.
 
 **PostgreSQL 18 gate:** GitHub Backend Tests on this PR must pass using
 both `pgvector/pgvector:pg16` and `pgvector/pgvector:pg18` containers;
