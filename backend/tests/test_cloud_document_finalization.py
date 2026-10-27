@@ -548,3 +548,28 @@ def test_failed_remote_cloud_delete_preserves_document(
     store.delete_object = original
     assert client.delete(url, headers=headers).status_code == 204
     assert db_session.get(Document, result.document_id) is None
+
+
+def test_stale_scan_excludes_linked_and_missing_timestamp_rows(
+    client: TestClient, db_session: Session,
+):
+    """Only unlinked claims with a real aged claim time can be reconciled."""
+    owner, _ = make_user(client, db_session, "scan_integrity")
+    store = InMemoryS3()
+    grant = reserve(db_session, owner, store)
+    claimed = claim_with_reserved_final_key(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(),
+    )
+    assert claimed is not None
+    row = db_session.get(CloudUploadIntent, grant.intent_id)
+    row.claimed_at = utc_now_naive() - timedelta(minutes=30)
+    db_session.commit()
+    assert any(x.id == grant.intent_id for x in list_stale_claimed_uploads(db=db_session))
+
+    # A claimed record with a Document linkage is inconsistent and must
+    # remain outside automated recovery selection for manual investigation.
+    # Missing claim time must not be eligible for a timed recovery sweep.
+    row.claimed_at = None
+    db_session.commit()
+    assert all(x.id != grant.intent_id for x in list_stale_claimed_uploads(db=db_session))
