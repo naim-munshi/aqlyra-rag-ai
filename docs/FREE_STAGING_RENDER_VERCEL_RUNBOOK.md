@@ -110,6 +110,24 @@ Document metadata is gone, owner B cannot access A, and repeated deletion
 or failed S3 operations fail safely. Never enable a scheduled destructive
 sweep in free hosting before real-provider evidence and operator review.
 
+## Durable promotion and concurrent recovery safety
+
+Promotion reserves a unique final-object key in the SQL upload intent
+**before** remote writes. When remote PUT has succeeded but verification
+returns a transient error, the reserved final object MUST NOT be
+compensating-deleted: a separate recovery worker may have already
+verified and linked those bytes in the same owner-scoped SQL transaction.
+The final key remains for `recover_promoted_cloud_document`, which
+rehashes the existing remote bytes before any Document metadata commit.
+Unreserved, standalone promotion calls retain their best-effort cleanup.
+
+Regression coverage: provider final-read failure, corrupted verification
+response, failed PUT, no destructive DELETE for reserved keys, and a
+subsequent successful owner-bound recovery without another PUT. **Do not
+interpret a transient verification error as proof of an orphan.** Cloud
+object GC still requires a separate read-only orphan audit and independent
+staging acceptance; no automatic final-key deletion is enabled.
+
 ## Mandatory end-to-end test
 
 Run **independent test accounts A and B**, both email-verified:
