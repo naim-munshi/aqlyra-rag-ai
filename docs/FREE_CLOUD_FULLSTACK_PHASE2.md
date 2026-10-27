@@ -168,6 +168,61 @@ deletion can leave an orphan; a durable reconciliation worker and
 DB/object consistency protocol remain mandatory. There is no
 public cloud upload API or client-side direct PUT workflow.
 
+## Cloud Document finalization / recoverable SQL binding (PR branch only)
+
+This milestone is an **internal-only implementation**; no cloud upload
+HTTP routes are exposed, the private storage feature flag remains OFF
+by default, and no real Neon database or object store is changed.
+
+Additive Alembic revision `9ce7a58d230f` extends **only the new**
+`cloud_upload_intents` table with nullable `final_object_key`,
+`document_id` (unique FK to `documents.id`) and a bounded recovery
+index. Existing RAG, `documents`, `document_chunks`, `pgvector`,
+memory and user schemas are not altered by this revision.
+
+The private service `cloud_document_finalization.py`:
+
+1. Verifies an active, email-verified owner; atomically claims an
+   unexpired intent and stores an unpredictable **final key in SQL
+   before remotely uploading** the object. Concurrent claims cannot
+   issue two final keys for the same intent.
+2. Invokes the verified staging -> private final copy/rehash with that
+   persisted final key. No signed browser PUT is issued for a final key.
+3. Independently reads and verifies final bytes **again**. Creates a
+   matching Document metadata row (using a distinguishable
+   `cloud://final/documents/...` location) and updates the claimed
+   intent to `completed`, with `document_id`, in **one SQL transaction**.
+   Existing duplicate-checksum uniqueness remains enforced.
+4. On process failure **after the remote upload but before SQL commit**,
+   the claimed intent still contains `final_object_key`. Internal
+   `recover_promoted_cloud_document` can reverify bytes and commit the
+   missing Document atomically without regranting browser write access.
+   Failed/ambiguous commits **must not blindly delete** the final object.
+5. Read-only `list_stale_claimed_uploads` locates old claimed intents
+   for a future operator-controlled recovery/garbage collection job.
+   It does not expose individual user data through any HTTP route and
+   does not automatically delete anything.
+6. Existing local document process/content/delete API routes explicitly
+   **reject cloud:// records with 409** rather than operating on local
+   paths or deleting DB metadata while orphaning a remote object.
+   These routes remain correct for existing local files.
+
+Tests cover one-time claim, owner isolation, repeated finalization,
+cross-account access, duplicate checksum, simulated crash/recovery,
+tampered/missing final data, failing S3 writes, safe deletion guards,
+read-only recovery scans, and disabled-default behavior.
+
+**Release blockers remain:** there is no public grant/finalize API;
+no cloud-aware authenticated document download/process/delete path,
+no staging key lifecycle/TTL GC, no crash-safe *automated* worker with
+leasing/backoff, and no off-host backup or real two-user acceptance.
+A `Document` may be linked to cloud bytes in an isolated test but
+is deliberately prevented from normal processing/deletion until these
+missing paths are implemented. No CI success is proof of live cloud
+data durability. Database migrations have **not** been applied outside
+ephemeral CI and should not be applied to production without explicit
+review, backup, and owner approval.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**

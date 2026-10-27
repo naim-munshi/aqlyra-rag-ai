@@ -25,6 +25,11 @@ class CloudUploadIntent(Base):
             name="ck_cloud_upload_intents_size",
         ),
         UniqueConstraint("object_key", name="uq_cloud_upload_intents_object_key"),
+        UniqueConstraint(
+            "final_object_key", name="uq_cloud_upload_intents_final_object_key",
+        ),
+        UniqueConstraint("document_id", name="uq_cloud_upload_intents_document_id"),
+        Index("ix_cloud_upload_intents_recovery", "status", "claimed_at"),
         Index(
             "ix_cloud_upload_intents_owner_status_expiry",
             "user_id", "status", "expires_at",
@@ -52,3 +57,12 @@ class CloudUploadIntent(Base):
     )
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Persisted before remote final-object upload for safe crash reconciliation.
+    final_object_key: Mapped[str | None] = mapped_column(
+        String(250), nullable=True,
+    )
+    # Set in the SAME database transaction that inserts Document.
+    document_id: Mapped[str | None] = mapped_column(
+        String(), ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )

@@ -253,6 +253,15 @@ def process_uploaded_document(
             detail="Document not found",
         )
 
+    # Cloud objects require owner-scoped remote lifecycle operations.
+    # Do not reinterpret cloud keys as local paths or delete DB metadata
+    # before verified remote deletion/worker support exists.
+    if document.storage_path.startswith("cloud://"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cloud document operation is not available yet",
+        )
+
     try:
         processed_document = process_document(
             db=db,
@@ -372,6 +381,15 @@ def read_document_content(
             detail="Document not found",
         )
 
+    # Cloud objects require owner-scoped remote lifecycle operations.
+    # Do not reinterpret cloud keys as local paths or delete DB metadata
+    # before verified remote deletion/worker support exists.
+    if document.storage_path.startswith("cloud://"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cloud document operation is not available yet",
+        )
+
     try:
         file_path = (
             resolve_stored_file_path(
@@ -457,6 +475,15 @@ def delete_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
+        )
+
+    # Cloud objects require owner-scoped remote lifecycle operations.
+    # Do not reinterpret cloud keys as local paths or delete DB metadata
+    # before verified remote deletion/worker support exists.
+    if document.storage_path.startswith("cloud://"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cloud document operation is not available yet",
         )
 
     storage_path = document.storage_path

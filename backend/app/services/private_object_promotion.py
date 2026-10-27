@@ -94,6 +94,7 @@ def promote_verified_private_upload(
     expected_sha256: str,
     cfg: Settings = settings,
     client=None,
+    final_key: str | None = None,
 ) -> PromotedPrivateObject:
     """Verify staging bytes, upload a distinct final key, then verify again.
 
@@ -113,9 +114,12 @@ def promote_verified_private_upload(
     ):
         raise PrivateObjectStorageError("Invalid private upload metadata")
     storage = client if client is not None else _client(cfg)
-    final_key = final_object_key(
-        owner_id=owner_id, object_id=str(uuid4()), extension=extension,
-    )
+    if final_key is None:
+        final_key = final_object_key(
+            owner_id=owner_id, object_id=str(uuid4()), extension=extension,
+        )
+    elif assert_owned_final_key(owner_id=owner_id, key=final_key) != extension:
+        raise PrivateObjectStorageError("Final object type does not match staging")
     bucket = cfg.OBJECT_STORAGE_BUCKET
     with verified_private_temporary_file(
         owner_id=owner_id,
@@ -181,3 +185,40 @@ def discard_promoted_private_object(
         raise PrivateObjectStorageError(
             "Unable to remove failed private object"
         ) from exc
+
+
+def verify_existing_final_private_object(
+    *,
+    owner_id: str, final_key: str,
+    expected_size: int, expected_sha256: str,
+    cfg: Settings = settings, client=None,
+) -> PromotedPrivateObject:
+    """Idempotent recovery: rehash committed remote bytes before DB linkage.
+
+    Must only be called after checking an owner-bound claimed intent whose
+    final_object_key was persisted BEFORE the remote upload. This function
+    has no delete or mutating side effects.
+    """
+    extension = assert_owned_final_key(owner_id=owner_id, key=final_key)
+    if (
+        not cfg.PRIVATE_OBJECT_STORAGE_ENABLED
+        or not 0 < expected_size <= cfg.max_upload_size_bytes
+        or _HASH.fullmatch(expected_sha256) is None
+    ):
+        raise PrivateObjectStorageError("Invalid private final object metadata")
+    storage = client if client is not None else _client(cfg)
+    try:
+        _verify_final_bytes(
+            storage=storage, bucket=cfg.OBJECT_STORAGE_BUCKET, key=final_key,
+            expected_size=expected_size, expected_sha256=expected_sha256,
+        )
+    except PrivateObjectStorageError:
+        raise
+    except Exception as exc:
+        raise PrivateObjectStorageError(
+            "Private final object could not be verified"
+        ) from exc
+    return PromotedPrivateObject(
+        key=final_key, size_bytes=expected_size,
+        sha256=expected_sha256, content_type=_CONTENT_TYPE[extension],
+    )
