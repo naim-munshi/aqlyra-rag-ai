@@ -220,6 +220,9 @@ def commit_verified_cloud_document(
             requires_ocr=False,
         )
         db.add(document)
+        # Force the referenced row's INSERT before setting the foreign key.
+        # This is only a FLUSH: Document and intent still commit atomically.
+        db.flush()
         intent.status = "completed"
         intent.completed_at = utc_now_naive()
         intent.document_id = document_id
