@@ -85,6 +85,31 @@ and two-user lifecycle acceptance are PASS. The new CLI
 destructive `--apply` mode requires explicit confirmation and should
 never run on an unreviewed production bucket.
 
+## Document deletion and delayed stage replay guard (unmerged code)
+
+An authenticated cloud Document delete now requires owner-scoped SQL
+linkage and remote deletion of **both** the stage and final objects before
+the Document transaction commits. If either remote operation fails, the
+metadata remains for an idempotent retry (no 204 success). The deletion
+transaction records `cloud_upload_intents.deleted_at` via additive
+Alembic revision `b5e4a019dc72` and removes the Document linkage.
+It does **not** mark `stage_deleted_at` prematurely.
+
+The original 120-second signed PUT may be replayed even after an
+immediate stage deletion. Consequently, the operator-only stage sweep
+re-deletes tombstoned staging keys only after `expires_at + grace`.
+Normal completed rows require a matching live Document binding; orphaned
+inconsistent rows remain quarantined for manual investigation. Failed
+remote deletion and commit ambiguity must always be retried or escalated.
+
+**Operator acceptance requirement:** after restoring a disposable DB,
+apply and inspect the new migration manually; finalize a test file, delete
+it within the PUT TTL, replay the staging PUT, then execute a bounded
+cleanup **after** expiry/grace. Verify no staging/final objects remain,
+Document metadata is gone, owner B cannot access A, and repeated deletion
+or failed S3 operations fail safely. Never enable a scheduled destructive
+sweep in free hosting before real-provider evidence and operator review.
+
 ## Mandatory end-to-end test
 
 Run **independent test accounts A and B**, both email-verified:
