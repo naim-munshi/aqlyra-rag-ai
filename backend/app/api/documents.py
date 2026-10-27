@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.services.cloud_document_access import private_document_read_grant
+from app.services.cloud_process_io import cloud_processing_source
 from app.services.private_object_storage import PrivateObjectStorageError
 from app.core.logging import app_logger
 from app.core.rate_limit import (
@@ -256,20 +257,19 @@ def process_uploaded_document(
             detail="Document not found",
         )
 
-    # Cloud objects require owner-scoped remote lifecycle operations.
-    # Do not reinterpret cloud keys as local paths or delete DB metadata
-    # before verified remote deletion/worker support exists.
-    if document.storage_path.startswith("cloud://"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cloud document operation is not available yet",
-        )
+    if document.storage_path.startswith("cloud://") and not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+        raise HTTPException(status_code=409, detail="Cloud processing disabled")
 
     try:
-        processed_document = process_document(
-            db=db,
-            document=document,
-        )
+        if document.storage_path.startswith("cloud://"):
+            with cloud_processing_source(
+                db=db, owner_id=str(current_user.id), document=document,
+            ) as source:
+                processed_document = process_document(
+                    db=db, document=document, verified_source_path=source,
+                )
+        else:
+            processed_document = process_document(db=db, document=document)
 
         app_logger.info(
             f"Document processed: {document_id}"
@@ -287,6 +287,11 @@ def process_uploaded_document(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
+        ) from exc
+
+    except PrivateObjectStorageError as exc:
+        raise HTTPException(
+            status_code=409, detail="Private cloud document is unavailable",
         ) from exc
 
     except DocumentParsingError as exc:

@@ -394,3 +394,56 @@ def test_private_cloud_download_uses_owner_checked_45s_redirect(
         f"/api/v1/documents/{document.id}/content",
         headers=headers, follow_redirects=False,
     ).status_code == 409
+
+
+def test_cloud_process_uses_verified_short_lived_scratch(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import cloud_process_io
+
+    owner, headers = make_user(client, db_session, "processing")
+    outsider, outsider_headers = make_user(client, db_session, "processing_other")
+    store = InMemoryS3(b"AI retrieval can ground answers in documents.")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_process_io, "_client", lambda cfg: store)
+
+    url = f"/api/v1/documents/{result.document_id}/process"
+    assert client.post(url, headers=outsider_headers).status_code == 404
+    response = client.post(url, headers=headers)
+    assert response.status_code == 200, response.text
+    doc = db_session.get(Document, result.document_id)
+    assert doc is not None and doc.status == "ready"
+    assert doc.storage_path.startswith("cloud://")
+    assert client.post(url, headers=headers).status_code == 409
+    assert outsider.id != owner.id
+
+
+def test_cloud_process_rejects_corrupt_remote_without_parsing(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import cloud_process_io
+
+    owner, headers = make_user(client, db_session, "bad_cloud")
+    store = InMemoryS3(b"healthy remote text")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    store.bad_final_get = True
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_process_io, "_client", lambda cfg: store)
+    res = client.post(
+        f"/api/v1/documents/{result.document_id}/process", headers=headers,
+    )
+    assert res.status_code == 409
+    assert db_session.get(Document, result.document_id).status == "uploaded"
