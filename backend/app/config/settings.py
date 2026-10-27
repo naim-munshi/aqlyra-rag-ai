@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import UUID
 from typing import Self
 
 from pydantic import (
@@ -35,6 +36,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: (
         int
     ) = 30
+
+    # Admin monitoring is disabled unless explicitly assigned to verified
+    # immutable user UUIDs. Never use emails/usernames as admin identities.
+    ADMIN_USER_IDS: str = ""
 
     # Verified identity
     EMAIL_VERIFICATION_REQUIRED: bool = True
@@ -692,6 +697,21 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @field_validator("ADMIN_USER_IDS")
+    @classmethod
+    def validate_admin_ids(cls, value: str) -> str:
+        ids = [entry.strip().lower() for entry in value.split(",") if entry.strip()]
+        if len(ids) > 5 or len(ids) != len(set(ids)):
+            raise ValueError("ADMIN_USER_IDS must contain up to 5 unique UUIDs")
+        for entry in ids:
+            try:
+                parsed = UUID(entry)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("ADMIN_USER_IDS accepts UUIDs only") from exc
+            if str(parsed) != entry:
+                raise ValueError("ADMIN_USER_IDS requires canonical UUIDs")
+        return ",".join(ids)
 
     @field_validator("EMAIL_DELIVERY_PROVIDER")
     @classmethod

@@ -15,6 +15,7 @@ import {
   MessageSquareText,
   Plus,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
 import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
@@ -402,6 +403,20 @@ export function Sidebar({
                     <Settings size={15} />
                     Settings
                   </button>
+
+                  {user.is_admin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        router.push("/admin");
+                      }}
+                      className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                    >
+                      <ShieldCheck size={15} />
+                      Admin monitoring
+                    </button>
+                  )}
 
                   <button
                     type="button"

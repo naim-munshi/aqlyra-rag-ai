@@ -27,6 +27,7 @@ _QUIET_SUCCESS_PATHS = {
     "/api/v1/health",
     "/api/v1/readiness",
     "/api/v1/metrics",
+    "/api/v1/admin/overview",
 }
 
 

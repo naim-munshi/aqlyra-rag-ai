@@ -1,5 +1,6 @@
 export type UserResponse = {
   id: string;
+  is_admin?: boolean;
   username: string;
   email: string;
   is_active: boolean;
