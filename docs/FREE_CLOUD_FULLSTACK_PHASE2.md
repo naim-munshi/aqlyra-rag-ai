@@ -77,6 +77,37 @@ https://resend.com/docs/api-reference/emails/send-email .
    documents, backup restoration, and 25 MB upload/download.
    No public launch or `main` merge before review and approval.
 
+## Private object storage foundation — implemented but not connected
+
+The opt-in `backend/app/services/private_object_storage.py` adapter
+implements branch-scoped private Neon S3-compatible storage primitives:
+
+- Only HTTPS Neon storage endpoints are allowed (prevent arbitrary
+  storage endpoint injection); path-style SigV4 and explicit credentials.
+- Browser-to-private-bucket presigned `PUT` grants (120-second expiry),
+  keys generated from the authenticated owner's UUID plus a random UUID,
+  not attacker-controlled filenames; upload limits match the original
+  25 MB backend policy.
+- Owner/key isolation and bounded streamed retrieval into a temporary
+  private file, with complete SHA-256 and content validation before
+  parsing; scratch data is deleted on exit/failure.
+- Feature flag `PRIVATE_OBJECT_STORAGE_ENABLED=false` by default.
+  No client-facing endpoints yet.
+
+**Mandatory before switching the browser upload workflow:** durable
+database-backed upload intents with TTL/replay prevention, final-key
+promotion that revokes outstanding presigned PUT access, DB/object
+transaction recovery and orphan cleanup, authenticated download,
+delete and processing/reprocess paths, bucket CORS restricted to
+approved frontend origin, real branch-scoped storage keys, and
+live 25 MB / two-user / restart tests. Client-facing uploads are
+intentionally **NOT enabled** by this foundation.
+
+Official Neon guide:
+https://neon.com/docs/storage/get-started (private S3-compatible
+buckets and path-style clients). Storage currently supports AWS
+Singapore `aws-ap-southeast-1` among documented regions.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**

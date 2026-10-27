@@ -1,4 +1,6 @@
 from pathlib import Path
+import re
+from urllib.parse import urlsplit
 from uuid import UUID
 from typing import Self
 
@@ -223,6 +225,15 @@ class Settings(BaseSettings):
     MEMORY_CHAT_ENABLED: bool = False
     MEMORY_CHAT_TOP_K: int = 5
     MEMORY_CHAT_MIN_SIMILARITY: float = 0.35
+
+    # Private Neon branch-scoped S3-compatible storage (opt-in; not routed
+    # to browser uploads until durable finalization and deletion are tested).
+    PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
+    OBJECT_STORAGE_BUCKET: str = ""
+    AWS_ENDPOINT_URL_S3: str = ""
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-2"
 
     # Document uploads
     UPLOAD_DIR: Path = Path(
@@ -696,6 +707,34 @@ class Settings(BaseSettings):
                 "SMTP_FROM_NAME cannot be empty"
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_private_object_storage(self) -> Self:
+        if not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+            return self
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", self.OBJECT_STORAGE_BUCKET):
+            raise ValueError("OBJECT_STORAGE_BUCKET must be a DNS-safe private bucket")
+        if not all((self.AWS_ACCESS_KEY_ID, self.AWS_SECRET_ACCESS_KEY)):
+            raise ValueError("Neon private object storage credentials are required")
+        if self.AWS_REGION not in {
+            "us-east-1", "us-east-2", "eu-central-1", "ap-southeast-1"
+        }:
+            raise ValueError("Unsupported Neon private storage region")
+        endpoint = urlsplit(self.AWS_ENDPOINT_URL_S3)
+        if (
+            endpoint.scheme != "https"
+            or not (endpoint.hostname or "").endswith(".aws.neon.tech")
+            or endpoint.username or endpoint.password
+            or endpoint.path not in ("", "/") or endpoint.query
+            or endpoint.fragment
+        ):
+            raise ValueError("AWS_ENDPOINT_URL_S3 must be a Neon HTTPS storage endpoint")
+        try:
+            if endpoint.port is not None:
+                raise ValueError("Neon private storage does not use custom ports")
+        except ValueError as exc:
+            raise ValueError("Neon private storage does not use custom ports") from exc
         return self
 
     @field_validator("ADMIN_USER_IDS")
