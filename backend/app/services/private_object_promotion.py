@@ -103,8 +103,10 @@ def promote_verified_private_upload(
     must persist a durable record or arrange orphan reconciliation.
     Browser grants apply only to the staging prefix, never final keys.
 
-    On in-process failure after final upload, best-effort deletion runs.
-    Crashes between remote upload and DB commit require later GC.
+    On failure, a caller-reserved final key is NEVER deleted: another
+    worker may already have recovered and linked it. Only unreserved
+    ad-hoc keys use best-effort compensation. Durable claims require
+    explicit reconciliation if their final bytes were partially written.
     """
     extension = assert_owned_key(owner_id=owner_id, key=staging_key)
     if (
@@ -114,6 +116,10 @@ def promote_verified_private_upload(
     ):
         raise PrivateObjectStorageError("Invalid private upload metadata")
     storage = client if client is not None else _client(cfg)
+    # A caller-reserved key is already recorded in a durable upload intent.
+    # Deleting it after a verification error could race a successful
+    # recovery transaction and destroy an already-linked Document.
+    durable_reserved_final = final_key is not None
     if final_key is None:
         final_key = final_object_key(
             owner_id=owner_id, object_id=str(uuid4()), extension=extension,
@@ -146,12 +152,16 @@ def promote_verified_private_upload(
                 expected_sha256=expected_sha256,
             )
         except Exception as exc:
-            try:
-                storage.delete_object(Bucket=bucket, Key=final_key)
-            except Exception:
-                # A durable orphan sweeper is a release requirement.
-                # Never leak provider exception details to clients.
-                pass
+            # Never perform destructive compensation on a durable key:
+            # a concurrent recovery might already have committed this
+            # exact final object into Document. Preserve it for explicit
+            # owner-scoped reconciliation, even on unknown PUT outcomes.
+            if not durable_reserved_final:
+                try:
+                    storage.delete_object(Bucket=bucket, Key=final_key)
+                except Exception:
+                    # Unreserved keys still require a future orphan audit.
+                    pass
             if isinstance(exc, PrivateObjectStorageError):
                 raise
             raise PrivateObjectStorageError(
