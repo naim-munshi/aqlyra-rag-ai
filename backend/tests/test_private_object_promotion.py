@@ -145,6 +145,7 @@ def test_bad_checksum_blocks_write_and_keeps_stage():
         )
     assert all(kind != "put" for kind, _ in store.operations)
     assert list(store.objects) == [stage]
+    assert store.reads and all(stream.closed for stream in store.reads)
 
 
 def test_wrong_size_blocks_write_and_keeps_stage():
@@ -157,6 +158,7 @@ def test_wrong_size_blocks_write_and_keeps_stage():
         )
     assert all(kind != "put" for kind, _ in store.operations)
     assert list(store.objects) == [stage]
+    assert store.reads and all(stream.closed for stream in store.reads)
 
 
 def test_invalid_file_content_blocks_promotion():

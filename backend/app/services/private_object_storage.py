@@ -195,8 +195,10 @@ def verified_private_temporary_file(
         raise PrivateObjectStorageError("Invalid private upload metadata")
     storage = client if client is not None else _client(cfg)
     tmp = None
+    response_body = None
     try:
         result = storage.get_object(Bucket=cfg.OBJECT_STORAGE_BUCKET, Key=key)
+        response_body = result["Body"]
         if int(result["ContentLength"]) != expected_size:
             raise PrivateObjectStorageError("Stored object size mismatch")
         tmp = tempfile.NamedTemporaryFile(
@@ -206,20 +208,14 @@ def verified_private_temporary_file(
         checksum = hashlib.sha256()
         total = 0
         with tmp:
-            body = result["Body"]
-            try:
-                for chunk in body.iter_chunks(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    total += len(chunk)
-                    if total > expected_size:
-                        raise PrivateObjectStorageError("Stored object exceeds size limit")
-                    checksum.update(chunk)
-                    tmp.write(chunk)
-            finally:
-                close = getattr(body, "close", None)
-                if callable(close):
-                    close()
+            for chunk in response_body.iter_chunks(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > expected_size:
+                    raise PrivateObjectStorageError("Stored object exceeds size limit")
+                checksum.update(chunk)
+                tmp.write(chunk)
         if total != expected_size or checksum.hexdigest() != expected_sha256:
             raise PrivateObjectStorageError("Stored object checksum mismatch")
         _validate_file_content(temporary_path, extension)
@@ -231,5 +227,9 @@ def verified_private_temporary_file(
         # Caller exceptions must propagate unchanged; this file is still cleaned.
         yield temporary_path
     finally:
+        if response_body is not None:
+            close = getattr(response_body, "close", None)
+            if callable(close):
+                close()
         if tmp is not None:
             Path(tmp.name).unlink(missing_ok=True)
