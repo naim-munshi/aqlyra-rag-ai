@@ -145,11 +145,15 @@ def claim_upload_intent(
 def complete_upload_intent(
     *, db: Session, owner: User, intent_id: str,
 ) -> CloudUploadIntent | None:
-    """Use ONLY after verified bytes and durable object+document promotion."""
-    return _transition(
-        db=db, owner=owner, intent_id=intent_id,
-        expected="claimed", target="completed", expiry_required=False,
-    )
+    """Legacy unsafe completion path is intentionally fail-closed.
+
+    A separate status UPDATE cannot atomically create the Document and
+    link a final object. Use cloud_document_finalization's verified
+    SQL transaction instead. Retain this API as a deliberate no-op so
+    old internal callers cannot silently mark an upload as completed.
+    """
+    _verified_owner(owner)
+    return None
 
 
 def fail_upload_intent(

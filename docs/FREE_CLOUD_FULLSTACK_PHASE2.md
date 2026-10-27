@@ -212,6 +212,11 @@ cross-account access, duplicate checksum, simulated crash/recovery,
 tampered/missing final data, failing S3 writes, safe deletion guards,
 read-only recovery scans, and disabled-default behavior.
 
+The old `complete_upload_intent()` helper is intentionally fail-closed:
+changing only the intent status to `completed` without a linked
+Document is forbidden. Only `commit_verified_cloud_document()` can
+complete an intent together with the verified Document insert.
+
 **Release blockers remain:** there is no public grant/finalize API;
 no cloud-aware authenticated document download/process/delete path,
 no staging key lifecycle/TTL GC, no crash-safe *automated* worker with

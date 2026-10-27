@@ -111,15 +111,24 @@ def test_only_owner_can_claim_and_replay_fails(client, db_session):
     assert complete_upload_intent(
         db=db_session, owner=other, intent_id=grant.intent_id,
     ) is None
+    # Legacy nontransactional completion MUST NOT bypass verified
+    # final-object and Document linkage.
     complete = complete_upload_intent(
         db=db_session, owner=owner, intent_id=grant.intent_id,
     )
-    assert complete is not None
-    assert complete.status == "completed"
-    assert complete.completed_at is not None
+    assert complete is None
+    persisted = db_session.get(CloudUploadIntent, grant.intent_id)
+    assert persisted is not None
+    assert persisted.status == "claimed"
+    assert persisted.completed_at is None
+    assert persisted.document_id is None
     assert complete_upload_intent(
         db=db_session, owner=owner, intent_id=grant.intent_id,
     ) is None
+    failed = fail_upload_intent(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+    )
+    assert failed is not None and failed.status == "failed"
     assert fail_upload_intent(
         db=db_session, owner=owner, intent_id=grant.intent_id,
     ) is None
