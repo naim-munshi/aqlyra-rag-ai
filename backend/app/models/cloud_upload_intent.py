@@ -68,6 +68,11 @@ class CloudUploadIntent(Base):
         nullable=True,
     )
 
+    # Explicit user-initiated deletion; distinct from missing/corrupt links.
+    # Stage bytes need a second sweep AFTER the signed upload grant expires.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+    )
     stage_deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True,
     )
