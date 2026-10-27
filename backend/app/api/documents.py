@@ -17,6 +17,7 @@ from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.services.cloud_document_access import private_document_read_grant
 from app.services.cloud_process_io import cloud_processing_source
+from app.services.cloud_document_deletion import delete_cloud_document
 from app.services.private_object_storage import PrivateObjectStorageError
 from app.core.logging import app_logger
 from app.core.rate_limit import (
@@ -501,14 +502,20 @@ def delete_document(
             detail="Document not found",
         )
 
-    # Cloud objects require owner-scoped remote lifecycle operations.
-    # Do not reinterpret cloud keys as local paths or delete DB metadata
-    # before verified remote deletion/worker support exists.
     if document.storage_path.startswith("cloud://"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cloud document operation is not available yet",
-        )
+        if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise HTTPException(
+                status_code=409, detail="Private cloud deletion is disabled",
+            )
+        try:
+            delete_cloud_document(
+                db=db, owner_id=str(current_user.id), document_id=document.id,
+            )
+        except PrivateObjectStorageError as exc:
+            raise HTTPException(
+                status_code=503, detail="Private cloud deletion unavailable; retry",
+            ) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     storage_path = document.storage_path
 

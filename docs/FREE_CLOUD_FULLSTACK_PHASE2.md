@@ -273,6 +273,23 @@ This PR adds an **opt-in** direct-upload handshake:
 - Private download uses a 45-second GET redirect instead of passing
   file bytes through Vercel; local upload/read/processing is unchanged.
 
+Cloud document deletion has an owner-checked **remote-first,
+retry-safe** implementation in `cloud_document_deletion.py`. A remote
+S3 error keeps the Document record and returns 503 rather than
+pretending the file was deleted. After remote success the metadata
+record is deleted; if that SQL commit fails, metadata remains and the
+owner can retry the idempotent object delete. Tests cover cross-user
+denial, 204 success and error retry. Because deleting the Document is
+irreversible, production must still prove staging backups/restore and
+worker reconciliation before the flag is enabled.
+
+**Unresolved staging-object lifecycle:** expired staging PUT objects
+can remain after a successful finalization; stale claimed intents and
+failed remote copies can also leave objects. Implement a durable,
+rate-limited operator reconciliation/garbage-collection worker with
+signed PUT expiry grace, owner-key verification, per-object audit and
+rollback/retry policy before enabling browser direct uploads.
+
 **These paths are fully disabled for release by default:**
 `PRIVATE_OBJECT_STORAGE_ENABLED=false`,
 `CLOUD_UPLOAD_PUBLIC_ENABLED=false` (backend), and

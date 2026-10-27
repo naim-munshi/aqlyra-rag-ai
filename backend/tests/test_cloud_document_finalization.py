@@ -487,3 +487,64 @@ def test_private_cloud_prepare_finalize_api_is_explicitly_gated(
     assert db_session.get(Document, completed.json()["document_id"]) is not None
     assert client.post(finalize, headers=headers).status_code == 409
     assert owner.id != outsider.id
+
+
+def test_cloud_document_delete_is_owner_bound_and_remote_first(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import cloud_document_deletion
+
+    owner, headers = make_user(client, db_session, "delete")
+    other, foreign_headers = make_user(client, db_session, "foreign_delete")
+    store = InMemoryS3(b"temporary cloud document")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    assert result.final_object_key in store.objects
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_document_deletion, "_client", lambda cfg: store)
+    url = f"/api/v1/documents/{result.document_id}"
+    assert client.delete(url, headers=foreign_headers).status_code == 404
+    assert client.delete(url, headers=headers).status_code == 204
+    assert db_session.get(Document, result.document_id) is None
+    assert result.final_object_key not in store.objects
+    assert client.delete(url, headers=headers).status_code == 404
+    assert other.id != owner.id
+
+
+def test_failed_remote_cloud_delete_preserves_document(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import cloud_document_deletion
+
+    owner, headers = make_user(client, db_session, "delete_failure")
+    store = InMemoryS3()
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_document_deletion, "_client", lambda cfg: store)
+    original = store.delete_object
+
+    def fail_delete(**kwargs):
+        raise RuntimeError("private-provider-credential-message")
+
+    store.delete_object = fail_delete
+    url = f"/api/v1/documents/{result.document_id}"
+    failed = client.delete(url, headers=headers)
+    assert failed.status_code == 503
+    assert "credential" not in failed.text
+    assert db_session.get(Document, result.document_id) is not None
+    assert result.final_object_key in store.objects
+
+    store.delete_object = original
+    assert client.delete(url, headers=headers).status_code == 204
+    assert db_session.get(Document, result.document_id) is None
