@@ -30,6 +30,7 @@ class CloudUploadIntent(Base):
         ),
         UniqueConstraint("document_id", name="uq_cloud_upload_intents_document_id"),
         Index("ix_cloud_upload_intents_recovery", "status", "claimed_at"),
+        Index("ix_cloud_upload_intents_stage_cleanup", "status", "expires_at"),
         Index(
             "ix_cloud_upload_intents_owner_status_expiry",
             "user_id", "status", "expires_at",
@@ -65,4 +66,8 @@ class CloudUploadIntent(Base):
     document_id: Mapped[str | None] = mapped_column(
         String(), ForeignKey("documents.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    stage_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
     )

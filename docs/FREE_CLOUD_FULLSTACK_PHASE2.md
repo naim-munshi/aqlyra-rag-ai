@@ -321,6 +321,78 @@ available). No Neon/Upstash/Resend provisioned credentials, live
 data or cloud bucket was accessed. Vercel `aqlyra` remains protected
 with no deployment. This stage cannot be marked complete from CI alone.
 
+## Safe staging-object cleanup — dry-run by default
+
+`cloud_upload_intents` is extended only with `stage_deleted_at`
+and the `ix_cloud_upload_intents_stage_cleanup` index (additive Alembic
+migration `a7c60d4e21bb`). Existing RAG/pgvector documents and
+embeddings are untouched. No live migration has been run.
+
+A bounded, operator-only cleanup service removes **staging**
+`documents/{ownerUUID}/{objectUUID}.{extension}` keys only for
+`completed` or expired `issued` intents whose presigned PUT
+grant is beyond a configurable grace period. Claimed/failed intents,
+every `final/documents/...` key and anything outside that strictly
+validated staging prefix are deliberately excluded. Row locks and
+retryable `stage_deleted_at` markers prevent accidental repeat
+processing. Remote delete failures do not mark the row cleaned.
+
+The operator tool is explicitly OFF unless private storage is enabled.
+From the `backend` working directory with an isolated verified
+staging database and private bucket:
+
+```sh
+python -m app.ops.cloud_stage_cleanup --limit 20 --grace-hours 24
+# Review dry-run counts before a separate, approved application:
+python -m app.ops.cloud_stage_cleanup --apply --confirm EXPIRED_STAGING_ONLY --limit 20 --grace-hours 24
+```
+
+**Important:** This is NOT a full orphan sweeper. Incomplete
+`claimed` intents and `failed` intents need human-reviewed
+reconciliation, final objects abandoned without a committed Document
+need reference-based discovery, and an outage during final remote
+write can leave an orphan. No automatic destructive cron is enabled.
+
+## Current $0 staging provider review (verified 2026-10-27)
+
+- **Frontend:** Vercel Hobby with protected Preview and `frontend`
+  as root. Noncommercial developer/prototype use only; no current
+  deployment or `BACKEND_API_URL` secret. Not a commercial release.
+- **Backend:** Render Free Python/Docker web service supports HTTPS,
+  but sleeps after 15 minutes idle and restarts with **ephemeral local
+  storage**; 750 Free instance hours/workspace/month and constraints on
+  network activity. Never put uploads or PostgreSQL data on its disk.
+  A background worker cannot be assumed to run while it sleeps.
+- **Database + objects (recommended):** Neon Free 1 GB Postgres/project
+  plus 5 GB *private S3-compatible branch-aware object storage* per
+  project. The app's code already supports Neon private storage but
+  the account connector `list_projects` and `search` methods both
+  fail at the provider bridge, so no isolated project/branch/bucket
+  or credentials have been created or verified.
+- **Redis:** Upstash Free 256 MB and 500,000 commands/month.
+  Rate limiting must not fall back to permissive per-process counters.
+- **Email:** Resend Free 100 transactional emails/day and 3,000/month,
+  provided the owner can verify a sender domain.
+- **Cloudflare R2:** 10 GB standard storage allowance but account
+  onboarding involves a billing subscription; unnecessary for the
+  5 GB Neon Free proof-of-concept.
+- **Railway staging:** the connected `Aqlyra-Staging` project has
+  56 `staged-create` changes, zero live services, including
+  PostgreSQL/pgvector and two persistent volumes. Usage-based costs
+  are not proven within a true $0 limit, so DO NOT accept-deploy.
+- **Render Free Postgres:** expires after 30 days; unsuitable for
+  durable user or production data. Free Render Redis-like Key Value
+  is also volatile and unsuitable for critical background tasks.
+
+**Release blockers:** connected provider credentials for Neon,
+Upstash and email; isolated branch and **private** bucket CORS; live
+HTTPS 25MiB two-user E2E; actual RAG provider cost/embedding CPU
+and memory verification; persist/recovery test over instance restart;
+separate real backup/restore; full final-object orphan reconciler;
+and owner-approved independent reviewer/production change. The
+free tier gives no 24/7 availability guarantee. Phase 2 cannot be
+marked complete based on CI alone.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**
