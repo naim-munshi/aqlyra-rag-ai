@@ -160,3 +160,113 @@ def test_issued_with_reserved_final_key_is_not_swept(client, db_session):
     assert (result.eligible, result.deleted, result.failed) == (0, 0, 0)
     assert stage_key in store.objects
     assert db_session.get(CloudUploadIntent, granted.intent_id).stage_deleted_at is None
+
+
+def test_deleted_cloud_stage_is_swept_again_after_grant_expiry(
+    client, db_session, monkeypatch,
+):
+    """A short-lived signed PUT can recreate bytes after user deletion."""
+    from app.config.settings import settings
+    from app.services import cloud_document_deletion
+
+    owner, headers = make_user(client, db_session, "deleted_replay")
+    store = InMemoryS3(b"sensitive bytes")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    stage_key = db_session.get(CloudUploadIntent, grant.intent_id).object_key
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_document_deletion, "_client", lambda cfg: store)
+    deleted = client.delete(
+        f"/api/v1/documents/{result.document_id}", headers=headers,
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert stage_key not in store.objects
+    assert result.final_object_key not in store.objects
+    db_session.expire_all()
+    tombstone = db_session.get(CloudUploadIntent, grant.intent_id)
+    assert tombstone.status == "completed"
+    assert tombstone.deleted_at is not None
+    assert tombstone.document_id is None
+    assert tombstone.stage_deleted_at is None
+
+    # Simulate the original presigned PUT being replayed before expiry.
+    store.objects[stage_key] = store.data
+    assert cleanup_stale_staging(
+        db=db_session, cfg=configured(), store=store,
+    ).eligible == 0
+    expire_intent(db_session, grant.intent_id)
+    cleaned = cleanup_stale_staging(
+        db=db_session, cfg=configured(), store=store, dry_run=False,
+    )
+    assert (cleaned.eligible, cleaned.deleted, cleaned.failed) == (1, 1, 0)
+    assert stage_key not in store.objects
+    assert result.final_object_key not in store.objects
+    assert db_session.get(CloudUploadIntent, grant.intent_id).stage_deleted_at
+
+
+def test_stage_deletion_failure_keeps_cloud_document_retryable(
+    client, db_session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import cloud_document_deletion
+
+    owner, headers = make_user(client, db_session, "delete_stage_fail")
+    store = InMemoryS3(b"private document data")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    stage_key = db_session.get(CloudUploadIntent, grant.intent_id).object_key
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(cloud_document_deletion, "_client", lambda cfg: store)
+    original = store.delete_object
+
+    def fail_stage(*, Bucket, Key):
+        if Key == stage_key:
+            raise RuntimeError("private-stage-provider-secret")
+        return original(Bucket=Bucket, Key=Key)
+
+    store.delete_object = fail_stage
+    url = f"/api/v1/documents/{result.document_id}"
+    rejected = client.delete(url, headers=headers)
+    assert rejected.status_code == 503
+    assert "secret" not in rejected.text
+    assert db_session.get(CloudUploadIntent, grant.intent_id).deleted_at is None
+    assert db_session.get(CloudUploadIntent, grant.intent_id).document_id == result.document_id
+    assert stage_key in store.objects
+    assert result.final_object_key in store.objects
+
+    store.delete_object = original
+    assert client.delete(url, headers=headers).status_code == 204
+    assert stage_key not in store.objects
+    assert result.final_object_key not in store.objects
+
+
+def test_invalid_completed_document_binding_retains_stage(
+    client, db_session,
+):
+    from app.models.document import Document
+    owner, _ = make_user(client, db_session, "stage_binding")
+    store = InMemoryS3(b"private verified bytes")
+    grant = reserve(db_session, owner, store)
+    result = finalize_cloud_upload(
+        db=db_session, owner=owner, intent_id=grant.intent_id,
+        cfg=configured(), client=store,
+    )
+    stage_key = db_session.get(CloudUploadIntent, grant.intent_id).object_key
+    document = db_session.get(Document, result.document_id)
+    document.content_type = "application/octet-stream"
+    db_session.commit()
+    expire_intent(db_session, grant.intent_id)
+    summary = cleanup_stale_staging(
+        db=db_session, cfg=configured(), store=store, dry_run=False,
+    )
+    assert (summary.eligible, summary.deleted, summary.failed) == (0, 0, 0)
+    assert stage_key in store.objects
+    assert result.final_object_key in store.objects
