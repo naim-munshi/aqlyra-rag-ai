@@ -305,6 +305,8 @@ def list_stale_claimed_uploads(
         .where(
             CloudUploadIntent.status == "claimed",
             CloudUploadIntent.final_object_key.is_not(None),
+            CloudUploadIntent.document_id.is_(None),
+            CloudUploadIntent.claimed_at.is_not(None),
             CloudUploadIntent.claimed_at < cutoff,
         )
         .order_by(CloudUploadIntent.claimed_at, CloudUploadIntent.id)
