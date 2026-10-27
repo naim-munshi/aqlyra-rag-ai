@@ -18,6 +18,8 @@ import {
   useState,
 } from "react";
 
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
+
 import type {
   DocumentListResponse,
   DocumentResponse,
@@ -292,39 +294,27 @@ export function DocumentPanel() {
     setError("");
 
     try {
-      const formData = new FormData();
+      let uploadedDocument: DocumentResponse;
 
-      formData.append(
-        "file",
-        file,
-      );
-
-      const response = await fetch(
-        "/api/documents/upload",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      const data =
-        (await response.json()) as
-          | DocumentResponse
-          | ApiError;
-
-      if (!response.ok) {
-        setError(
-          getErrorMessage(
-            data as ApiError,
-            "Document upload failed.",
-          ),
-        );
-
-        return;
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+        // No File bytes ever cross the Next.js API in cloud mode.
+        uploadedDocument = await uploadViaPrivateCloud(file);
+      } else {
+        // Preserve existing local/staging upload behavior unchanged.
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/documents/upload", {
+          method: "POST", body: formData,
+        });
+        const data = (await response.json()) as DocumentResponse | ApiError;
+        if (!response.ok) {
+          setError(
+            getErrorMessage(data as ApiError, "Document upload failed."),
+          );
+          return;
+        }
+        uploadedDocument = data as DocumentResponse;
       }
-
-      const uploadedDocument =
-        data as DocumentResponse;
 
       setDocuments((current) => [
         uploadedDocument,

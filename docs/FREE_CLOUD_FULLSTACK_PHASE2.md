@@ -254,6 +254,56 @@ confirm that `ResponseContentDisposition` and private presigned
 GETs work in staging. If a provider's signed requests behave
 differently, disable this feature before release.
 
+## Feature-gated browser direct uploads and cloud-aware RAG parsing
+
+This PR adds an **opt-in** direct-upload handshake:
+
+- `POST /api/v1/documents/cloud/prepare` requires a JWT, upload rate
+  limit, an active/verified user, a valid filename/size/SHA-256 manifest.
+  It writes an expiring owner-specific intent and grants a 120-second
+  private signed PUT to the browser.
+- Browser code computes SHA-256, uploads up to 25 MiB **directly** to
+  the restricted private bucket, then calls
+  `POST /api/v1/documents/cloud/{intent_id}/finalize` with JWT via a
+  same-origin Next.js proxy. Backend verifies stage/final data and
+  atomically returns the linked `DocumentResponse`.
+- Document processing uses a bounded temporary local copy after
+  owner+intent validation and another SHA-256 check. It deletes scratch
+  after parsing and preserves existing embedding/RAG processing.
+- Private download uses a 45-second GET redirect instead of passing
+  file bytes through Vercel; local upload/read/processing is unchanged.
+
+**These paths are fully disabled for release by default:**
+`PRIVATE_OBJECT_STORAGE_ENABLED=false`,
+`CLOUD_UPLOAD_PUBLIC_ENABLED=false` (backend), and
+`NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED=false` (frontend build). Do NOT
+set these true before the deletion/cleanup lifecycle, private-bucket
+CORS (only the correct HTTPS application origin and PUT headers),
+two-account/25MiB tests, credential isolation, real HTTPS RAG and
+backup/restore acceptance. A signed PUT must never be created for a
+final key. Audit user-facing `Upload` actions in all UI variants
+before enabling it globally.
+
+### External infrastructure evidence
+
+The connected Railway project `Aqlyra-Staging` exists with a
+nonproduction `staging` environment and 56 pending configuration
+changes for the frontend, backend, pgvector PostgreSQL and
+persistent uploads/database volumes. They are all `staged-create`;
+**nothing is provisioned or deployed**. The intended branch is
+`release/core-without-study-abroad-20261027`.
+Railway service billing/credit eligibility is not verified; do not
+`accept-deploy` without explicit cost approval. Current staged services
+also lack verified external-provider keys and all critical live
+secrets. A local Railway pgvector container is an **alternative**
+to an independently provisioned Neon database, not a completed
+Neon Free deployment.
+
+The Neon account connection cannot list projects (connector tool not
+available). No Neon/Upstash/Resend provisioned credentials, live
+data or cloud bucket was accessed. Vercel `aqlyra` remains protected
+with no deployment. This stage cannot be marked complete from CI alone.
+
 ## Work completed on the cloud compatibility branch
 
 A narrow, backwards-compatible **HTTPS email delivery adapter**

@@ -447,3 +447,43 @@ def test_cloud_process_rejects_corrupt_remote_without_parsing(
     )
     assert res.status_code == 409
     assert db_session.get(Document, result.document_id).status == "uploaded"
+
+
+def test_private_cloud_prepare_finalize_api_is_explicitly_gated(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    from app.config.settings import settings
+    from app.services import private_object_storage, private_object_promotion
+    owner, headers = make_user(client, db_session, "api")
+    outsider, other_headers = make_user(client, db_session, "api_other")
+    store = InMemoryS3(b"verified full cloud text")
+    blob = store.data
+    payload = {
+        "filename": "report.txt",
+        "size_bytes": len(blob),
+        "sha256": hashlib.sha256(blob).hexdigest(),
+    }
+    endpoint = "/api/v1/documents/cloud/prepare"
+    assert client.post(endpoint, json=payload, headers=headers).status_code == 404
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "CLOUD_UPLOAD_PUBLIC_ENABLED", True)
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", ENDPOINT)
+    monkeypatch.setattr(private_object_storage, "_client", lambda _cfg: store)
+    monkeypatch.setattr(private_object_promotion, "_client", lambda _cfg: store)
+
+    assert client.post(endpoint, json=payload).status_code == 401
+    prepared = client.post(endpoint, json=payload, headers=headers)
+    assert prepared.status_code == 201, prepared.text
+    grant = prepared.json()
+    assert grant["method"] == "PUT"
+    assert grant["expires_in_seconds"] == 120
+    assert grant["headers"] == {"Content-Type": "text/plain"}
+    assert "X-Amz-Signature" in grant["upload_url"]
+    finalize = f"/api/v1/documents/cloud/{grant['intent_id']}/finalize"
+    assert client.post(finalize, headers=other_headers).status_code == 409
+    completed = client.post(finalize, headers=headers)
+    assert completed.status_code == 201, completed.text
+    assert db_session.get(Document, completed.json()["document_id"]) is not None
+    assert client.post(finalize, headers=headers).status_code == 409
+    assert owner.id != outsider.id

@@ -4,6 +4,7 @@ from app.api.web_research import router as web_research_router
 from app.api.browser_agent import router as browser_agent_router
 from app.api.artifacts import router as artifacts_router
 from app.api.admin import router as admin_router
+from app.api.cloud_uploads import router as cloud_uploads_router
 
 from app.api.auth import (
     router as auth_router,
@@ -91,3 +92,4 @@ api_router.include_router(web_research_router)
 api_router.include_router(browser_agent_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(admin_router)
+api_router.include_router(cloud_uploads_router)
