@@ -170,7 +170,20 @@ RAG_GROUNDING_VERIFIER_ENABLED=true
 BROWSER_AGENT_ENABLED=false
 ```
 
-**Status:** only code/docs/test progress; no Neon/Vercel/Redis/Resend
-resource has been provisioned for Aqlyra. Phase 2 is IN PROGRESS.
-The prior disposable ARM64 CI full-stack is real but not a
-persistent public HTTPS staging host.
+**Status (2026-10-27):** The separate Vercel Hobby project `aqlyra`
+has been created and connected to `naim-munshi/aqlyra-rag-ai`; Next.js
+frontend root is `frontend`. Standard Vercel Authentication protects
+preview access. The project has **zero deployments and zero configured
+runtime secrets**. Its currently allocated hostname is
+`aqlyra-navy.vercel.app`; requested `aqlyra.vercel.app` returned a
+Vercel `409 owned-on-other-team` conflict.
+
+**No independent Neon staging database/bucket, Redis/Upstash credentials,
+Resend sender or live FastAPI host have been provisioned.** Neon project
+management connector currently responds with an unavailable-action
+error, so this cannot be treated as working Neon access.
+
+**Phase 2 remains IN PROGRESS:** code, docs and CI do not replace
+runtime two-account E2E, provider evaluation, live private object
+storage or backup/restore checks. The disposable ARM64 CI full-stack
+is real but is not a persistent public HTTPS staging host.
