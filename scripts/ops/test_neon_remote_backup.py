@@ -90,30 +90,38 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             self.assertFalse((Path(root) / "backup").exists())
 
     def test_schema_preflight_requires_vector_core_tables_single_revision(self):
-        def fake_conn(row, versions):
+        def fake_conn(row, versions, study=(False,) * 4):
             conn = Mock()
             conn.execute.side_effect = [
                 Mock(fetchone=lambda: row),
                 Mock(fetchall=lambda: [(x,) for x in versions]),
+                Mock(fetchone=lambda: study),
             ]
             return conn
+
         self.assertEqual(
             gate.audit_revision(fake_conn((True,) * 4, [gate.EXPECTED_PREVIOUS])),
             (gate.EXPECTED_PREVIOUS, False),
         )
         self.assertEqual(
-            gate.audit_revision(fake_conn((True,) * 4, [gate.EXPECTED_FULL])),
+            gate.audit_revision(
+                fake_conn((True,) * 4, [gate.EXPECTED_FULL], (True,) * 4)
+            ),
             (gate.EXPECTED_FULL, True),
         )
-        for row, versions in [
-            ((False, True, True, True), [gate.EXPECTED_FULL]),
-            ((True,) * 4, []),
-            ((True,) * 4, ["unknown"]),
-            ((True,) * 4, [gate.EXPECTED_PREVIOUS, gate.EXPECTED_FULL]),
+        for row, versions, study in [
+            ((False, True, True, True), [gate.EXPECTED_FULL], (True,) * 4),
+            ((True,) * 4, [], (False,) * 4),
+            ((True,) * 4, ["unknown"], (False,) * 4),
+            ((True,) * 4, [gate.EXPECTED_PREVIOUS, gate.EXPECTED_FULL], (False,) * 4),
+            ((True,) * 4, [gate.EXPECTED_FULL], (False,) * 4),
+            ((True,) * 4, [gate.EXPECTED_FULL], (True, True, False, True)),
+            ((True,) * 4, [gate.EXPECTED_PREVIOUS], (True, False, False, False)),
+            ((True,) * 4, [gate.EXPECTED_PREVIOUS], None),
         ]:
-            with self.subTest(row=row, versions=versions):
+            with self.subTest(row=row, versions=versions, study=study):
                 with self.assertRaises(ValueError):
-                    gate.audit_revision(fake_conn(row, versions))
+                    gate.audit_revision(fake_conn(row, versions, study))
 
 
     def test_exact_database_and_role_identity_fails_closed(self):
