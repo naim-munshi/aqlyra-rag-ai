@@ -1,5 +1,26 @@
 # Aqlyra final release acceptance and operating handoff
 
+
+> **Current Full Release status (2026-10-29):** This file preserves the
+> earlier **Core-only** release acceptance scope and is NOT the active
+> cutover runbook for Draft Full Release PR #37. The owner explicitly
+> approved the Study Abroad **database-only** migration on 2026-10-28:
+> Neon production `neondb` was independently verified at Alembic
+> `d4ec2f9b7860` with 20 public tables. Do not replay this migration,
+> revert it to Core, or deploy the Full backend based solely on this
+> historical checklist. The currently running Render service is still
+> Core-only with auto-deploy off. A new **post-Full-schema** private Neon
+> backup plus network-isolated restore, real Neon private S3 and
+> two-user production E2E, LiveKit voice worker acceptance, protected
+> Full deployment and explicit launch approval remain separate gates.
+> Follow [Full Release cutover](FULL_RELEASE_PRODUCTION_CUTOVER.md),
+> [Neon Full recovery](NEON_FULL_RELEASE_SAFE_CUTOVER.md) and
+> [private storage cutover](ARTIFACT_PRIVATE_STORAGE_CUTOVER.md).
+> PR #37 remains Draft and must pass exact-head CI before any release.
+
+---
+
+
 **Repository:** `naim-munshi/aqlyra-rag-ai` only. This is the **full-stack**
 application, not the separate `aqlyrax` Vercel portfolio demonstration.
 
