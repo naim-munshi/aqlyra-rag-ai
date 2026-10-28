@@ -44,6 +44,12 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             URL + "#secret",
             URL.replace("/neondb?", "/?"),
             URL.replace("sslmode=require", "sslmode=prefer"),
+            URL + "&host=evil.example.invalid",
+            URL + "&hostaddr=127.0.0.1",
+            URL + "&port=5433",
+            URL + "&dbname=other_db",
+            URL + "&service=unapproved",
+            URL + "&sslmode=disable",
         ]:
             with self.subTest(url_kind=bad[:9]):
                 with self.assertRaises(ValueError):
