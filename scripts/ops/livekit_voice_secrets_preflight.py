@@ -36,6 +36,11 @@ class VoicePreflightBlocked(ValueError):
 
 
 def load_secrets(path: Path) -> dict[str, str]:
+    # Never allow even mode-600 secrets to be left inside the Git worktree.
+    # Resolve parent paths as well, so symlinked directories cannot bypass.
+    repo_root = Path(__file__).resolve().parents[2]
+    if path.resolve().is_relative_to(repo_root):
+        raise VoicePreflightBlocked("secrets must be outside the Git repository")
     if path.is_symlink():
         raise VoicePreflightBlocked("secret file symlink denied")
     info = path.stat()
