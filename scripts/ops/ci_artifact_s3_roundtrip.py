@@ -99,9 +99,12 @@ def run(phase: str, state_file: Path) -> None:
         if len(remote.list_artifacts(user_id=owner)) != len(FORMATS):
             raise CiS3Blocked("not all artifacts were published")
         state = {"owner": owner, "stranger": stranger, "records": records}
-        with state_file.open("x", encoding="utf-8") as handle:
+        # Secure from creation; no briefly world-readable state file.
+        descriptor = os.open(
+            state_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(state))
-        state_file.chmod(0o600)
         print("CI_ARTIFACT_S3_HTTP_WRITE=PASS")
         print("CI_APP_PROCESS_RESTART=REQUIRED")
         return
