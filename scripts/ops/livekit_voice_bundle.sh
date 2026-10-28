@@ -58,4 +58,6 @@ trap - EXIT
 echo "PASS: secret-free Aqlyra LiveKit worker context prepared at $DEST"
 echo "NEXT: authenticate LiveKit, select aqlyra-rag-ai, and deploy with"
 echo "      a separate owner-managed chmod-600 secrets file."
+echo "      FIRST: python3 scripts/ops/livekit_voice_secrets_preflight.py"
+echo "             --secrets-file PRIVATE_OWNER_FILE (run from source checkout)."
 echo "      Follow docs/LIVEKIT_VOICE_CLOUD_RUNBOOK.md."
