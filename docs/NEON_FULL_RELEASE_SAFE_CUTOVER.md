@@ -61,21 +61,24 @@ Neon app traffic may continue using its pooled URL; do not replace the
 working Render backend URL just to prepare backups. The backup tool
 refuses `-pooler` hostnames in backup mode.
 
-Write the **exact Neon direct DATABASE_URL** only to
-`$HOME/.aqlyra/private/neon-url` (mode 600). For example, after copying
-the URL to your Mac clipboard in the Neon dashboard:
+Store the **exact Neon direct DATABASE_URL** only in
+`$HOME/.aqlyra/private/neon-url` (mode 600); the owner has already
+created and validated this file. Do not overwrite it from a stale
+clipboard or display its contents in the terminal. On the existing Mac
+recovery worktree, prepare the reviewed source and toolchain:
 
 ```bash
-cd ~/aqlyra-rag-ai
-git fetch origin
-git switch release/full-with-study-abroad-20261028
-git pull --ff-only origin release/full-with-study-abroad-20261028
+# Use the separate owner recovery worktree; never reset the original repo.
+cd "$HOME/aqlyra-full-recovery"
+git fetch origin release/full-with-study-abroad-20261028
+git switch --detach origin/release/full-with-study-abroad-20261028
 
-umask 077
-mkdir -p "$HOME/.aqlyra/private"
-chmod 700 "$HOME/.aqlyra/private"
-pbpaste > "$HOME/.aqlyra/private/neon-url"
-chmod 600 "$HOME/.aqlyra/private/neon-url"
+source "$HOME/.aqlyra/recovery-venv/bin/activate"
+export PATH="$(brew --prefix libpq)/bin:$PATH"
+
+# Existing owner-only direct URL must already be present.
+test -s "$HOME/.aqlyra/private/neon-url"
+test "$(stat -f '%Lp' "$HOME/.aqlyra/private/neon-url")" = 600
 ```
 
 **Replace `<NEON-HOST-FROM-DASHBOARD>` with the exact hostname from
