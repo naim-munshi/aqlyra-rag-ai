@@ -125,3 +125,10 @@ jobs:
         working-directory: backend
         run: |
           python -m pytest
+
+      - name: Verify offline Neon backup and recovery safety contracts
+        run: |
+          python -m unittest discover \
+            -s scripts/ops \
+            -p 'test_neon_remote_backup.py' \
+            -v
