@@ -96,6 +96,12 @@ export function ForgotPasswordForm() {
             {loading && <LoaderCircle size={17} className="animate-spin" />}
             {loading ? "Sending..." : "Send reset code"}
           </button>
+          <p className="mt-4 text-center text-xs leading-5 text-[var(--aq-muted)]">
+            Registered but your email is not verified yet?{" "}
+            <Link href="/verify-email" className="font-semibold text-[var(--aq-blue)] hover:underline">
+              Request a verification code instead
+            </Link>
+          </p>
         </form>
       )}
 
