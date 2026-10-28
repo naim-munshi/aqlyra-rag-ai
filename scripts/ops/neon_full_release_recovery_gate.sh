@@ -41,6 +41,15 @@ for tool in python3 pg_dump pg_restore docker; do
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+# Never place connection files or raw backups under the Git working tree.
+# A chmod-600 secret inside the repo can still be accidentally committed.
+url_parent="$(cd "$(dirname "$url_file")" 2>/dev/null && pwd -P)" || {
+  echo "RECOVERY_GATE=BLOCKED private URL file directory unavailable" >&2
+  exit 2
+}
+case "$url_parent/$(basename "$url_file")" in
+  "$ROOT"/*) echo "RECOVERY_GATE=BLOCKED URL file cannot be under the Git repository" >&2; exit 2 ;;
+esac
 backup_script="$ROOT/scripts/ops/neon_remote_backup.py"
 restore_script="$ROOT/scripts/ops/neon_restore_rehearsal.sh"
 [[ -f "$backup_script" && -f "$restore_script" ]] || {
@@ -70,6 +79,11 @@ preflight="$(python3 "$backup_script" \
 }
 mkdir -p "$backup_root"
 backup_root="$(cd "$backup_root" && pwd -P)"
+case "$backup_root" in
+  "$ROOT"|"$ROOT"/*)
+    echo "RECOVERY_GATE=BLOCKED backups cannot be stored under the Git repository" >&2
+    exit 2 ;;
+esac
 [[ -d "$backup_root" && ! -L "$backup_root" ]] || {
   echo "RECOVERY_GATE=BLOCKED invalid backup directory" >&2
   exit 2
