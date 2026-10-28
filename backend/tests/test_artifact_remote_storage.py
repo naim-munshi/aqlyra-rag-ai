@@ -220,3 +220,54 @@ def test_all_remote_artifact_formats_round_trip(private_store, kind):
     else:
         assert binary.startswith(b"PK")
     assert facade.delete_artifact(user_id=owner, artifact_id=item["id"])
+
+
+def test_remote_owner_inventory_counts_only_and_never_modifies_objects(private_store):
+    owner, unrelated = str(uuid4()), str(uuid4())
+    missing = _make(owner, title="Missing binary")
+    orphan = _make(owner, title="Orphan binary")
+    foreign = _make(unrelated, title="Foreign record")
+
+    private_store.objects.pop(remote._key(owner, missing["id"], "md"))
+    private_store.objects.pop(remote._key(owner, orphan["id"], "json"))
+    private_store.objects[remote._key(owner, str(uuid4()), "json")] = b"{bad-json"
+    private_store.objects[remote._prefix(owner) + "unsafe-untracked"] = b"secret"
+
+    before = dict(private_store.objects)
+    report = remote.audit_owner_inventory(user_id=owner)
+    assert report == {
+        "complete_records": 0,
+        "missing_binaries": 1,
+        "invalid_metadata": 1,
+        "orphan_binaries": 1,
+        "unexpected_keys": 1,
+        "total_objects": 4,
+    }
+    assert private_store.objects == before
+
+    # Audit is scoped by the server-supplied UUID, not arbitrary S3 keys.
+    assert remote.audit_owner_inventory(user_id=unrelated) == {
+        "complete_records": 1,
+        "missing_binaries": 0,
+        "invalid_metadata": 0,
+        "orphan_binaries": 0,
+        "unexpected_keys": 0,
+        "total_objects": 2,
+    }
+    assert foreign["id"] not in str(report)
+    assert owner not in str(report)
+    assert "secret" not in str(report)
+
+
+def test_remote_owner_inventory_fails_closed_on_s3_error(private_store, monkeypatch):
+    def provider_error(**kwargs):
+        raise RuntimeError("secret-neon-endpoint-and-password")
+    monkeypatch.setattr(private_store, "list_objects_v2", provider_error)
+    with pytest.raises(remote.RemoteArtifactError) as exc:
+        remote.audit_owner_inventory(user_id=str(uuid4()))
+    assert "secret-neon" not in str(exc.value)
+
+
+def test_remote_owner_inventory_rejects_invalid_owner(private_store):
+    with pytest.raises(remote.RemoteArtifactError, match="Invalid artifact identifier"):
+        remote.audit_owner_inventory(user_id="../../foreign")
