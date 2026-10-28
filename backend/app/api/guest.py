@@ -130,6 +130,20 @@ def recent_guest_traffic() -> list[dict[str, object]]:
         raise HTTPException(status_code=503, detail="Guest traffic unavailable") from exc
 
 
+@router.post("/visit")
+async def guest_visit(request: Request) -> dict[str, bool]:
+    """Record guest visits even before first chat, without retaining messages."""
+    if not settings.GUEST_CHAT_ENABLED or not settings.RATE_LIMIT_ENABLED:
+        raise HTTPException(status_code=503, detail="Guest access unavailable")
+    ip = _signed_guest_ip(request, await request.body())
+    enforce_rate_limit(
+        bucket="guest-visit-ip", identity="guest:" + ip,
+        limit=30, window_seconds=86400,
+    )
+    _record_guest_ip(ip)
+    return {"ok": True}
+
+
 @router.post("/chat")
 async def guest_chat(body: GuestChatRequest, request: Request) -> dict:
     if not settings.GUEST_CHAT_ENABLED or not settings.RATE_LIMIT_ENABLED:
