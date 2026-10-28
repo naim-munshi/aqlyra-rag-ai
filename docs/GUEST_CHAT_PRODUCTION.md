@@ -8,7 +8,7 @@
 - Guest can ask general AI questions, use at most 4 short local conversational turns as context, and receives a non-streaming response.
 - Guest cannot upload any file, use authenticated private RAG/retrieval, projects, database history, memory, voice, artifact workspace, or private Study Abroad cases. Clicking the paperclip directs to `/register`.
 - No account is created, no chat is persisted in Aqlyra/PostgreSQL, and no browser localStorage persistence exists. The upstream model provider may process the message under its own data handling terms.
-- Guest session limit: **5 questions/IP/hour, 20/IP/day and 1,000 global/day** (all Redis-enforced, configurable). Message ≤800 characters, max 4 turns, each ≤800 characters.
+- Guest session limit: **5 questions/IP/hour, 20/IP/day and 1,000 global/day** (all Redis-enforced, configurable). Message ≤800 characters, max 4 history messages (user ≤800 characters; AI reply ≤2,000 characters), and no persistence.
 - The guest UI prominently discloses: public IP and request count visible only to authorized admins for up to 24 hours; no guest message text stored in the IP audit.
 
 ## Architecture and security boundary
