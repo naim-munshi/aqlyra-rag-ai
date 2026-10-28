@@ -103,7 +103,7 @@ export function RegisterForm() {
         // An account can be committed even when the mail provider rejects
         // the OTP. Do not imply that a code was sent or send users to an
         // unusable code-entry screen.
-        if (registerData.verification_email_sent !== true) {
+        if (!("verification_email_sent" in registerData) || registerData.verification_email_sent !== true) {
           setPendingVerificationDelivery(true);
           setPassword("");
           setConfirmPassword("");
