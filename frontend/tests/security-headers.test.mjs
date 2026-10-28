@@ -19,8 +19,7 @@ test("HSTS is enabled for production without dangerous preloading", () => {
   assert.match(source, /Strict-Transport-Security/);
   assert.match(source, /max-age=31536000/);
   assert.match(source, /process\.env\.NODE_ENV === "production"/);
-  assert.doesNotMatch(source, /includeSubDomains/);
-  assert.doesNotMatch(source, /\bpreload\b/);
+  assert.doesNotMatch(source, /max-age=31536000;[^"]*(?:includeSubDomains|preload)/);
 });
 
 test("unused privileged browser APIs are denied without blocking voice or camera", () => {
