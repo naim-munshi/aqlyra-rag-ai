@@ -158,7 +158,12 @@ def _metadata(s3, owner: str, artifact_id: str) -> dict | None:
             or not isinstance(title, str)
             or item.get("filename") != _filename(title, fmt, artifact_id)
             or not isinstance(item.get("content"), str)
-            or not isinstance(item.get("size"), int)
+            or len(item["content"]) > 24_000
+            or not isinstance(item.get("created_at"), str)
+            or not isinstance(item.get("source_document_ids"), list)
+            or not isinstance(item.get("provider_name"), str)
+            or type(item.get("citation_count")) is not int
+            or type(item.get("size")) is not int
             or not 0 <= item["size"] <= MAX_RENDERED_BYTES
             or not _VALID_SHA.fullmatch(str(item.get("sha256", "")))):
             return None
@@ -213,7 +218,10 @@ def create_artifact(*, user_id: str, title: str, kind: str, content: str,
 
 def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
     owner = _uuid(user_id)
-    key = _uuid(artifact_id)
+    try:
+        key = _uuid(artifact_id)
+    except RemoteArtifactError:
+        return None
     item = _metadata(_storage(), owner, key)
     return {k: v for k, v in item.items() if k != "sha256"} if item else None
 
@@ -232,7 +240,10 @@ def list_artifacts(*, user_id: str) -> list[dict]:
 
 def artifact_download(*, user_id: str, artifact_id: str) -> tuple[bytes, dict] | None:
     owner = _uuid(user_id)
-    artifact_id = _uuid(artifact_id)
+    try:
+        artifact_id = _uuid(artifact_id)
+    except RemoteArtifactError:
+        return None
     s3 = _storage()
     meta = _metadata(s3, owner, artifact_id)
     if meta is None:
@@ -246,7 +257,10 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[bytes, dict] |
 
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
     owner = _uuid(user_id)
-    artifact_id = _uuid(artifact_id)
+    try:
+        artifact_id = _uuid(artifact_id)
+    except RemoteArtifactError:
+        return False
     s3 = _storage()
     with _owner_lock(owner):
         meta = _metadata(s3, owner, artifact_id)
