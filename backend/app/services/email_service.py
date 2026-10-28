@@ -56,6 +56,9 @@ def _send_message(message: EmailMessage, username: str, password: str) -> None:
     if settings.EMAIL_DELIVERY_PROVIDER == "resend":
         _send_via_resend(message)
         return
+    if settings.EMAIL_DELIVERY_PROVIDER == "brevo":
+        _send_via_brevo(message)
+        return
 
     tls_context = ssl.create_default_context()
 
@@ -127,6 +130,55 @@ def _send_via_resend(message: EmailMessage) -> None:
         raise EmailDeliveryError("Authentication email delivery failed") from exc
     if response.status_code != 200:
         # Never leak the provider response: it may include sensitive metadata.
+        raise EmailDeliveryError("Authentication email delivery failed")
+
+
+def _send_via_brevo(message: EmailMessage) -> None:
+    """Opt-in HTTPS transactional email, usable on hosts without SMTP ports."""
+    api_key = settings.BREVO_API_KEY.strip()
+    sender_address = settings.SMTP_FROM_EMAIL.strip()
+    if not api_key or not sender_address:
+        raise EmailDeliveryError("Email delivery is not configured")
+
+    # The Brevo sender must already be verified in the owner's Brevo account.
+    # Public-domain senders (Gmail) may be rewritten by Brevo for DMARC.
+    try:
+        validate_email(sender_address, check_deliverability=False)
+    except EmailNotValidError as exc:
+        raise EmailDeliveryError("Email sender is misconfigured") from exc
+
+    recipient = message.get("To")
+    subject = message.get("Subject")
+    if not recipient or not subject:
+        raise EmailDeliveryError("Invalid outgoing email metadata")
+
+    try:
+        response = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "Aqlyra-RAG-AI/1.0",
+            },
+            json={
+                "sender": {
+                    "name": settings.SMTP_FROM_NAME.strip(),
+                    "email": sender_address,
+                },
+                "to": [{"email": str(recipient)}],
+                "subject": str(subject),
+                "textContent": message.get_content(),
+            },
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        )
+    except httpx.HTTPError as exc:
+        raise EmailDeliveryError("Authentication email delivery failed") from exc
+
+    # A 201 means accepted for delivery, not inbox receipt.
+    if response.status_code != 201:
+        # Never expose the provider response, email address, OTP, or API key.
         raise EmailDeliveryError("Authentication email delivery failed")
 
 
