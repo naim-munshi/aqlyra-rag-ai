@@ -6,7 +6,7 @@ import json
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from redis.exceptions import RedisError
 from starlette.concurrency import run_in_threadpool
 
@@ -30,6 +30,30 @@ _GUEST_INSTRUCTIONS = (
     "Keep answers concise. Do not claim this session is saved."
 )
 _TTL_SECONDS = 24 * 3600
+_MAX_GUEST_BODY_BYTES = 20_000
+
+
+async def _bounded_guest_body(request: Request, *, max_bytes: int) -> bytes:
+    """Reject oversized direct Render requests before buffering or JSON parse.
+
+    Vercel bounds guest traffic too, but clients can address Render directly.
+    Never depend on an ingress-only limit for this public API.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            length = int(declared)
+        except ValueError as exc:
+            raise HTTPException(status_code=413, detail="Guest request too large") from exc
+        if length < 0 or length > max_bytes:
+            raise HTTPException(status_code=413, detail="Guest request too large")
+
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > max_bytes:
+            raise HTTPException(status_code=413, detail="Guest request too large")
+        body.extend(chunk)
+    return bytes(body)
 
 
 class GuestTurn(BaseModel):
@@ -145,7 +169,10 @@ async def guest_visit(request: Request) -> dict[str, bool]:
     """Record guest visits even before first chat, without retaining messages."""
     if not settings.GUEST_CHAT_ENABLED or not settings.RATE_LIMIT_ENABLED:
         raise HTTPException(status_code=503, detail="Guest access unavailable")
-    ip = _signed_guest_ip(request, await request.body())
+    raw = await _bounded_guest_body(request, max_bytes=2)
+    ip = _signed_guest_ip(request, raw)
+    if raw != b"{}":
+        raise HTTPException(status_code=422, detail="Invalid guest visit request")
     enforce_rate_limit(
         bucket="guest-visit-ip", identity="guest:" + ip,
         limit=30, window_seconds=86400,
@@ -155,11 +182,17 @@ async def guest_visit(request: Request) -> dict[str, bool]:
 
 
 @router.post("/chat")
-async def guest_chat(body: GuestChatRequest, request: Request) -> dict:
+async def guest_chat(request: Request) -> dict:
     if not settings.GUEST_CHAT_ENABLED or not settings.RATE_LIMIT_ENABLED:
         raise HTTPException(status_code=503, detail="Guest chat unavailable")
 
-    ip = _signed_guest_ip(request, await request.body())
+    raw = await _bounded_guest_body(request, max_bytes=_MAX_GUEST_BODY_BYTES)
+    ip = _signed_guest_ip(request, raw)
+    try:
+        body = GuestChatRequest.model_validate_json(raw)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid guest chat request") from exc
+
     enforce_rate_limit(
         bucket="guest-chat-hour", identity="guest:" + ip,
         limit=settings.GUEST_CHAT_HOURLY_IP_LIMIT, window_seconds=3600,
