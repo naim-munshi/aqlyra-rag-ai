@@ -7,6 +7,7 @@ const login = read("../src/app/login/page.tsx");
 const guestPage = read("../src/app/guest/page.tsx");
 const guest = read("../src/components/guest/guest-chat.tsx");
 const proxy = read("../src/app/api/guest/chat/route.ts");
+const visitProxy = read("../src/app/api/guest/visit/route.ts");
 const admin = read("../src/app/api/admin/guest-traffic/route.ts");
 
 test("real login offers a guest chat path instead of scripted demo", () => {
@@ -46,4 +47,14 @@ test("real guest chat only appears after public release flag is enabled", () => 
   assert.match(login, /NEXT_PUBLIC_AQLYRA_GUEST_ENABLED === "true"/);
   assert.match(guestPage, /NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true"/);
   assert.match(guestPage, /redirect\("\/login"\)/);
+});
+
+
+test("guest API routes refuse all traffic until accepted public rollout", () => {
+  for (const source of [proxy, visitProxy]) {
+    assert.match(source, /NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true"/);
+    assert.match(source, /x-vercel-forwarded-for/);
+    assert.doesNotMatch(source, /request\.headers\.get\("x-forwarded-for"\)/);
+    assert.match(source, /createHmac\("sha256", secret\)/);
+  }
 });
