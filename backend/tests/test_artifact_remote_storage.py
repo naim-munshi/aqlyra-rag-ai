@@ -202,3 +202,21 @@ def test_private_artifacts_http_auth_and_download(private_store, client):
     assert download.headers["content-disposition"].startswith("attachment;")
     assert client.delete(url + "/" + artifact_id, headers=alpha).status_code == 204
     assert client.get(url + "/" + artifact_id, headers=alpha).status_code == 404
+
+
+@pytest.mark.parametrize("kind", ["md", "pdf", "docx", "xlsx", "pptx"])
+def test_all_remote_artifact_formats_round_trip(private_store, kind):
+    owner = str(uuid4())
+    item = _make(owner, title="Five format proof", kind=kind)
+    binary, returned = facade.artifact_download(
+        user_id=owner, artifact_id=item["id"],
+    )
+    assert returned["format"] == kind
+    assert len(binary) == item["size"]
+    if kind == "md":
+        assert binary.startswith(b"# Proof")
+    elif kind == "pdf":
+        assert binary.startswith(b"%PDF")
+    else:
+        assert binary.startswith(b"PK")
+    assert facade.delete_artifact(user_id=owner, artifact_id=item["id"])
