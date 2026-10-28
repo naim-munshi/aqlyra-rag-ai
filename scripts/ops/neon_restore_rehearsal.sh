@@ -70,8 +70,12 @@ docker run --detach --rm \
 
 ready=0
 for i in $(seq 1 45); do
-  if docker exec "$CONTAINER" pg_isready \
-       -U postgres -d aqlyra_restore_verify >/dev/null 2>&1; then
+  # pg_isready can report the server as accepting connections while the
+  # POSTGRES_DB init script is still creating aqlyra_restore_verify.
+  # Require a real SQL query against the exact disposable target database.
+  if [[ "$(docker exec "$CONTAINER" psql -X -At \
+       -v ON_ERROR_STOP=1 -U postgres -d aqlyra_restore_verify \
+       -c 'SELECT 1' 2>/dev/null || true)" == "1" ]]; then
     ready=1
     break
   fi
