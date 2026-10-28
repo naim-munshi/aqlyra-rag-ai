@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 
-type TrafficEntry = { ip: string; requests: number; last_seen_utc: number };
+type TrafficEntry = {
+  ip: string;
+  requests: number;
+  visits?: number;
+  chat_requests?: number;
+  last_seen_utc: number;
+};
 type GuestTraffic = { entries: TrafficEntry[]; retention_hours: number };
 
 export function GuestTrafficPanel() {
@@ -40,7 +46,9 @@ export function GuestTrafficPanel() {
           <h2 className="text-lg font-semibold">Guest visitors · IP monitoring</h2>
           <p className="mt-1 text-xs leading-5 text-slate-400">
             IPs are visible to authorized admins only, retained in Redis for
-            up to 24 hours; no guest chat text is stored here.
+            at most 24 hours from the first event in each record; no guest
+            chat text is stored here. Visits and chat requests are counts,
+            not unique people.
           </p>
         </div>
         <button type="button" disabled={loading} onClick={() => void inspect()}
@@ -51,16 +59,20 @@ export function GuestTrafficPanel() {
       {error && <p role="alert" className="mt-3 text-xs text-amber-300">{error}</p>}
       {loaded && (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[380px] text-left text-xs">
+          <table className="w-full min-w-[520px] text-left text-xs">
             <thead><tr className="border-b border-white/10 text-slate-400">
               <th className="pb-2">Public IP</th>
               <th className="pb-2">Requests</th>
+              <th className="pb-2">Visits</th>
+              <th className="pb-2">Chats</th>
               <th className="pb-2">Last seen (UTC)</th>
             </tr></thead>
             <tbody>{rows.map((item) => (
               <tr key={item.ip} className="border-b border-white/5">
                 <td className="py-2 font-mono">{item.ip}</td>
                 <td className="py-2">{item.requests}</td>
+                <td className="py-2">{item.visits ?? 0}</td>
+                <td className="py-2">{item.chat_requests ?? 0}</td>
                 <td className="py-2">
                   {new Date(item.last_seen_utc * 1000).toISOString().replace("T", " ").slice(0, 19)}
                 </td>
