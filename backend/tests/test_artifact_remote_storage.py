@@ -222,6 +222,35 @@ def test_all_remote_artifact_formats_round_trip(private_store, kind):
     assert facade.delete_artifact(user_id=owner, artifact_id=item["id"])
 
 
+
+def test_real_postgresql_owner_advisory_lock_is_cross_session(db_session):
+    """Check a real PG16/PG18 lock; not a fake threading mutex."""
+    from hashlib import sha256
+    from sqlalchemy import text as sql_text
+    from app.database.connection import SessionLocal
+
+    owner = str(uuid4())
+    signed_key = int.from_bytes(
+        sha256(("aqlyra/artifact/quota/" + owner).encode()).digest()[:8],
+        byteorder="big", signed=True,
+    )
+    with remote._owner_lock(owner):
+        with SessionLocal() as independent:
+            with independent.begin():
+                assert independent.execute(
+                    sql_text("SELECT pg_try_advisory_xact_lock(:key)"),
+                    {"key": signed_key},
+                ).scalar_one() is False
+
+    # Releasing the first transaction makes the key available again.
+    with SessionLocal() as independent:
+        with independent.begin():
+            assert independent.execute(
+                sql_text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": signed_key},
+            ).scalar_one() is True
+
+
 def test_remote_owner_inventory_counts_only_and_never_modifies_objects(private_store):
     owner, unrelated = str(uuid4()), str(uuid4())
     missing = _make(owner, title="Missing binary")
