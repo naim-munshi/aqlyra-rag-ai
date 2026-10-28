@@ -121,6 +121,49 @@ jobs:
           alembic upgrade head
           alembic current
 
+      - name: Verify exact Full Study Abroad catalog on real PG16/18 (read-only)
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import os
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          import psycopg
+
+          root = Path.cwd().parent
+          source = root / 'scripts/ops/neon_study_schema_audit.py'
+          spec = importlib.util.spec_from_file_location('ci_schema_audit', source)
+          audit = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(audit)
+          database_url = os.environ['DATABASE_URL'].replace(
+              'postgresql+psycopg://', 'postgresql://', 1
+          )
+          target = urlsplit(database_url)
+          # Only the local CI fixture may ever be touched by this step.
+          if not (os.environ.get('GITHUB_ACTIONS') == 'true'
+                  and target.hostname in ('localhost', '127.0.0.1')
+                  and target.path == '/aqlyra_rag_ai'
+                  and target.username == 'postgres'
+                  and target.port in (None, 5432)):
+              raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED unsafe target')
+          with psycopg.connect(
+              database_url, connect_timeout=5,
+              options='-c default_transaction_read_only=on',
+          ) as conn:
+              if conn.execute('SHOW transaction_read_only').fetchone() != ('on',):
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED read-only')
+              revision, is_full = audit.backup.audit_revision(conn)
+              if revision != audit.backup.EXPECTED_FULL or not is_full:
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED revision')
+              phase, count = audit.audit_schema(conn, 'full')
+              if phase != 'full' or count != 20:
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED table count')
+              conn.rollback()
+          print('CI_FULL_SCHEMA_CATALOG=PASS')
+          print('CI_SCHEMA_AUDIT_DATABASE=LOCAL_ONLY')
+          print('CI_DATABASE_MIGRATION=NOT_RUN_BY_AUDIT')
+          PY
       - name: Verify isolated synthetic Full Release backup restore
         run: |
           set -Eeuo pipefail
