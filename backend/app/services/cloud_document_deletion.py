@@ -48,6 +48,9 @@ def delete_cloud_document(*, db: Session, owner_id: str, document_id: str):
             raise PrivateObjectStorageError("Private document deletion binding unavailable")
         # The staging key comes from owner-verified SQL, never from the client.
         assert_owned_key(owner_id=owner_id, key=intent.object_key)
+        # Fail closed on corrupted cross-tenant case associations BEFORE
+        # deleting any remote bytes. A later S3 failure rolls this back.
+        reconcile_document_before_delete(db=db, document=locked)
         store = _client(settings)
         bucket = settings.OBJECT_STORAGE_BUCKET
         if intent.stage_deleted_at is None:
@@ -58,8 +61,6 @@ def delete_cloud_document(*, db: Session, owner_id: str, document_id: str):
         # Keep stage_deleted_at unset when a grant may still be writable.
         # The delayed, operator-controlled sweep re-deletes after expiry.
         intent.deleted_at = utc_now_naive()
-        # Reconcile the applicant checklist in the same DB transaction.
-        reconcile_document_before_delete(db=db, document=locked)
         db.delete(locked)
         db.commit()
         return True
