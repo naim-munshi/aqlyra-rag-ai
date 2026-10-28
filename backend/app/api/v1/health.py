@@ -19,6 +19,10 @@ from app.core.rate_limit import get_rate_limit_redis
 
 router = APIRouter()
 
+# The explicitly reviewed full-release Alembic head. Update this constant
+# alongside any future schema migration in the full-release branch.
+_FULL_RELEASE_DB_REVISION = "d4ec2f9b7860"
+
 
 @router.get("/health")
 async def health():
@@ -51,6 +55,17 @@ def readiness():
         db.execute(
             text("SELECT 1")
         )
+
+        # PostgreSQL accepting connections is not enough for production:
+        # a full-release backend cannot serve RAG or Study Abroad against
+        # a stale or uninitialized schema. Keep this fail-closed and avoid
+        # leaking database metadata or migration details to callers.
+        if settings.is_production:
+            revision = db.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one_or_none()
+            if revision != _FULL_RELEASE_DB_REVISION:
+                raise RuntimeError("Schema revision is not current")
 
         upload_dir = (
             settings
