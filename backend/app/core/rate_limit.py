@@ -82,6 +82,30 @@ def _rate_limit_key(
     )
 
 
+def _request_from_trusted_proxy(request: Request) -> bool:
+    """Only a configured direct proxy peer can set a trusted client IP.
+
+    Never trust public Render ingress headers: clients can submit the same
+    X-Aqlyra-Client-IP value directly to the publicly reachable API.
+    """
+    if not request.client or not request.client.host:
+        return False
+    raw_allowlist = settings.RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS
+    if not raw_allowlist.strip():
+        return False
+    try:
+        peer = ipaddress.ip_address(request.client.host.strip())
+        trusted = {
+            ipaddress.ip_address(value.strip())
+            for value in raw_allowlist.split(",")
+            if value.strip()
+        }
+        return peer in trusted
+    except ValueError:
+        # Badly configured allowlist always fails closed.
+        return False
+
+
 def _resolve_client_ip(
     request: Request,
 ) -> str:
@@ -91,7 +115,10 @@ def _resolve_client_ip(
         .strip()
     )
 
-    if configured_header:
+    if configured_header and (
+        not settings.is_production
+        or _request_from_trusted_proxy(request)
+    ):
         forwarded_value = (
             request.headers.get(
                 configured_header
