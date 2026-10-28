@@ -80,6 +80,31 @@ def test_network_error_is_fail_closed(monkeypatch, resend):
         mail.send_password_reset_email(recipient_email="user@example.com", code="123456")
 
 
+@pytest.mark.parametrize(
+    "invalid_sender",
+    ["Aqlyra", "Aqlyra <verify@example.com>", "not-an-email", "foo@"],
+)
+def test_resend_invalid_sender_fails_before_network(monkeypatch, resend, invalid_sender):
+    # A production misconfiguration previously sent "Aqlyra <Aqlyra>"
+    # to the provider and stranded registrations behind HTTP 422.
+    monkeypatch.setattr(mail.settings, "SMTP_FROM_EMAIL", invalid_sender)
+    monkeypatch.setattr(
+        mail.httpx,
+        "post",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("invalid sender sent to Resend")),
+    )
+    with pytest.raises(mail.EmailDeliveryError, match="sender is misconfigured"):
+        mail.send_verification_email(
+            recipient_email="account@example.com",
+            code="123456",
+        )
+    with pytest.raises(mail.EmailDeliveryError, match="sender is misconfigured"):
+        mail.send_password_reset_email(
+            recipient_email="account@example.com",
+            code="654321",
+        )
+
+
 def test_missing_resend_key_fails_before_network(monkeypatch, resend):
     monkeypatch.setattr(mail.settings, "RESEND_API_KEY", "")
     monkeypatch.setattr(mail.httpx, "post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("unexpected outbound HTTP")))
