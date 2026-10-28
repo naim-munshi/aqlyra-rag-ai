@@ -1,10 +1,29 @@
 # Aqlyra Full Release — Neon backup, restore rehearsal and controlled migration
 
-**Status (2026-10-28):** Core Render is LIVE and `/api/v1/health` and `/api/v1/readiness`
-both returned HTTP 200 from an independent GitHub runner after the owner's
-Upstash fix. Full-release schema migration to `d4ec2f9b7860`,
-Study Abroad backend cutover, and LiveKit voice agent deployment are NOT
-verified complete.
+**Verified project access and schema (2026-10-28):** Neon plugin is NOW
+correctly scoped to project `rough-river-66110449` (`aqlyra-staging`);
+the default branch is `production`
+(`br-morning-water-a1lgl3s4`, PostgreSQL 18.6). Read-only checks
+confirmed the default `neondb` database currently has **no application
+tables**, **no `alembic_version`**, and **no `vector` extension**. A
+pre-release snapshot `snap-restless-mouse-a144fpzy`, named
+`aqlyra-staging-pre-full-release-20261028`, was created on that branch
+(2026-10-28 04:39 UTC). This snapshot captures the EMPTY schema and is
+NOT evidence that existing RAG data are backed up or restored.
+
+**Render verification distinction:** Existing core Render returned
+`/health=200` and `/readiness=200` before the core readiness contract
+checked Alembic schema. That demonstrated DB TCP connectivity, Redis and
+upload storage, **not** migrated RAG tables. The Render `DATABASE_URL`
+target project must be independently matched before any schema cutover;
+do not assume this empty Neon staging project is the only live data source.
+The core and full release branches now add a production schema/pgvector
+readiness guard. The exact-head CI and resulting live deploy must be
+verified independently.
+
+Full Release schema bootstrap, real backup of any populated source, a
+restoration rehearsal, Study Abroad backend cutover and LiveKit voice
+deployment are **NOT** yet verified complete.
 
 **Never paste Neon, Upstash, Groq, Hugging Face or LiveKit credentials into
 ChatGPT, GitHub commits, workflow logs or support tickets.** Only the
@@ -12,12 +31,13 @@ owner's trusted local Mac should hold the connection URL.
 
 ## 1. Restore correct Neon connector permissions
 
-The current ChatGPT Neon connector is **incorrectly bound to the literal
-GitHub repository URL** and rejects project ID `rough-river-66110449`
-(`aqlyra-staging`). Reconnect the Neon plugin selecting the actual Neon
-project `aqlyra-staging`. The assistant cannot run migrations or create a
-snapshot through this mis-scoped connector. Do not guess an alternative
-database project or try destructive SQL using the wrong project.
+The Neon connector WAS incorrectly bound to a GitHub URL, but it
+has been reconnected successfully to the exact project
+`rough-river-66110449`. Live read-only project, branch and schema checks
+and the named pre-release empty-database snapshot succeeded. The project
+is currently UNINITIALIZED. Do not treat this new empty project as a
+verified populated production database or rewrite its credentials into
+Render before first identifying Render's existing data source.
 
 ## 2. Read-only isolated database audit
 
