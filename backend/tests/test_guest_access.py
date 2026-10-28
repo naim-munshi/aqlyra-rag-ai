@@ -221,3 +221,17 @@ def test_guest_visit_denies_unsigned_or_expired_requests(
     ).status_code == 403
     assert budgets == []
     assert audits == []
+
+
+def test_signed_ipv6_is_normalized_for_rate_limiting(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    content = body("Hello")
+    result = client.post(
+        "/api/v1/guest/chat", content=content,
+        headers=signed_headers(content, ip="2001:DB8::ABCD"),
+    )
+    assert result.status_code == 200, result.text
+    assert audits == ["2001:db8::abcd"]
+    assert budgets[0]["identity"] == "guest:2001:db8::abcd"
