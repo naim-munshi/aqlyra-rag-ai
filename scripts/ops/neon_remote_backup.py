@@ -17,7 +17,7 @@ import shutil
 import stat
 import subprocess
 import sys
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 
 EXPECTED_PREVIOUS = "b5e4a019dc72"
@@ -72,6 +72,36 @@ def parse_neon_url(value: str, expected_host: str) -> tuple[str, dict[str, str]]
     if query.get("sslmode") not in (["require"], ["verify-full"]):
         raise ValueError("TLS must be enforced by sslmode=require/verify-full")
     return value, {"host": host, "port": str(port), "tls": query["sslmode"][0]}
+
+
+
+def assert_target_identity(
+    connection_url: str, conn, expected_database: str, expected_role: str,
+) -> None:
+    """Fail closed on the exact connected database and current SQL role.
+
+    Host-only validation is insufficient because one Neon endpoint can
+    serve more than one database and a credential may select another role.
+    Only fixed pass/fail diagnostics are printed by the CLI.
+    """
+    if not expected_database or not expected_role:
+        raise ValueError("Exact database and SQL role must be approved")
+    u = urlsplit(connection_url)
+    if (
+        unquote(u.path.lstrip("/")) != expected_database
+        or unquote(u.username or "") != expected_role
+    ):
+        raise ValueError("Approved URL database or role mismatch")
+    record = conn.execute(
+        "SELECT current_database(), current_user"
+    ).fetchone()
+    if (
+        record is None or len(record) != 2
+        or record[0] != expected_database
+        or record[1] != expected_role
+    ):
+        raise ValueError("Connected PostgreSQL identity mismatch")
+
 
 
 def audit_revision(conn) -> tuple[str, bool]:
@@ -173,11 +203,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url-file", type=Path, required=True)
     parser.add_argument("--expected-host", required=True)
+    parser.add_argument("--expected-database", required=True)
+    parser.add_argument("--expected-role", required=True)
     parser.add_argument("--backup-dir", type=Path)
     args = parser.parse_args(argv)
     try:
         url = secret_file_value(args.url_file)
         pg_url, details = parse_neon_url(url, args.expected_host)
+        # Reject wrong database/role before even opening a network connection.
+        approved_url = urlsplit(pg_url)
+        if (
+            unquote(approved_url.path.lstrip("/")) != args.expected_database
+            or unquote(approved_url.username or "") != args.expected_role
+        ):
+            raise ValueError("Connection URL does not identify approved DB and role")
         # Backup/migrations require an unpooled direct Neon connection.
         # The -pooler URL is appropriate for live API traffic only.
         if (
@@ -202,6 +241,9 @@ def main(argv: list[str] | None = None) -> int:
                 pg_url, connect_timeout=10,
                 options="-c default_transaction_read_only=on",
             ) as conn:
+                assert_target_identity(
+                    pg_url, conn, args.expected_database, args.expected_role,
+                )
                 revision, is_full = audit_revision(conn)
                 conn.rollback()
         finally:
