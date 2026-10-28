@@ -139,7 +139,8 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             ("neondb", "other_role"),
         ]:
             with self.subTest(expected_db=expected_db, expected_role=expected_role):
-                gate.assert_target_identity(URL, Mock(), expected_db, expected_role)
+                with self.assertRaises(ValueError):
+                    gate.assert_target_identity(URL, Mock(), expected_db, expected_role)
 
         bad_conn = Mock()
         for observed in [
