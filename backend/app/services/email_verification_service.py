@@ -78,10 +78,21 @@ def issue_verification_code(
     user: User,
     enforce_cooldown: bool,
 ) -> IssuedVerificationCode:
+    # Serialize resend requests for the same account across API workers.
+    # Otherwise two concurrent requests may both see no recent challenge,
+    # bypass the cooldown and leave multiple valid OTPs outstanding.
+    locked_user = db.scalar(
+        select(User)
+        .where(User.id == str(user.id))
+        .with_for_update()
+    )
+    if locked_user is None or not locked_user.is_active:
+        raise VerificationCodeError("Account is unavailable")
+
     now = utc_now_naive()
     latest = _latest_code(
         db,
-        user_id=str(user.id),
+        user_id=str(locked_user.id),
     )
 
     if latest is not None and enforce_cooldown:
