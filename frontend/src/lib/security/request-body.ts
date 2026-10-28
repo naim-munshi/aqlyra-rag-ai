@@ -10,10 +10,10 @@ export class RequestBodyTooLargeError extends Error {
   }
 }
 
-export async function readBoundedBodyText(
+export async function readBoundedBodyBytes(
   request: Request,
   maxBytes: number,
-): Promise<string> {
+): Promise<Uint8Array> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new RangeError("Invalid body limit");
   }
@@ -44,8 +44,15 @@ export async function readBoundedBodyText(
     reader.releaseLock();
   }
 
+  return Buffer.concat(chunks, bytes);
+}
+
+export async function readBoundedBodyText(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
   return new TextDecoder("utf-8", { fatal: true }).decode(
-    Buffer.concat(chunks, bytes),
+    await readBoundedBodyBytes(request, maxBytes),
   );
 }
 
