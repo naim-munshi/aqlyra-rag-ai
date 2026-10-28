@@ -1,0 +1,99 @@
+"""Self-contained, offline tests for Neon remote backup preflight contracts."""
+import importlib.util
+from pathlib import Path
+import os
+import stat
+import tempfile
+import unittest
+from unittest.mock import Mock
+
+MODULE = Path(__file__).with_name("neon_remote_backup.py")
+spec = importlib.util.spec_from_file_location("neon_remote_backup", MODULE)
+gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gate)
+
+HOST = "ep-private-pooler.ap-southeast-1.aws.neon.tech"
+URL = f"postgresql://neondb_owner:percent%40encoded@{HOST}/neondb?sslmode=require&channel_binding=require"
+
+
+class NeonRemoteBackupSafetyTest(unittest.TestCase):
+    def test_neon_tls_host_and_ssl_requirements(self):
+        url, details = gate.parse_neon_url(URL, HOST)
+        self.assertEqual(url, URL)
+        self.assertEqual(details["host"], HOST)
+        self.assertEqual(details["tls"], "require")
+
+    def test_sqlalchemy_psycopg_v3_selector_normalized(self):
+        raw = URL.replace("postgresql://", "postgresql+psycopg://", 1)
+        actual, _ = gate.parse_neon_url(raw, HOST)
+        self.assertEqual(actual, URL)
+
+    def test_host_mismatch_is_denied(self):
+        with self.assertRaises(ValueError):
+            gate.parse_neon_url(URL, "ep-other-pooler.aws.neon.tech")
+
+    def test_non_neon_hostname_is_denied(self):
+        bad = URL.replace(HOST, "db.example.com")
+        with self.assertRaises(ValueError):
+            gate.parse_neon_url(bad, "db.example.com")
+
+    def test_unencrypted_or_rest_api_urls_are_denied(self):
+        for bad in [
+            URL.replace("sslmode=require", "sslmode=disable"),
+            URL.replace("postgresql://", "https://", 1),
+            URL + "#secret",
+            URL.replace("/neondb?", "/?"),
+            URL.replace("sslmode=require", "sslmode=prefer"),
+        ]:
+            with self.subTest(url_kind=bad[:9]):
+                with self.assertRaises(ValueError):
+                    gate.parse_neon_url(bad, HOST)
+
+    def test_private_file_permissions_and_raw_value(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root) / "db.url"
+            p.write_text(URL, encoding="utf-8")
+            p.chmod(0o600)
+            self.assertEqual(gate.secret_file_value(p), URL)
+            p.chmod(0o644)
+            with self.assertRaises(ValueError):
+                gate.secret_file_value(p)
+            p.chmod(0o600)
+            p.write_text(URL + '\nREDIS_URL=not-allowed', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                gate.secret_file_value(p)
+            p.write_text(URL, encoding="utf-8")
+            link = Path(root) / "linked.url"
+            link.symlink_to(p)
+            with self.assertRaises(ValueError):
+                gate.secret_file_value(link)
+
+    def test_schema_preflight_requires_vector_core_tables_single_revision(self):
+        def fake_conn(row, versions):
+            conn = Mock()
+            conn.execute.side_effect = [
+                Mock(fetchone=lambda: row),
+                Mock(fetchall=lambda: [(x,) for x in versions]),
+            ]
+            return conn
+        self.assertEqual(
+            gate.audit_revision(fake_conn((True,) * 4, [gate.EXPECTED_PREVIOUS])),
+            (gate.EXPECTED_PREVIOUS, False),
+        )
+        self.assertEqual(
+            gate.audit_revision(fake_conn((True,) * 4, [gate.EXPECTED_FULL])),
+            (gate.EXPECTED_FULL, True),
+        )
+        for row, versions in [
+            ((False, True, True, True), [gate.EXPECTED_FULL]),
+            ((True,) * 4, []),
+            ((True,) * 4, ["unknown"]),
+            ((True,) * 4, [gate.EXPECTED_PREVIOUS, gate.EXPECTED_FULL]),
+        ]:
+            with self.subTest(row=row, versions=versions):
+                with self.assertRaises(ValueError):
+                    gate.audit_revision(fake_conn(row, versions))
+
+
+if __name__ == "__main__":
+    unittest.main()
