@@ -116,8 +116,10 @@ def _signed_guest_ip(request: Request, body: bytes) -> str:
     return ip
 
 
-def _record_guest_ip(ip: str) -> None:
-    """Bounded ephemeral Redis IP audit; 24h TTL, no prompt/text persistence."""
+def _record_guest_ip(ip: str, *, event: str = "chat") -> None:
+    """24h fixed-lifetime Redis audit; never persist guest message text."""
+    if event not in ("visit", "chat"):
+        raise ValueError("Invalid guest audit event")
     digest = hmac.new(
         settings.GUEST_PROXY_SECRET.encode("utf-8"),
         ip.encode("ascii"),
@@ -131,7 +133,10 @@ def _record_guest_ip(ip: str) -> None:
             "ip": ip, "last_seen_utc": str(int(time.time()))
         })
         pipeline.hincrby(key, "requests", 1)
-        pipeline.expire(key, _TTL_SECONDS)
+        pipeline.hincrby(key, "visits" if event == "visit" else "chat_requests", 1)
+        # EXPIRE NX sets the TTL only if the key has no expiration.
+        # An active visitor must not extend a record beyond its first 24h.
+        pipeline.expire(key, _TTL_SECONDS, nx=True)
         pipeline.execute()
     except (RedisError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=503, detail="Guest chat unavailable") from exc
@@ -156,6 +161,8 @@ def recent_guest_traffic() -> list[dict[str, object]]:
             rows.append({
                 "ip": str(record.get("ip", "")),
                 "requests": int(record.get("requests", 0)),
+                "visits": int(record.get("visits", 0)),
+                "chat_requests": int(record.get("chat_requests", 0)),
                 "last_seen_utc": int(record.get("last_seen_utc", 0)),
             })
         rows.sort(key=lambda x: int(x["last_seen_utc"]), reverse=True)
@@ -177,7 +184,7 @@ async def guest_visit(request: Request) -> dict[str, bool]:
         bucket="guest-visit-ip", identity="guest:" + ip,
         limit=30, window_seconds=86400,
     )
-    _record_guest_ip(ip)
+    _record_guest_ip(ip, event="visit")
     return {"ok": True}
 
 
