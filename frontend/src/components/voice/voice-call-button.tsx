@@ -153,6 +153,8 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
+  const agentJoinTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -189,6 +191,39 @@ export function VoiceCallButton({
     useState("");
 
 
+  function clearAgentJoinTimer() {
+    if (agentJoinTimerRef.current !== null) {
+      clearTimeout(agentJoinTimerRef.current);
+      agentJoinTimerRef.current = null;
+    }
+  }
+
+  function waitForAgent(room: Room) {
+    clearAgentJoinTimer();
+    if (room.remoteParticipants.size > 0) {
+      setError("");
+      setAgentState((current) =>
+        current === "connecting" || current === "error"
+          ? "listening" : current,
+      );
+      return;
+    }
+    setAgentState("connecting");
+    agentJoinTimerRef.current = setTimeout(() => {
+      agentJoinTimerRef.current = null;
+      if (
+        roomRef.current !== room ||
+        room.remoteParticipants.size > 0
+      ) return;
+      const message =
+        "AI voice agent did not join the call. " +
+        "End the call and try again when the voice service is online.";
+      setAgentState("error");
+      setError(message);
+      onError?.(message);
+    }, 20000);
+  }
+
   function clearAudioElements() {
     const container =
       audioContainerRef.current;
@@ -206,6 +241,7 @@ export function VoiceCallButton({
 
 
   async function endCall() {
+    clearAgentJoinTimer();
     const room =
       roomRef.current;
 
@@ -243,6 +279,7 @@ export function VoiceCallButton({
       return;
     }
 
+    clearAgentJoinTimer();
     setStarting(true);
     setError("");
     setLiveUserText("");
@@ -400,6 +437,8 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.ParticipantConnected,
         (participant) => {
+          clearAgentJoinTimer();
+          setError("");
           const state =
             normalizeAgentState(
               participant.attributes[
@@ -440,9 +479,17 @@ export function VoiceCallButton({
         },
       );
 
+      room.on(RoomEvent.ParticipantDisconnected, () => {
+        if (roomRef.current === room &&
+            room.remoteParticipants.size === 0) {
+          waitForAgent(room);
+        }
+      });
+
       room.on(
         RoomEvent.Disconnected,
         () => {
+          clearAgentJoinTimer();
           roomRef.current = null;
 
           clearAudioElements();
@@ -470,13 +517,9 @@ export function VoiceCallButton({
       setActive(true);
       setStarting(false);
 
-      setAgentState(
-        (current) =>
-          current === "connecting"
-            ? "listening"
-            : current,
-      );
+      waitForAgent(room);
     } catch (startError) {
+      clearAgentJoinTimer();
       if (room) {
         try {
           await room.disconnect();
@@ -536,6 +579,7 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
+      clearAgentJoinTimer();
       const room =
         roomRef.current;
 
@@ -650,7 +694,11 @@ export function VoiceCallButton({
             {!liveUserText &&
             !liveAgentText ? (
               <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                Speak naturally. Aqlyra is listening.
+                {agentState === "connecting"
+                  ? "Waiting for the AI voice agent to join..."
+                  : agentState === "error"
+                    ? "The AI voice agent is unavailable."
+                    : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>
