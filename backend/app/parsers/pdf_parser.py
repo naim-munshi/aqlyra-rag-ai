@@ -16,6 +16,13 @@ from app.parsers.types import (
 )
 
 
+# A small PDF can advertise huge page counts or expand into vast text.
+# Bound parser work before generating units/embeddings for attacker-supplied files.
+MAX_PDF_PAGES = 500
+MAX_PDF_PAGE_CHARACTERS = 200_000
+MAX_PDF_TOTAL_CHARACTERS = 2_000_000
+
+
 class PDFParser:
     extensions = frozenset({".pdf"})
 
@@ -45,7 +52,13 @@ class PDFParser:
             ) from exc
 
         units: list[ParsedUnit] = []
-        total_pages = len(reader.pages)
+        try:
+            total_pages = len(reader.pages)
+        except Exception as exc:
+            raise DocumentParsingError("The PDF page structure is invalid") from exc
+        if total_pages > MAX_PDF_PAGES:
+            raise DocumentParsingError("The PDF exceeds the page safety limit")
+        extracted_characters = 0
 
         for page_number, page in enumerate(
             reader.pages,
@@ -67,9 +80,15 @@ class PDFParser:
 
                 except Exception as exc:
                     content = ""
-                    extraction_error = (
-                        f"{type(exc).__name__}: {str(exc)[:200]}"
-                    )
+                    # Do not store parser exception messages containing
+                    # paths, document fragments, or processing internals.
+                    extraction_error = type(exc).__name__
+
+            if len(content) > MAX_PDF_PAGE_CHARACTERS:
+                raise DocumentParsingError("A PDF page exceeds the text safety limit")
+            extracted_characters += len(content)
+            if extracted_characters > MAX_PDF_TOTAL_CHARACTERS:
+                raise DocumentParsingError("The PDF exceeds the text safety limit")
 
             metadata: dict[str, Any] = {
                 "page_number": page_number,
