@@ -51,6 +51,7 @@ def readiness():
     writable.
     """
     db = SessionLocal()
+    check_stage = "database_connection"
 
     try:
         db.execute(
@@ -61,12 +62,14 @@ def readiness():
         # block RAG and accounts until the exact reviewed schema and
         # pgvector core dependencies have actually been migrated.
         if settings.is_production:
+            check_stage = "schema_revision"
             version = db.execute(
                 text("SELECT version_num FROM public.alembic_version")
             ).scalar_one_or_none()
             if version != _FULL_RELEASE_DB_REVISION:
                 raise RuntimeError("Aqlyra database revision is not current")
 
+            check_stage = "schema_core"
             core_schema_ready = db.execute(
                 text(
                     "SELECT "
@@ -80,6 +83,7 @@ def readiness():
             if not core_schema_ready:
                 raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
 
+        check_stage = "upload_storage"
         upload_dir = (
             settings
             .UPLOAD_DIR
@@ -103,6 +107,13 @@ def readiness():
             pass
 
     except Exception as exc:
+        # Only fixed stage labels and exception class are emitted. Never
+        # log the database URL, SQL exception text or user data.
+        app_logger.warning(
+            "readiness_backend_not_ready",
+            stage=check_stage,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=(
                 status
