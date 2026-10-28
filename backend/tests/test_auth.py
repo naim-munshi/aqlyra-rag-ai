@@ -309,6 +309,7 @@ def test_resend_verification_enforces_cooldown(
 
 def test_registration_stays_unverified_when_email_delivery_fails(
     client: TestClient,
+    db_session: Session,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -330,8 +331,44 @@ def test_registration_stays_unverified_when_email_delivery_fails(
     registered = register_user(client)
 
     assert registered.status_code == 201
+    assert registered.json()["verification_required"] is True
     assert registered.json()["verification_email_sent"] is False
+    assert registered.json()["verification_token"] is None
+    assert db_session.query(EmailVerificationCode).count() == 0
     assert login_user(client).status_code == 403
+
+    # A rejected provider request must not strand a pending registration:
+    # the owner can request a fresh challenge after delivery is restored.
+    failed_resend = client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": USER_DATA["email"]},
+    )
+    assert failed_resend.status_code == 503
+    assert db_session.query(EmailVerificationCode).count() == 0
+
+    sent_codes: list[str] = []
+    monkeypatch.setattr(
+        auth_api,
+        "send_verification_email",
+        lambda *, recipient_email, code: sent_codes.append(code),
+    )
+    resent = client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": USER_DATA["email"]},
+    )
+    assert resent.status_code == 200
+    assert len(sent_codes) == 1
+    assert resent.json()["verification_token"]
+    verified = client.post(
+        "/api/v1/auth/verify-email",
+        json={
+            "verification_token": resent.json()["verification_token"],
+            "code": sent_codes[0],
+            "password": USER_DATA["password"],
+        },
+    )
+    assert verified.status_code == 200
+    assert login_user(client).status_code == 200
 
 
 def test_duplicate_pending_registration_cannot_overwrite_credentials(
