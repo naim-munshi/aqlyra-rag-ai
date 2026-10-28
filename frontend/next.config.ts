@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
         { key: "X-Frame-Options", value: "DENY" },
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        // Browser-side defense in depth; keep camera/mic available for
+        // consent-driven uploads and LiveKit voice on this origin.
+        { key: "Permissions-Policy", value: "geolocation=(), payment=(), usb=(), serial=(), browsing-topics=()" },
+        // Vercel serves production over HTTPS. Do not preload or include
+        // subdomains while deployment and custom domains are still changing.
+        ...(process.env.NODE_ENV === "production"
+          ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+          : []),
       ],
     }];
   },
