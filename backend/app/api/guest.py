@@ -73,7 +73,8 @@ def _signed_guest_ip(request: Request, body: bytes) -> str:
         raise HTTPException(status_code=403, detail="Guest request denied") from exc
     if abs(int(time.time()) - second) > 60:
         raise HTTPException(status_code=403, detail="Guest request denied")
-    signed = f"{timestamp}:{ip}:{hashlib.sha256(body).hexdigest()}"
+    # Sign the exact Vercel header text; normalize IP only for limits/logs.
+    signed = f"{timestamp}:{ip_text}:{hashlib.sha256(body).hexdigest()}"
     expected = hmac.new(
         key.encode("utf-8"), signed.encode("utf-8"), hashlib.sha256
     ).hexdigest()
