@@ -164,3 +164,41 @@ def test_remote_advisory_lock_uses_scoped_postgres_transaction(monkeypatch):
     with remote._owner_lock(str(uuid4())):
         events.append("write")
     assert events == ["begin", "lock", "write", "commit"]
+
+
+def test_private_artifacts_http_auth_and_download(private_store, client):
+    url = "/api/v1/artifacts"
+    assert client.get(url).status_code == 401
+
+    def login(username):
+        email = username + "@example.com"
+        register = client.post("/api/v1/auth/register", json={
+            "username": username, "email": email, "password": "SecurePass123!",
+        })
+        assert register.status_code == 201
+        result = client.post("/api/v1/auth/login", json={
+            "email": email, "password": "SecurePass123!",
+        })
+        assert result.status_code == 200
+        return {"Authorization": "Bearer " + result.json()["access_token"]}
+
+    alpha = login("remotetestalpha")
+    beta = login("remotetestbeta")
+    created = client.post(url + "/render", headers=alpha, json={
+        "title": "Report", "format": "md", "content": "# Remote proof",
+    })
+    assert created.status_code == 201
+    artifact_id = created.json()["id"]
+    assert client.get(url, headers=beta).json()["total"] == 0
+    assert client.get(url + "/" + artifact_id, headers=beta).status_code == 404
+    assert client.get(url + "/" + artifact_id + "/download", headers=beta).status_code == 404
+    assert client.get(url + "/not-a-uuid", headers=alpha).status_code == 404
+
+    download = client.get(url + "/" + artifact_id + "/download", headers=alpha)
+    assert download.status_code == 200
+    assert download.content == b"# Remote proof"
+    assert download.headers["cache-control"] == "private, no-store"
+    assert download.headers["x-content-type-options"] == "nosniff"
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert client.delete(url + "/" + artifact_id, headers=alpha).status_code == 204
+    assert client.get(url + "/" + artifact_id, headers=alpha).status_code == 404
