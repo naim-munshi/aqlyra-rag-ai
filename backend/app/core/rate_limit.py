@@ -220,7 +220,9 @@ def enforce_rate_limit(
             )
         )
 
-    except RedisError:
+    except (RedisError, ValueError):
+        # Redis.from_url rejects HTTP REST URLs and other invalid schemes.
+        # Never bypass rate limits or leak a constructor error to clients.
         _raise_unavailable(
             bucket=bucket
         )
