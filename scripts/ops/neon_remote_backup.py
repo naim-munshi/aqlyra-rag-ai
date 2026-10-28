@@ -185,6 +185,23 @@ def verify_backup_clients(server_major: int) -> None:
             )
 
 
+def neon_server_major(conn) -> int:
+    """Query live version with psycopg v3 Cursor.fetchone(), not SQLAlchemy."""
+    row = conn.execute(
+        "SELECT current_setting('server_version_num')"
+    ).fetchone()
+    if (
+        row is None or len(row) != 1
+        or not isinstance(row[0], str)
+        or not row[0].isdigit()
+    ):
+        raise BackupClientVersionError("Neon server version unavailable")
+    major = int(row[0]) // 10000
+    if not 10 <= major <= 30:
+        raise BackupClientVersionError("Neon server version unsupported")
+    return major
+
+
 def create_backup(
     connection_url: str, backup_dir: Path, revision: str,
     server_major: int,
@@ -307,13 +324,8 @@ def main(argv: list[str] | None = None) -> int:
                     pg_url, conn, args.expected_database, args.expected_role,
                 )
                 revision, is_full = audit_revision(conn)
-                # Read-only server version check; do not infer from a URL.
-                server_version_num = int(
-                    conn.execute(
-                        "SELECT current_setting('server_version_num')"
-                    ).scalar_one()
-                )
-                server_major = server_version_num // 10000
+                # Psycopg 3 cursors implement fetchone(), not scalar_one().
+                server_major = neon_server_major(conn)
                 conn.rollback()
         finally:
             os.environ.update(inherited_pg)
