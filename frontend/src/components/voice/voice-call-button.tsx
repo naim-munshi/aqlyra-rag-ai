@@ -198,9 +198,17 @@ export function VoiceCallButton({
     }
   }
 
+  function hasVoiceAgent(room: Room): boolean {
+    return Array.from(room.remoteParticipants.values()).some(
+      (participant) =>
+        participant.isAgent &&
+        !participant.attributes["lk.publish_on_behalf"],
+    );
+  }
+
   function waitForAgent(room: Room) {
     clearAgentJoinTimer();
-    if (room.remoteParticipants.size > 0) {
+    if (hasVoiceAgent(room)) {
       setError("");
       setAgentState((current) =>
         current === "connecting" || current === "error"
@@ -213,7 +221,7 @@ export function VoiceCallButton({
       agentJoinTimerRef.current = null;
       if (
         roomRef.current !== room ||
-        room.remoteParticipants.size > 0
+        hasVoiceAgent(room)
       ) return;
       const message =
         "AI voice agent did not join the call. " +
@@ -437,6 +445,10 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.ParticipantConnected,
         (participant) => {
+          if (
+            !participant.isAgent ||
+            participant.attributes["lk.publish_on_behalf"]
+          ) return;
           clearAgentJoinTimer();
           setError("");
           const state =
@@ -460,8 +472,9 @@ export function VoiceCallButton({
           participant,
         ) => {
           if (
-            participant ===
-            room?.localParticipant
+            participant === room?.localParticipant ||
+            !participant.isAgent ||
+            participant.attributes["lk.publish_on_behalf"]
           ) {
             return;
           }
@@ -483,7 +496,7 @@ export function VoiceCallButton({
         if (
           room !== null &&
           roomRef.current === room &&
-          room.remoteParticipants.size === 0
+          !hasVoiceAgent(room)
         ) {
           waitForAgent(room);
         }
