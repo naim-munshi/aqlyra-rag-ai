@@ -92,7 +92,7 @@ export function GuestChat() {
             to Aqlyra administrators for up to 24 hours for security and traffic
             monitoring. Guest messages are not saved in Aqlyra accounts.
             Your question and recent guest turns are processed by an external
-            AI provider to generate responses, subject to that provider's privacy terms.
+            AI provider to generate responses, subject to that provider&apos;s privacy terms.
           </p>
         </div>
 
