@@ -138,9 +138,17 @@ def _read_raw(s3, key: str, *, limit: int) -> bytes | None:
         if not isinstance(data, bytes) or len(data) > limit:
             raise RemoteArtifactError("Artifact exceeds safe size")
         return data
+    except RemoteArtifactError:
+        raise
+    except Exception as exc:
+        # Provider exception messages can contain private endpoints or IDs.
+        raise RemoteArtifactError("Private artifact read unavailable") from exc
     finally:
         if body is not None:
-            body.close()
+            try:
+                body.close()
+            except Exception:
+                pass
 
 
 def _metadata(s3, owner: str, artifact_id: str) -> dict | None:
