@@ -48,6 +48,25 @@ release gate. Keep the protected Vercel frontend closed to public traffic.
   garbage collection/deletion has been authorized. A nonzero anomaly
   count must block acceptance pending a human-reviewed recovery plan.
 
+## Disposable HTTP S3 restart rehearsal in CI (not Neon acceptance)
+
+The backend PostgreSQL 16/18 GitHub matrix now runs a separate
+**Moto 5.2.3 HTTP S3 compatibility service on 127.0.0.1 only**.
+The CI runner uses synthetic artifact content and dummy credentials;
+it never connects to Neon Storage or makes any production write.
+The isolated fixture generates all five formats, verifies their
+owner-bound HMAC/SHA-256 integrity, checks cross-user denial, and
+reads/downloads the same files from a completely new Python process
+without resetting the S3 HTTP service. Finally it deletes the records
+and checks the bucket's owner inventory for residual objects.
+
+Successful `CI_ARTIFACT_S3_HTTP_RESTART_READ=PASS` is evidence that
+the backend can persist bytes across **application-process** restarts
+with an external S3-compatible service. It is **NOT** proof that a
+real Neon S3 key, endpoint, IAM policy, quota, actual provider
+availability, or persistence across S3 provider restarts is accepted.
+Keep `ARTIFACT_REMOTE_STORAGE_ENABLED=false` on live Render until
+the real provider acceptance steps below have independently passed.
 ## Required configuration — **not configured by this code commit**
 
 Use only trusted provider dashboards/secret managers for values. Do not
