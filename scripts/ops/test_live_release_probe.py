@@ -20,13 +20,29 @@ WORKFLOWS = (200, [{"id": "student", "enabled": True}])
 
 
 class LivePhaseProbeTest(unittest.TestCase):
-    def run_case(self, phase, responses):
-        results = iter(responses)
+    def run_case(self, phase, responses, metrics=(401, None)):
+        results = iter([*responses, metrics])
         output = StringIO()
         with patch.object(probe, "probe", side_effect=lambda _: next(results)), \
              redirect_stdout(output):
             status = probe.main(["--expected-phase", phase])
         return status, output.getvalue()
+
+    def test_anonymous_prometheus_metrics_must_be_http_401(self):
+        for phase, study, cases in [
+            ("core", (404, None), (404, None)),
+            ("full", WORKFLOWS, (401, None)),
+        ]:
+            for exposed in ((200, None), (403, None), (503, None)):
+                with self.subTest(phase=phase, anonymous_metrics_status=exposed[0]):
+                    status, output = self.run_case(
+                        phase,
+                        [HEALTH, READY, study, cases],
+                        metrics=exposed,
+                    )
+                    self.assertEqual(status, 1)
+                    self.assertIn("BLOCKED anonymous_admin_metrics_denied", output)
+                    self.assertNotIn("LIVE_RELEASE_GATE=PASS", output)
 
     def test_core_phase_passes_only_when_study_routes_not_deployed(self):
         status, output = self.run_case(
