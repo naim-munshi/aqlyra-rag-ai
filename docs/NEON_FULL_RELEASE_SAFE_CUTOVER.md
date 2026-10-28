@@ -27,7 +27,13 @@ from the project's pinned backend requirements in an isolated Python
 environment as necessary. Ensure `psycopg`, `pg_dump`, `pg_restore`
 and Docker are available.
 
-Write the **exact Neon DATABASE_URL** only to
+For backup and schema migration, select the **direct/unpooled** Neon
+connection in the Neon Connect panel (turn **Pooled connection OFF**).
+Neon app traffic may continue using its pooled URL; do not replace the
+working Render backend URL just to prepare backups. The backup tool
+refuses `-pooler` hostnames in backup mode.
+
+Write the **exact Neon direct DATABASE_URL** only to
 `$HOME/.aqlyra/private/neon-url` (mode 600). For example, after copying
 the URL to your Mac clipboard in the Neon dashboard:
 
