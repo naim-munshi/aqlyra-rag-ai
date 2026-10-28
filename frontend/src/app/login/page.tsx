@@ -73,6 +73,16 @@ export default function LoginPage() {
 
               <LoginForm />
 
+              <Link
+                href="/guest"
+                className="mt-5 flex w-full items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20"
+              >
+                Continue without login · Limited AI chat
+              </Link>
+              <p className="mt-2 text-center text-[11px] text-[var(--aq-muted)]">
+                Guest messages are not saved. File uploads require sign-up.
+              </p>
+
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 New to Aqlyra?{" "}
                 <Link
