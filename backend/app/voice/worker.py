@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from app.core.logging import configure_logging
 import os
@@ -20,6 +19,7 @@ from livekit.agents import (
 from livekit.plugins import groq, silero
 
 from app.config.settings import settings
+from app.voice.job_metadata import VoiceJobData
 from app.database.connection import (
     SessionLocal,
 )
@@ -291,97 +291,6 @@ def _resolve_voice_language(
         default_language
         or "en"
     )
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class VoiceJobData:
-    user_id: str
-    conversation_id: str
-    mode: str
-    document_ids: tuple[str, ...]
-
-    @classmethod
-    def from_metadata(
-        cls,
-        metadata: str,
-    ) -> "VoiceJobData":
-        try:
-            payload = json.loads(metadata)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                "Invalid voice job metadata"
-            ) from exc
-
-        if not isinstance(payload, dict):
-            raise ValueError(
-                "Invalid voice job metadata"
-            )
-
-        user_id = str(
-            payload.get("user_id", "")
-        ).strip()
-
-        conversation_id = str(
-            payload.get(
-                "conversation_id",
-                "",
-            )
-        ).strip()
-
-        mode = str(
-            payload.get("mode", "")
-        ).strip()
-
-        raw_document_ids = payload.get(
-            "document_ids",
-            [],
-        )
-
-        if (
-            not user_id
-            or not conversation_id
-            or mode
-            not in {
-                "normal",
-                "knowledge",
-            }
-            or not isinstance(
-                raw_document_ids,
-                list,
-            )
-        ):
-            raise ValueError(
-                "Invalid voice job metadata"
-            )
-
-        document_ids = tuple(
-            str(value).strip()
-            for value in raw_document_ids
-        )
-
-        if (
-            any(
-                not value
-                for value in document_ids
-            )
-            or len(document_ids)
-            != len(set(document_ids))
-        ):
-            raise ValueError(
-                "Invalid voice document scope"
-            )
-
-        return cls(
-            user_id=user_id,
-            conversation_id=(
-                conversation_id
-            ),
-            mode=mode,
-            document_ids=document_ids,
-        )
 
 
 @dataclass(
