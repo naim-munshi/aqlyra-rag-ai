@@ -5,6 +5,8 @@ All network/storage calls are fake; NEVER use live user files or credentials.
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+import json
+from hashlib import sha256
 from threading import Lock
 from uuid import uuid4
 
@@ -62,6 +64,7 @@ def private_store(monkeypatch, tmp_path):
 
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(settings, "ARTIFACT_REMOTE_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "ARTIFACT_METADATA_HMAC_KEY", "ci-artifact-metadata-independent-hmac-key-2026-safe")
     monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
     monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "private-documents")
     monkeypatch.setattr(remote, "_storage", lambda: bucket)
@@ -94,6 +97,47 @@ def test_private_artifacts_owner_scope_survive_process_restart(private_store, tm
     assert metadata["id"] == item["id"]
     assert facade.delete_artifact(user_id=first, artifact_id=item["id"])
     assert facade.read_artifact(user_id=first, artifact_id=item["id"]) is None
+
+
+
+def test_remote_metadata_hmac_prevents_rewritten_file_and_checksum(private_store):
+    owner = str(uuid4())
+    artifact = _make(owner)
+    binary = remote._key(owner, artifact["id"], "md")
+    meta_key = remote._key(owner, artifact["id"], "json")
+    original = json.loads(private_store.objects[meta_key])
+    assert original["signature_version"] == 1
+    assert len(original["metadata_signature"]) == 64
+    assert "metadata_signature" not in artifact
+    assert "signature_version" not in artifact
+
+    # A bucket write key alone must not allow forging the file+SHA pair.
+    tampered_bytes = b"# Replaced without signing secret"
+    private_store.objects[binary] = tampered_bytes
+    original["sha256"] = sha256(tampered_bytes).hexdigest()
+    private_store.objects[meta_key] = json.dumps(original).encode()
+    assert facade.read_artifact(user_id=owner, artifact_id=artifact["id"]) is None
+    assert facade.artifact_download(user_id=owner, artifact_id=artifact["id"]) is None
+    summary = remote.audit_owner_inventory(user_id=owner)
+    assert summary["invalid_metadata"] == 1
+    assert summary["complete_records"] == 0
+
+
+def test_remote_metadata_hmac_binds_owner_scope(private_store):
+    first, second = str(uuid4()), str(uuid4())
+    artifact = _make(first)
+    private_store.objects[
+        remote._key(second, artifact["id"], "json")
+    ] = private_store.objects[remote._key(first, artifact["id"], "json")]
+    private_store.objects[
+        remote._key(second, artifact["id"], "md")
+    ] = private_store.objects[remote._key(first, artifact["id"], "md")]
+    assert facade.read_artifact(user_id=second, artifact_id=artifact["id"]) is None
+    summary = remote.audit_owner_inventory(user_id=second)
+    assert summary["invalid_metadata"] == 1
+    assert summary["complete_records"] == 0
+    assert facade.read_artifact(user_id=first, artifact_id=artifact["id"])
+
 
 
 def test_private_bytes_fail_sha256_integrity(private_store):
