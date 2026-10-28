@@ -152,16 +152,54 @@ def run(client: Client) -> None:
         "POST", "/api/v1/rag/answer",
         data={"question": "private question"},
     ), 401, "anonymous RAG")
+    workflows = client.request("GET", "/api/v1/study-abroad/workflows")
+    if workflows.status != 200 or not isinstance(workflows.payload, list):
+        raise SmokeFailure("Study Abroad workflows are unavailable")
+    choices = {
+        item.get("id"): item for item in workflows.payload
+        if isinstance(item, dict)
+    }
+    if choices.get("student", {}).get("enabled") is not True:
+        raise SmokeFailure("Student study-abroad workflow is disabled")
+    if choices.get("job", {}).get("enabled") is not False:
+        raise SmokeFailure("Unreviewed work-visa workflow must stay disabled")
     expect(client.request(
-        "GET", "/api/v1/study-abroad/workflows",
-    ), 404, "deferred Study Abroad route")
-    print("PASS security baseline and deferred Study Abroad")
+        "GET", "/api/v1/study-abroad/cases",
+    ), 401, "anonymous Study Abroad data access")
+    print("PASS security baseline and registered Study Abroad workflows")
 
     token_a, id_a = create_account(client, "a")
     token_b, id_b = create_account(client, "b")
     if id_a == id_b:
         raise SmokeFailure("Synthetic identities are not distinct")
     print("PASS two-user registration, login and verified identities")
+
+    study_case = expect(client.request(
+        "POST", "/api/v1/study-abroad/cases", token=token_a,
+        data={
+            "workflow": "student",
+            "nationality": "Bangladesh",
+            "residence_country": "Japan",
+            "destination_country": "Germany",
+            "degree_level": "Master's",
+            "study_field": "Computer Science",
+            "intake": "Winter 2027",
+        },
+    ), 201, "create private Study Abroad case")
+    study_id = study_case.get("id")
+    if not isinstance(study_id, str):
+        raise SmokeFailure("Study Abroad case has no id")
+    expect(client.request(
+        "GET", "/api/v1/study-abroad/cases/" + study_id,
+        token=token_b,
+    ), 404, "cross-account Study Abroad case isolation")
+    own_case = expect(client.request(
+        "GET", "/api/v1/study-abroad/cases/" + study_id,
+        token=token_a,
+    ), 200, "owner Study Abroad case")
+    if own_case.get("nationality") != "Bangladesh":
+        raise SmokeFailure("Study Abroad case data did not persist")
+    print("PASS private Study Abroad creation and cross-user isolation")
 
     conv = expect(client.request(
         "POST", "/api/v1/conversations", token=token_a,
@@ -208,6 +246,18 @@ def run(client: Client) -> None:
         "GET", "/api/v1/documents/" + document_id,
         token=token_b,
     ), 404, "cross-user document metadata")
+    linked_study = expect(client.request(
+        "POST", "/api/v1/study-abroad/cases/" + study_id + "/documents",
+        token=token_a,
+        data={"document_id": document_id, "checklist_key": "academic"},
+    ), 201, "owner Study Abroad document linkage")
+    if linked_study.get("document_id") != document_id:
+        raise SmokeFailure("Study Abroad linkage changed document identity")
+    expect(client.request(
+        "GET", "/api/v1/study-abroad/cases/" + study_id + "/documents",
+        token=token_b,
+    ), 404, "cross-user Study Abroad document scope")
+    print("PASS Study Abroad owner-scoped ready-document linkage")
     print("PASS upload -> persistent file -> parsing -> pgvector embedding")
 
     question = "JWT bearer tokens protect private API routes"
