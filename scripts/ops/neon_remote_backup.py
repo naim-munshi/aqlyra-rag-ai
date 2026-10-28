@@ -179,11 +179,23 @@ def main(argv: list[str] | None = None) -> int:
             import psycopg
         except ImportError as exc:
             raise ValueError("psycopg v3 is required; use backend virtualenv") from exc
-        with psycopg.connect(
-            pg_url, connect_timeout=10, options="-c default_transaction_read_only=on"
-        ) as conn:
-            revision, is_full = audit_revision(conn)
-            conn.rollback()
+        # libpq environment defaults such as PGHOSTADDR must not
+        # override the explicitly approved Neon URL even for audit.
+        inherited_pg = {
+            key: value for key, value in os.environ.items()
+            if key.startswith("PG")
+        }
+        try:
+            for key in inherited_pg:
+                os.environ.pop(key, None)
+            with psycopg.connect(
+                pg_url, connect_timeout=10,
+                options="-c default_transaction_read_only=on",
+            ) as conn:
+                revision, is_full = audit_revision(conn)
+                conn.rollback()
+        finally:
+            os.environ.update(inherited_pg)
         print("NEON_TARGET_AND_TLS=PASS")
         print("NEON_SCHEMA=PASS")
         print(f"ALEMBIC_REVISION={revision}")
