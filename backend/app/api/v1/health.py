@@ -8,6 +8,7 @@ from fastapi import (
 from sqlalchemy import text
 
 from app.config.settings import settings
+from app.core.logging import app_logger
 from app.database.connection import SessionLocal
 
 from fastapi.responses import Response
@@ -91,8 +92,13 @@ def readiness():
             redis_ready = bool(
                 get_rate_limit_redis().ping()
             )
-        except (RedisError, ValueError):
-            # Malformed Redis URLs also fail closed instead of HTTP 500.
+        except (RedisError, ValueError) as exc:
+            # Log only the exception CLASS. Exception messages may expose
+            # hostnames, usernames or other connection information.
+            app_logger.warning(
+                "readiness_redis_backend_unavailable",
+                error_type=type(exc).__name__,
+            )
             redis_ready = False
 
         if not redis_ready:
