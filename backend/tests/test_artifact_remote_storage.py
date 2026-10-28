@@ -288,6 +288,47 @@ def test_remote_owner_inventory_counts_only_and_never_modifies_objects(private_s
     assert "secret" not in str(report)
 
 
+
+def test_remote_owner_inventory_pagination_is_complete(private_store, monkeypatch):
+    owner = str(uuid4())
+    record = _make(owner)
+    metadata = remote._key(owner, record["id"], "json")
+    binary = remote._key(owner, record["id"], "md")
+    seen = []
+
+    def paged(*, Bucket, Prefix, MaxKeys, **kwargs):
+        assert Bucket == "private-documents"
+        assert Prefix == remote._prefix(owner)
+        assert MaxKeys == 1000
+        seen.append(kwargs.get("ContinuationToken"))
+        if "ContinuationToken" not in kwargs:
+            return {
+                "Contents": [{"Key": binary}],
+                "IsTruncated": True, "NextContinuationToken": "next",
+            }
+        assert kwargs["ContinuationToken"] == "next"
+        return {
+            "Contents": [{"Key": metadata}],
+            "IsTruncated": False,
+        }
+
+    monkeypatch.setattr(private_store, "list_objects_v2", paged)
+    report = remote.audit_owner_inventory(user_id=owner)
+    assert report["complete_records"] == 1
+    assert report["orphan_binaries"] == 0
+    assert report["total_objects"] == 2
+    assert seen == [None, "next"]
+
+
+def test_remote_owner_inventory_fails_on_broken_pagination(private_store, monkeypatch):
+    monkeypatch.setattr(private_store, "list_objects_v2", lambda **kwargs: {
+        "IsTruncated": True, "Contents": [],
+    })
+    with pytest.raises(remote.RemoteArtifactError, match="continuation"):
+        remote.audit_owner_inventory(user_id=str(uuid4()))
+
+
+
 def test_remote_owner_inventory_fails_closed_on_s3_error(private_store, monkeypatch):
     def provider_error(**kwargs):
         raise RuntimeError("secret-neon-endpoint-and-password")
