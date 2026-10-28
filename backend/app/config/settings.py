@@ -231,6 +231,9 @@ class Settings(BaseSettings):
     PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
     # Separate opt-in: never silently move local generated files to cloud.
     ARTIFACT_REMOTE_STORAGE_ENABLED: bool = False
+    # Stable independent HMAC key; keep separate from JWT SECRET_KEY so
+    # rotating auth tokens never invalidates stored artifact metadata.
+    ARTIFACT_METADATA_HMAC_KEY: str = ""
     # Keep browser direct-upload API off until staging security acceptance.
     CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
     OBJECT_STORAGE_BUCKET: str = ""
@@ -730,6 +733,9 @@ class Settings(BaseSettings):
     def validate_cloud_upload_gate(self) -> Self:
         if self.ARTIFACT_REMOTE_STORAGE_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Remote artifacts require private object storage")
+        if (self.ARTIFACT_REMOTE_STORAGE_ENABLED
+            and len(self.ARTIFACT_METADATA_HMAC_KEY.strip()) < 32):
+            raise ValueError("Remote artifacts require a stable metadata signing key")
         if self.CLOUD_UPLOAD_PUBLIC_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Cloud upload requires private object storage")
         return self
