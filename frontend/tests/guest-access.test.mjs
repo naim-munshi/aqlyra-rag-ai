@@ -58,3 +58,14 @@ test("guest API routes refuse all traffic until accepted public rollout", () => 
     assert.match(source, /createHmac\("sha256", secret\)/);
   }
 });
+
+test("guest proxy enforces a byte cap while streaming, before JSON parsing", () => {
+  assert.doesNotMatch(proxy, /await request\.text\(\)/);
+  assert.match(proxy, /request\.body\?\.getReader\(\)/);
+  assert.match(proxy, /Number\.isSafeInteger\(length\)/);
+  assert.match(proxy, /totalBytes \+= value\.byteLength/);
+  assert.match(proxy, /totalBytes > maxBodyBytes/);
+  assert.match(proxy, /reader\.cancel\(\)/);
+  assert.match(proxy, /TextDecoder\("utf-8", \{ fatal: true \}\)/);
+  assert.match(proxy, /status: 413/);
+});
