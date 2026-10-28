@@ -1,43 +1,52 @@
 # Aqlyra Full Release — Neon backup, restore rehearsal and controlled migration
 
-**Verified project access and schema (2026-10-28):** Neon plugin is NOW
-correctly scoped to project `rough-river-66110449` (`aqlyra-staging`);
-the default branch is `production`
-(`br-morning-water-a1lgl3s4`, PostgreSQL 18.6). Read-only checks
-confirmed the default `neondb` database currently has **no application
-tables**, **no `alembic_version`**, and **no `vector` extension**. A
-pre-release snapshot `snap-restless-mouse-a144fpzy`, named
-`aqlyra-staging-pre-full-release-20261028`, was created on that branch
-(2026-10-28 04:39 UTC). This snapshot captures the EMPTY schema and is
-NOT evidence that existing RAG data are backed up or restored.
+**Verified Core staging state (2026-10-28):** Neon project
+`rough-river-66110449` (`aqlyra-staging`), default branch
+`production` (`br-morning-water-a1lgl3s4`), database `neondb`
+and role `neondb_owner` were independently checked. Core's one-time
+schema bootstrap has **already succeeded**: `alembic_version=b5e4a019dc72`,
+16 application tables, pgvector installed, users=0, documents=0.
+Render Core-only deployment `dep-dbgo7nh42hec73dkfc4g`, SHA
+`dc3920fb1428e143b8c393fd25941f7206c35b4c` remains live,
+auto-deploy OFF, with prior fixed-origin `/health` and `/readiness`
+HTTP 200. DATABASE_MIGRATION_MODE was returned to `manual`.
 
-**Render verification distinction:** Existing core Render returned
-`/health=200` and `/readiness=200` before the core readiness contract
-checked Alembic schema. That demonstrated DB TCP connectivity, Redis and
-upload storage, **not** migrated RAG tables. The Render `DATABASE_URL`
-target project must be independently matched before any schema cutover;
-do not assume this empty Neon staging project is the only live data source.
-The core and full release branches now add a production schema/pgvector
-readiness guard. The exact-head CI and resulting live deploy must be
-verified independently.
+**Recovery truth:** The pre-bootstrap snapshot
+`snap-restless-mouse-a144fpzy` captures an EMPTY schema. A second
+no-compute, non-default protective branch `backup-core-schema-20261028`
+(`br-damp-credit-a1mksvnz`) captures the migrated Core state and
+must not be deleted. It has no compute endpoint; it has **not**
+been independently restored. The default branch snapshot schedule
+was empty on the last provider inspection. These resources are NOT
+a verified off-host backup or routine backup schedule.
 
-Full Release schema bootstrap, real backup of any populated source, a
-restoration rehearsal, Study Abroad backend cutover and LiveKit voice
-deployment are **NOT** yet verified complete.
+**Safe synthetic acceptance:** Existing GitHub Actions Python 3.13
+PostgreSQL 16 and 18 matrix successfully executed Full migration,
+a synthetic custom-format pg_dump, and isolated networkless PG18 Docker
+restore. This proves local recovery plumbing, **not** a restore of
+the live Neon database. An actual private off-host Neon dump and isolated
+restore remains NOT_RUN and is required before Full Release cutover.
+
+**Remaining migrations:** Do not repeat Core bootstrap or reset the
+database. Only the additive, owner-approved Full Release migration
+`b5e4a019dc72 -> d4ec2f9b7860` remains. It creates four private
+Study Abroad tables. The protected frontend, Core backend and main
+branch must remain untouched while preparing recovery.
 
 **Never paste Neon, Upstash, Groq, Hugging Face or LiveKit credentials into
 ChatGPT, GitHub commits, workflow logs or support tickets.** Only the
 owner's trusted local Mac should hold the connection URL.
 
-## 1. Restore correct Neon connector permissions
+## 1. Reverify scope without changing live resources
 
-The Neon connector WAS incorrectly bound to a GitHub URL, but it
-has been reconnected successfully to the exact project
-`rough-river-66110449`. Live read-only project, branch and schema checks
-and the named pre-release empty-database snapshot succeeded. The project
-is currently UNINITIALIZED. Do not treat this new empty project as a
-verified populated production database or rewrite its credentials into
-Render before first identifying Render's existing data source.
+The connected Neon project is already correctly scoped and the Core
+database is initialized. Recheck the exact branch, database, role,
+current Alembic head, user/document counts and provider recovery
+resources immediately before any local backup. Do not create a
+second staging project, repeat migrations, alter Render credentials,
+reset data, or assume the no-compute branch is an independently
+tested restore. The pre-bootstrap snapshot and Core recovery branch
+must be preserved.
 
 ## 2. Read-only isolated database audit
 
@@ -138,6 +147,43 @@ data as sensitive. A verified successful run prints
 
 If backup, restore or revision checks fail, **STOP**. Never run an
 unreviewed migration or `alembic downgrade`.
+
+## 4A. Recommended single-command private recovery gate (operator Mac)
+
+Instead of manually matching archive filenames from sections 2–4,
+the reviewed script now performs **both** required read-only Neon
+identity/schema checks, creates a new private non-overwriting
+custom-format backup, restores it in networkless disposable Docker,
+and rechecks the live Core revision. It makes **no** production schema
+changes and does not run Alembic upgrade:
+
+```bash
+bash scripts/ops/neon_full_release_recovery_gate.sh \
+  --url-file "$HOME/.aqlyra/private/neon-url" \
+  --expected-host "<DIRECT-NEON-HOST-FROM-DASHBOARD>" \
+  --expected-database neondb \
+  --expected-role neondb_owner \
+  --backup-root "$HOME/.aqlyra/private/neon-backups"
+```
+
+**Exact prerequisites:** owner-only `0600` URL file (never commit it),
+direct unpooled Neon connection, existing 0700 backup directory (or
+new empty directory), local Python environment with `psycopg`,
+PostgreSQL 18-compatible `pg_dump` and `pg_restore`, and Docker
+Desktop running. Existing shell and safety tests validate syntax and
+negative cases in CI. The script refuses wrong DB/role, wrong revision,
+insecure permissions and mismatched archives. A successful run prints
+`NEON_PRIVATE_BACKUP=PASS`,
+`NEON_ISOLATED_RESTORE=PASS`,
+`FULL_RELEASE_DATABASE_MIGRATION=NOT_RUN`.
+The private backup remains only on the operator's Mac; it must be
+protected and retained under the owner's recovery policy. Do not
+paste its files, URLs, credentials or user data into chat or GitHub.
+
+This gate is **not recorded as PASS** until its real-data output
+has been privately observed and independently reviewed. Synthetic
+GitHub Actions results do not satisfy it. Keep protected Vercel SSO
+on throughout the work.
 
 ## 5. Owner-approved, manual database migration
 
