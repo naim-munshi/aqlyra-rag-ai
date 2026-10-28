@@ -173,5 +173,25 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
 
 
 
+    def test_restore_rehearsal_shell_safety_contract(self):
+        import subprocess
+        script = Path(__file__).with_name("neon_restore_rehearsal.sh")
+        result = subprocess.run(
+            ["bash", "-n", str(script)],
+            capture_output=True, check=False, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0)
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("--network none", content)
+        self.assertIn("--exit-on-error", content)
+        self.assertIn("to_regclass('public.study_cases')", content)
+        self.assertIn("to_regclass('public.study_case_documents')", content)
+        self.assertIn("to_regclass('public.study_research_reports')", content)
+        self.assertIn("to_regclass('public.study_universities')", content)
+        self.assertIn("RESTORE_REHEARSAL=BLOCKED study schema incomplete", content)
+        self.assertIn("RESTORE_REHEARSAL=BLOCKED unexpected study schema drift", content)
+
+
+
 if __name__ == "__main__":
     unittest.main()
