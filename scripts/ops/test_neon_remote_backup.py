@@ -194,5 +194,31 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
 
 
 
+    def test_operator_recovery_gate_syntax_and_fail_closed(self):
+        import subprocess
+        script = Path(__file__).with_name("neon_full_release_recovery_gate.sh")
+        check = subprocess.run(
+            ["bash", "-n", str(script)],
+            capture_output=True, timeout=10, check=False,
+        )
+        self.assertEqual(check.returncode, 0)
+        missing = subprocess.run(
+            ["bash", str(script)],
+            capture_output=True, timeout=10, check=False,
+        )
+        self.assertEqual(missing.returncode, 2)
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("--expected-database", content)
+        self.assertIn("--expected-role", content)
+        self.assertIn("--expected-host", content)
+        self.assertIn("neon_remote_backup.py", content)
+        self.assertIn("neon_restore_rehearsal.sh", content)
+        self.assertIn("ALEMBIC_REVISION=b5e4a019dc72", content)
+        self.assertIn("FULL_RELEASE_DATABASE_MIGRATION=NOT_RUN", content)
+        self.assertIn("NEON_PRIVATE_BACKUP=PASS", content)
+        self.assertNotIn("alembic upgrade head\n", content)
+
+
+
 if __name__ == "__main__":
     unittest.main()
