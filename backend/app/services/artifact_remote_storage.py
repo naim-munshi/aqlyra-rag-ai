@@ -9,7 +9,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
-from io import BytesIO
 import json
 import re
 from uuid import UUID, uuid4
@@ -20,7 +19,6 @@ from app.config.settings import settings
 from app.database.connection import SessionLocal
 from app.services.artifact_rendering import MIMES, render_artifact
 from app.services.private_object_storage import (
-    PrivateObjectStorageError,
     _client as neon_private_client,
 )
 
@@ -69,7 +67,7 @@ def _storage():
         raise RemoteArtifactError("Private artifact storage is not enabled")
     try:
         return neon_private_client(settings)
-    except (PrivateObjectStorageError, Exception) as exc:
+    except Exception as exc:
         raise RemoteArtifactError("Private artifact storage unavailable") from exc
 
 
