@@ -174,7 +174,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         url = secret_file_value(args.url_file)
-        pg_url, _ = parse_neon_url(url, args.expected_host)
+        pg_url, details = parse_neon_url(url, args.expected_host)
+        # Backup/migrations require an unpooled direct Neon connection.
+        # The -pooler URL is appropriate for live API traffic only.
+        if (
+            args.backup_dir is not None
+            and details["host"].split(".", 1)[0].endswith("-pooler")
+        ):
+            raise ValueError("Use the direct (unpooled) Neon URL for pg_dump")
         try:
             import psycopg
         except ImportError as exc:
