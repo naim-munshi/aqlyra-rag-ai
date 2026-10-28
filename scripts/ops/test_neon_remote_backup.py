@@ -74,6 +74,19 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gate.secret_file_value(link)
 
+    def test_pooled_endpoint_cannot_be_used_for_backup(self):
+        with tempfile.TemporaryDirectory() as root:
+            url_file = Path(root) / "neon.url"
+            url_file.write_text(URL, encoding="utf-8")
+            url_file.chmod(0o600)
+            status = gate.main([
+                "--url-file", str(url_file),
+                "--expected-host", HOST,
+                "--backup-dir", str(Path(root) / "backup"),
+            ])
+            self.assertEqual(status, 2)
+            self.assertFalse((Path(root) / "backup").exists())
+
     def test_schema_preflight_requires_vector_core_tables_single_revision(self):
         def fake_conn(row, versions):
             conn = Mock()
