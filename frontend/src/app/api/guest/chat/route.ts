@@ -32,15 +32,43 @@ export async function POST(request: Request) {
       { status: 503, headers },
     );
   }
+  // Bound memory before parsing JSON: request.text() buffers an attacker-
+  // controlled body in full, even if we reject its size afterward.
   let body: string;
   try {
-    body = await request.text();
-    if (Buffer.byteLength(body, "utf8") > maxBodyBytes) {
+    const declaredLength = request.headers.get("content-length");
+    if (declaredLength !== null) {
+      const length = Number(declaredLength);
+      if (!Number.isSafeInteger(length) || length < 0 || length > maxBodyBytes) {
+        return NextResponse.json(
+          { detail: "Guest message is too long" },
+          { status: 413, headers },
+        );
+      }
+    }
+    const reader = request.body?.getReader();
+    if (!reader) {
       return NextResponse.json(
-        { detail: "Guest message is too long" },
-        { status: 413, headers },
+        { detail: "Invalid request body" },
+        { status: 400, headers },
       );
     }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBodyBytes) {
+        await reader.cancel();
+        return NextResponse.json(
+          { detail: "Guest message is too long" },
+          { status: 413, headers },
+        );
+      }
+      chunks.push(value);
+    }
+    body = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
     JSON.parse(body);
   } catch {
     return NextResponse.json(
