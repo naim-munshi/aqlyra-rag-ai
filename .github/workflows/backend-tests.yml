@@ -121,6 +121,36 @@ jobs:
           alembic upgrade head
           alembic current
 
+      - name: Verify isolated synthetic Full Release backup restore
+        run: |
+          set -Eeuo pipefail
+          backup_dir="${RUNNER_TEMP}/aqlyra-synthetic-restore"
+          mkdir -p "$backup_dir"
+          chmod 700 "$backup_dir"
+          # The source is ONLY the disposable GitHub Actions PG16/18 fixture.
+          # Use a PG18 client against either server version; no Neon URL.
+          docker run --rm --network host \
+            -e PGPASSWORD=postgres \
+            --mount "type=bind,src=$backup_dir,dst=/private-backup" \
+            pgvector/pgvector:pg18 \
+            pg_dump --host 127.0.0.1 --username postgres \
+              --dbname aqlyra_rag_ai --format=custom \
+              --no-owner --no-acl --file=/private-backup/ci-full.dump
+          python3 - "$backup_dir" <<'PY'
+          import hashlib, json, pathlib, sys
+          directory = pathlib.Path(sys.argv[1])
+          archive = directory / "ci-full.dump"
+          record = {
+              "format": "aqlyra-neon-backup.v1",
+              "archive": archive.name,
+              "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "alembic_revision": "d4ec2f9b7860",
+              "restore_rehearsal": "NOT_RUN",
+          }
+          (directory / "ci-full.json").write_text(json.dumps(record))
+          PY
+          bash scripts/ops/neon_restore_rehearsal.sh \
+            "$backup_dir/ci-full.dump" "$backup_dir/ci-full.json"
       - name: Run backend tests
         working-directory: backend
         run: |
