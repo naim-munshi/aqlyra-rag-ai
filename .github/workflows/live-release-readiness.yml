@@ -8,6 +8,15 @@ on:
       - 'scripts/ops/live_release_probe.py'
       - '.github/workflows/live-release-readiness.yml'
   workflow_dispatch:
+    inputs:
+      expected_phase:
+        description: "Observed live backend phase (core until approved Full cutover)"
+        required: true
+        default: core
+        type: choice
+        options:
+          - core
+          - full
 
 permissions:
   contents: read
@@ -18,10 +27,10 @@ concurrency:
 
 jobs:
   live-release-gate:
-    name: Observe Aqlyra Render full-stack readiness
+    name: Observe Aqlyra Render phase without data writes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Probe fixed Aqlyra API without credentials or mutations
-        run: python3 scripts/ops/live_release_probe.py
+        run: python3 scripts/ops/live_release_probe.py --expected-phase "${{ inputs.expected_phase || 'core' }}"
