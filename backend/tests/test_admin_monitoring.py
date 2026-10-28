@@ -148,3 +148,59 @@ def test_prometheus_metrics_are_private_to_verified_admin(
     assert revoked.status_code == 403
     assert "aqlyra_http_requests_total" not in revoked.text
     assert ordinary_id not in revoked.text
+
+
+
+def test_guest_ip_audit_visible_only_to_verified_allowlisted_admin(
+    client: TestClient, db_session, monkeypatch,
+) -> None:
+    """IP traffic is personally identifying and never a public statistic."""
+    admin_id, admin_token = _new_user(client, "guestipadmin")
+    other_id, other_token = _new_user(client, "guestipother")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+
+    # No live Redis is needed: prove the full HTTP authorization boundary.
+    monkeypatch.setattr(
+        "app.api.admin.recent_guest_traffic",
+        lambda: [{
+            "ip": "203.0.113.41",
+            "requests": 3,
+            "last_seen_utc": 1780000000,
+        }],
+    )
+
+    anonymous = client.get("/api/v1/admin/guest-traffic")
+    assert anonymous.status_code == 401
+    assert "203.0.113.41" not in anonymous.text
+
+    unauthorized = client.get(
+        "/api/v1/admin/guest-traffic",
+        headers={"Authorization": "Bearer " + other_token},
+    )
+    assert unauthorized.status_code == 403
+    assert "203.0.113.41" not in unauthorized.text
+
+    allowed = client.get(
+        "/api/v1/admin/guest-traffic",
+        headers={"Authorization": "Bearer " + admin_token},
+    )
+    assert allowed.status_code == 200
+    assert allowed.headers["cache-control"] == "private, no-store"
+    assert allowed.json()["entries"] == [{
+        "ip": "203.0.113.41",
+        "requests": 3,
+        "last_seen_utc": 1780000000,
+    }]
+    assert allowed.json()["retention_hours"] == 24
+
+    admin = db_session.get(User, admin_id)
+    assert admin is not None
+    admin.email_verified_at = None
+    db_session.flush()
+    revoked = client.get(
+        "/api/v1/admin/guest-traffic",
+        headers={"Authorization": "Bearer " + admin_token},
+    )
+    assert revoked.status_code == 403
+    assert "203.0.113.41" not in revoked.text
+    assert other_id not in revoked.text
