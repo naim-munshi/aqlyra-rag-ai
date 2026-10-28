@@ -24,8 +24,7 @@ a verified off-host backup or routine backup schedule.
 PostgreSQL 16 and 18 matrix successfully executed Full migration,
 a synthetic custom-format pg_dump, and isolated networkless PG18 Docker
 restore. This proves local recovery plumbing, **not** a restore of
-the live Neon database. An actual private off-host Neon dump and isolated
-restore remains NOT_RUN and is required before Full Release cutover.
+the live Neon database. On 2026-10-28, the owner created a private real-Neon pg_dump and matching SHA-256 manifest, then successfully restored that exact archive in isolated networkless PG18 Docker (RESTORE_REHEARSAL=PASS, revision b5e4a019dc72, disposable container cleanup). The all-in-one wrapper was interrupted because Docker was initially stopped; the owner completed its restore step separately. Independent live read-only Neon postflight verified the same Core revision and zero users/documents. This proves database recovery, NOT uploaded-file or S3 object recovery. Preserve the private archive off-repository.
 
 **Remaining migrations:** Do not repeat Core bootstrap or reset the
 database. Only the additive, owner-approved Full Release migration
@@ -185,11 +184,33 @@ The private backup remains only on the operator's Mac; it must be
 protected and retained under the owner's recovery policy. Do not
 paste its files, URLs, credentials or user data into chat or GitHub.
 
-This gate is **not recorded as PASS** until its real-data output
-has been privately observed and independently reviewed. Synthetic
-GitHub Actions results do not satisfy it. Keep protected Vercel SSO
-on throughout the work.
+The owner's real private Neon backup and separate isolated restore PASS evidence are recorded in PR #37. The all-in-one script did not itself exit 0 when Docker was stopped, but the constituent restoration was subsequently completed, and live schema postflight was independently verified. Synthetic CI results alone do not satisfy this check. Keep protected Vercel SSO on.
 
+## 4B. Read-only exact Core/Full schema audit
+
+An independent fail-closed schema audit requires exactly 16 Core public
+tables before migration, or 20 after the approved Full migration.
+The Full phase additionally checks five cascading Study Abroad foreign
+keys and three reviewed indexes, along with the matching Alembic head.
+It opens a read-only transaction and never performs database DDL or DML.
+
+Before any separately approved production schema write, from the
+owner's Full Release worktree:
+
+```bash
+python3 scripts/ops/neon_study_schema_audit.py \
+  --url-file "$HOME/.aqlyra/private/neon-url" \
+  --expected-host "ep-calm-resonance-a17kpw1l.ap-southeast-1.aws.neon.tech" \
+  --expected-database neondb --expected-role neondb_owner \
+  --expected-phase core
+```
+
+Core acceptance requires `NEON_SCHEMA_TABLES=PASS`,
+`NEON_TABLE_COUNT=16`, and `ALEMBIC_REVISION=b5e4a019dc72`.
+Only after approved migration, repeat with `--expected-phase full` and
+require `NEON_STUDY_FK_INDEX=PASS`, `NEON_TABLE_COUNT=20`, and
+`ALEMBIC_REVISION=d4ec2f9b7860`.
+Neither result proves authenticated production RAG/Study Abroad E2E.
 ## 5. Owner-approved, manual database migration
 
 Only **after** verifying the project, private backup, and successful
