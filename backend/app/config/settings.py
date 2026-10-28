@@ -262,6 +262,19 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_postgresql_driver(
+        cls,
+        value: str,
+    ) -> str:
+        # Neon and libpq return postgresql:// by default, while Aqlyra
+        # intentionally installs psycopg v3 rather than psycopg2.
+        # Change only the SQLAlchemy driver selector, never credentials.
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+psycopg://" + value[len("postgresql://"):]
+        return value
+
     @field_validator(
         "EMBEDDING_PROVIDER"
     )
