@@ -7,6 +7,12 @@ on:
     paths:
       - 'scripts/ops/live_release_probe.py'
       - '.github/workflows/live-release-readiness.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/ops/live_release_probe.py'
+      - 'scripts/ops/test_live_release_probe.py'
+      - '.github/workflows/live-release-readiness.yml'
   workflow_dispatch:
     inputs:
       expected_phase:
