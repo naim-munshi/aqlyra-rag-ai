@@ -76,7 +76,26 @@ place of Aqlyra's existing RAG-backed worker.
    ```bash
    chmod 600 "$HOME/.aqlyra/livekit-agent-secrets.env"
    ```
-   Inspect key *names* and provider permissions without printing values.
+   Before using any secret file with the LiveKit CLI, run the new
+   **offline/no-network** deployment preflight from the checked-out
+   Full Release repository (not the temporary agent bundle):
+
+   ```bash
+   python3 scripts/ops/livekit_voice_secrets_preflight.py \\
+     --secrets-file "$HOME/.aqlyra/livekit-agent-secrets.env"
+   ```
+
+   Require `LIVEKIT_SECRETS_PREFLIGHT=PASS` and
+   `LIVEKIT_DEPLOYMENT=NOT_RUN`. This check refuses symlinks,
+   insecure file modes, placeholders, duplicate/missing keys,
+   shell substitutions, localhost/non-TLS DB or Redis targets,
+   non-production AI/rate-limit settings and LiveKit-managed
+   connection variables; it never prints secret values or calls
+   network services. This is a **configuration** check, not proof
+   that provider credentials are valid or quotas are available.
+   Keep `ARTIFACT_REMOTE_STORAGE_ENABLED=false` until its
+   separate real S3 durability acceptance has passed.
+
 5. After ensuring the Free quota and the exact project, explicitly
    deploy the **existing Aqlyra agent**:
    ```bash
