@@ -194,6 +194,68 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
 
 
 
+    def test_postgres_clients_require_server_compatible_major(self):
+        from unittest.mock import patch
+        # PostgreSQL 16 pg_dump/restore must not touch a Neon PG18 backup.
+        with patch.object(gate, "_client_major", side_effect=[16]):
+            with self.assertRaisesRegex(
+                gate.BackupClientVersionError, "pg_dump 16 is older"
+            ):
+                gate.verify_backup_clients(18)
+        with patch.object(gate, "_client_major", side_effect=[18, 16]):
+            with self.assertRaisesRegex(
+                gate.BackupClientVersionError, "pg_restore 16 is older"
+            ):
+                gate.verify_backup_clients(18)
+        with patch.object(gate, "_client_major", side_effect=[18, 18]):
+            gate.verify_backup_clients(18)
+
+        # Safety: invalid/untrusted server major cannot bypass checks.
+        for bad in [0, -1, 1000, "18", None, True]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(gate.BackupClientVersionError):
+                    gate.verify_backup_clients(bad)
+
+    def test_pg_client_version_parser_is_strict_and_redacted(self):
+        from unittest.mock import patch
+        responses = [
+            ("pg_dump", "pg_dump (PostgreSQL) 16.14 (Homebrew)", 16),
+            ("pg_dump", "pg_dump (PostgreSQL) 18.6", 18),
+            ("pg_restore", "pg_restore (PostgreSQL) 18.6 (Homebrew)", 18),
+        ]
+        for tool, stdout, major in responses:
+            with self.subTest(tool=tool, stdout=stdout):
+                with patch.object(gate.shutil, "which", return_value="/fake/client"), \
+                     patch.object(
+                        gate.subprocess, "run",
+                        return_value=Mock(returncode=0, stdout=stdout),
+                     ):
+                    self.assertEqual(gate._client_major(tool), major)
+        with patch.object(gate.shutil, "which", return_value="/fake/client"), \
+             patch.object(gate.subprocess, "run", return_value=Mock(
+                 returncode=0, stdout="pg_dump (PostgreSQL) 18\nPRIVATE=SECRET",
+             )):
+            with self.assertRaises(gate.BackupClientVersionError):
+                gate._client_major("pg_dump")
+
+    def test_incompatible_client_refuses_before_backup_dir_creation(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root) / "never-create"
+            with patch.object(
+                gate, "verify_backup_clients",
+                side_effect=gate.BackupClientVersionError(
+                    "pg_dump 16 is older than PostgreSQL 18"
+                ),
+            ):
+                with self.assertRaises(gate.BackupClientVersionError):
+                    gate.create_backup(
+                        "postgresql://neondb_owner:secret@host/neondb",
+                        directory, gate.EXPECTED_PREVIOUS, 18,
+                    )
+            self.assertFalse(directory.exists())
+
+
     def test_operator_recovery_gate_syntax_and_fail_closed(self):
         import subprocess
         script = Path(__file__).with_name("neon_full_release_recovery_gate.sh")
