@@ -82,6 +82,8 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             status = gate.main([
                 "--url-file", str(url_file),
                 "--expected-host", HOST,
+                "--expected-database", "neondb",
+                "--expected-role", "neondb_owner",
                 "--backup-dir", str(Path(root) / "backup"),
             ])
             self.assertEqual(status, 2)
@@ -112,6 +114,55 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
             with self.subTest(row=row, versions=versions):
                 with self.assertRaises(ValueError):
                     gate.audit_revision(fake_conn(row, versions))
+
+
+    def test_exact_database_and_role_identity_fails_closed(self):
+        from unittest.mock import Mock
+        correct = Mock()
+        correct.execute.return_value.fetchone.return_value = (
+            "neondb", "neondb_owner",
+        )
+        gate.assert_target_identity(URL, correct, "neondb", "neondb_owner")
+        correct.execute.assert_called_once_with(
+            "SELECT current_database(), current_user"
+        )
+        for expected_db, expected_role in [
+            ("wrong_db", "neondb_owner"),
+            ("neondb", "other_role"),
+        ]:
+            with self.subTest(expected_db=expected_db, expected_role=expected_role):
+                gate.assert_target_identity(URL, Mock(), expected_db, expected_role)
+
+        bad_conn = Mock()
+        for observed in [
+            ("other_db", "neondb_owner"),
+            ("neondb", "other_role"),
+            None,
+            ("neondb",),
+        ]:
+            bad_conn.execute.return_value.fetchone.return_value = observed
+            with self.subTest(observed=observed):
+                with self.assertRaises(ValueError):
+                    gate.assert_target_identity(
+                        URL, bad_conn, "neondb", "neondb_owner",
+                    )
+
+    def test_wrong_url_target_rejected_before_network(self):
+        with tempfile.TemporaryDirectory() as root:
+            url_file = Path(root) / "url"
+            url_file.write_text(URL)
+            url_file.chmod(0o600)
+            for database, role in [
+                ("other_db", "neondb_owner"),
+                ("neondb", "other_role"),
+            ]:
+                with self.subTest(database=database, role=role):
+                    status = gate.main([
+                        "--url-file", str(url_file), "--expected-host", HOST,
+                        "--expected-database", database, "--expected-role", role,
+                    ])
+                    self.assertEqual(status, 2)
+
 
 
 if __name__ == "__main__":
