@@ -9,7 +9,7 @@
 - Guest cannot upload any file, use authenticated private RAG/retrieval, projects, database history, memory, voice, artifact workspace, or private Study Abroad cases. Clicking the paperclip directs to `/register`.
 - No account is created, no chat is persisted in Aqlyra/PostgreSQL, and no browser localStorage persistence exists. The upstream model provider may process the message under its own data handling terms.
 - Guest session limit: **5 questions/IP/hour, 20/IP/day and 1,000 global/day** (all Redis-enforced, configurable). Message ≤800 characters, max 4 history messages (user ≤800 characters; AI reply ≤2,000 characters), and no persistence.
-- The guest UI prominently discloses: public IP and request count visible only to authorized admins for up to 24 hours; no guest message text stored in the IP audit.
+- The guest UI prominently discloses: public IP and request count visible only to authorized admins for a fixed maximum 24-hour lifetime per record; no guest message text stored in the IP audit.
 
 ## Architecture and security boundary
 
@@ -19,7 +19,7 @@
 4. Render verifies signature and ±60s timestamp *before* consuming an LLM quota or logging visitor IP. Direct calls to Render lacking the secret fail 403. The secret never goes to browser JavaScript.
 5. Existing Redis Lua `INCR/EXPIRE` limiter enforces per-IP hourly/daily and global cost ceilings and **fails closed** when Redis is down. The guest endpoint never accepts a JWT substitute to access authenticated private functions.
 6. Anonymous chat calls `create_configured_llm_provider()` with a restricted guest-only instruction and the supplied short public context. No database session and no document retrieval function is imported into this public endpoint.
-7. Redis stores the public IP, last access and request count under an HMAC-keyed record with TTL 86,400s. No prompts, emails, documents, auth tokens or user records are saved. Only `/api/v1/admin/guest-traffic` under the existing **verified UUID allowlisted admin** gate returns at most 100 most-recent records. Anonymous visitors cannot access it. In-product monitoring lets admin inspect the list on demand. The UI states this visibility and expiry.
+7. Redis stores the public IP, last access and separate visit/chat-request counters under an HMAC-keyed record. A conditional `EXPIRE NX` sets a fixed TTL of 86,400s when the record is first created, never extended by new traffic. No prompts, emails, documents, auth tokens or user records are saved. Only `/api/v1/admin/guest-traffic` under the existing **verified UUID allowlisted admin** gate returns at most 100 most-recent records. Anonymous visitors cannot access it. In-product monitoring lets admin inspect the list on demand. The UI states this visibility and expiry.
 
 ## Production gates
 
