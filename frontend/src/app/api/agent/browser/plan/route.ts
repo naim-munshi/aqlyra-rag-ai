@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 import { getAccessToken } from "@/lib/auth/session";
 import { backendUrl, readJson } from "@/lib/api/backend";
 
@@ -8,7 +9,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
   }
   let body: unknown;
-  try { body = await request.json(); } catch {
+  try { body = await readBoundedJson(request, 8192); } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+      }
     return NextResponse.json({ detail: "Invalid JSON" }, { status: 400 });
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
