@@ -110,6 +110,35 @@ valid="$(docker exec "$CONTAINER" psql -X -At \
   exit 2
 }
 
+# Validate the actual Study Abroad table set against the restored Alembic
+# revision. A stamped revision alone is NOT proof of a usable restore.
+study_check="$(docker exec "$CONTAINER" psql -X -At \
+  -U postgres -d aqlyra_restore_verify \
+  -c "SELECT (to_regclass('public.study_cases') IS NOT NULL
+    AND to_regclass('public.study_case_documents') IS NOT NULL
+    AND to_regclass('public.study_research_reports') IS NOT NULL
+    AND to_regclass('public.study_universities') IS NOT NULL)" | tr -d '\r\n')"
+
+if [[ "$expected" == "d4ec2f9b7860" ]]; then
+  [[ "$study_check" == "t" ]] || {
+    echo "RESTORE_REHEARSAL=BLOCKED study schema incomplete" >&2
+    exit 2
+  }
+else
+  # Even a single study table with Core Alembic revision indicates
+  # schema drift or a partial migration; reject rather than assume.
+  drift="$(docker exec "$CONTAINER" psql -X -At \
+    -U postgres -d aqlyra_restore_verify \
+    -c "SELECT (to_regclass('public.study_cases') IS NULL
+      AND to_regclass('public.study_case_documents') IS NULL
+      AND to_regclass('public.study_research_reports') IS NULL
+      AND to_regclass('public.study_universities') IS NULL)" | tr -d '\r\n')"
+  [[ "$drift" == "t" ]] || {
+    echo "RESTORE_REHEARSAL=BLOCKED unexpected study schema drift" >&2
+    exit 2
+  }
+fi
+
 echo "RESTORE_REHEARSAL=PASS"
 echo "RESTORED_ALEMBIC_REVISION=$revision"
 echo "LOCAL_DISPOSABLE_DATABASE_REMOVED_ON_EXIT=true"
