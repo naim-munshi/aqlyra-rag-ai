@@ -132,6 +132,9 @@ def create_backup(
         "PGPASSWORD": unquote(u.password or ""),
         "PGDATABASE": unquote(u.path.lstrip("/")),
         "PGSSLMODE": parse_qs(u.query)["sslmode"][0],
+        "PGCHANNELBINDING": parse_qs(u.query).get(
+            "channel_binding", ["prefer"]
+        )[0],
     })
     os.umask(0o077)
     try:
