@@ -62,8 +62,25 @@ def readiness():
             version = db.execute(
                 text("SELECT version_num FROM public.alembic_version")
             ).scalar_one_or_none()
-            if version != "b5e4a019dc72":
+            # The owner-approved Full schema is an additive successor to
+            # the Core schema. A Core-only process must remain usable
+            # during the protected Full Release cutover window, without
+            # claiming that any Study Abroad routes are deployed.
+            if version not in ("b5e4a019dc72", "d4ec2f9b7860"):
                 raise RuntimeError("Aqlyra database revision is not current")
+            if version == "d4ec2f9b7860":
+                check_stage = "schema_full_additive"
+                full_tables_ready = db.execute(
+                    text(
+                        "SELECT "
+                        "to_regclass('public.study_cases') IS NOT NULL "
+                        "AND to_regclass('public.study_case_documents') IS NOT NULL "
+                        "AND to_regclass('public.study_research_reports') IS NOT NULL "
+                        "AND to_regclass('public.study_universities') IS NOT NULL"
+                    )
+                ).scalar_one()
+                if not full_tables_ready:
+                    raise RuntimeError("Aqlyra additive schema tables are unavailable")
 
             check_stage = "schema_core"
             core_schema_ready = db.execute(
