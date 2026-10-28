@@ -15,6 +15,10 @@ from app.models import (
     Message,
     Project,
     PasswordResetCode,
+    StudyCase,
+    StudyCaseDocument,
+    StudyResearchReport,
+    StudyUniversity,
     User,
 )
 
