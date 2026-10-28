@@ -199,6 +199,33 @@ jobs:
         run: |
           python -m pytest
 
+      - name: Verify artifact S3 HTTP restart durability on disposable Moto
+        run: |
+          set -Eeuo pipefail
+          # Never connect to real Neon, AWS or customer object storage.
+          python -m pip install 'moto[server]==5.2.3'
+          python -m moto.server -H 127.0.0.1 -p 5000 >"$RUNNER_TEMP/aqlyra-moto-ci.log" 2>&1 &
+          moto_pid=$!
+          trap 'kill "$moto_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import socket, time
+          for i in range(40):
+              try:
+                  with socket.create_connection(('127.0.0.1', 5000), timeout=1):
+                      break
+              except OSError:
+                  time.sleep(.5)
+          else:
+              raise SystemExit('CI_MOTO_HTTP=BLOCKED no loopback server')
+          PY
+          state="$RUNNER_TEMP/aqlyra-artifact-http-state.json"
+          # Each invocation is a separate Python application process.
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase write --state-file "$state"
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase verify --state-file "$state"
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase cleanup --state-file "$state"
       - name: Verify offline Neon backup and recovery safety contracts
         run: |
           python -m unittest discover \
