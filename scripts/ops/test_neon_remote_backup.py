@@ -304,10 +304,47 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
         self.assertIn("--expected-host", content)
         self.assertIn("neon_remote_backup.py", content)
         self.assertIn("neon_restore_rehearsal.sh", content)
-        self.assertIn("ALEMBIC_REVISION=b5e4a019dc72", content)
+        self.assertIn('expected_revision="b5e4a019dc72"', content)
+        self.assertIn('expected_revision="d4ec2f9b7860"', content)
+        self.assertIn('--expected-phase full', content)
+        self.assertIn("neon_study_schema_audit.py", content)
+        self.assertIn("NEON_FULL_SCHEMA_HEAD=PASS", content)
+        self.assertIn("FULL_RELEASE_DATABASE_MIGRATION=ALREADY_APPLIED_NOT_RUN_BY_GATE", content)
         self.assertIn("FULL_RELEASE_DATABASE_MIGRATION=NOT_RUN", content)
         self.assertIn("NEON_PRIVATE_BACKUP=PASS", content)
         self.assertNotIn("alembic upgrade head\n", content)
+
+
+    def test_operator_recovery_phase_argument_is_fail_closed(self):
+        import subprocess
+        script = Path(__file__).with_name("neon_full_release_recovery_gate.sh")
+        with tempfile.TemporaryDirectory() as root:
+            backup = Path(root) / "must-remain-absent"
+            result = subprocess.run(
+                ["bash", str(script),
+                 "--url-file", str(Path(root) / "private-url"),
+                 "--expected-host", "ep-calm-resonance-a17kpw1l.ap-southeast-1.aws.neon.tech",
+                 "--expected-database", "neondb",
+                 "--expected-role", "neondb_owner",
+                 "--backup-root", str(backup),
+                 "--expected-phase", "unexpected"],
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("RECOVERY_GATE=BLOCKED expected phase invalid", result.stderr)
+            self.assertFalse(backup.exists())
+
+    def test_operator_recovery_full_mode_has_no_migration_or_unsafe_fallback(self):
+        script = Path(__file__).with_name("neon_full_release_recovery_gate.sh")
+        s = script.read_text(encoding="utf-8")
+        self.assertIn('expected_phase="core"', s)
+        self.assertIn('expected_schema="READY"', s)
+        self.assertIn('expected_revision="d4ec2f9b7860"', s)
+        self.assertIn('"$postflight" == *"ALEMBIC_REVISION=$expected_revision"*', s)
+        self.assertIn('"$preflight" == *"ALEMBIC_REVISION=$expected_revision"*', s)
+        self.assertIn("--expected-phase full >/dev/null", s)
+        self.assertNotIn("alembic upgrade", s)
+        self.assertNotIn("DROP TABLE", s)
 
 
 
