@@ -14,6 +14,7 @@ from app.core.datetime_utils import utc_now_naive
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
 from app.services.cloud_document_access import verified_cloud_document_key
+from app.services.study_document_integrity import reconcile_document_before_delete
 from app.services.private_object_storage import (
     PrivateObjectStorageError, _client, assert_owned_key,
 )
@@ -57,6 +58,8 @@ def delete_cloud_document(*, db: Session, owner_id: str, document_id: str):
         # Keep stage_deleted_at unset when a grant may still be writable.
         # The delayed, operator-controlled sweep re-deletes after expiry.
         intent.deleted_at = utc_now_naive()
+        # Reconcile the applicant checklist in the same DB transaction.
+        reconcile_document_before_delete(db=db, document=locked)
         db.delete(locked)
         db.commit()
         return True
