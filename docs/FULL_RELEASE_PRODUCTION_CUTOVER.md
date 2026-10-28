@@ -4,18 +4,20 @@ This document supersedes the **core-only** deployment snapshot in
 `docs/PRODUCTION_LIVE_FIRST_RUNBOOK.md`. Production still uses an
 access-controlled Vercel origin. This is NOT public launch authorization.
 
-## Verified reference state
+## Verified reference state (updated 2026-10-28 05:05 UTC)
 
 | Surface | Verified state |
 |---|---|
-| GitHub candidate | PR #37, branch `release/full-with-study-abroad-20261028`, head `69c0a68b448cd75c8a0e1e31058e9e2ee5bc75a1` |
-| Exact-head CI | 7/7 successful (including PG16/18, native ARM64 real E2E, frontend and Docker) |
-| Vercel | Production READY from above exact head, deployment `dpl_5H1qFcDqaxZEfvXvXGTMwqjdafLd`, alias `https://aqlyra-navy.vercel.app`; Vercel Authentication enabled for **all** deployments |
-| Render | Existing `aqlyra-api-free-launch`, ID `srv-dbgjt0ei0phs73akd8j0`, **core-only** branch and auto deploy off; latest check `dep-dbglnk49v7es73aqbth0` FAILED at backend Settings validation |
-| Render secret progress | Previous deployments failed on absent `SECRET_KEY` and `DATABASE_URL`; a later deployment failed on `HF_TOKEN`; next deploy at 02:20 UTC progressed to **`GROQ_API_KEY` required**. The earlier errors no longer appeared in that latest startup attempt; this does NOT prove remote DB/Redis connections |
-| LiveKit | Screenshot of owner project `aqlyra-rag-ai` showed **zero deployed agents**; WebRTC room may connect without AI replying |
-| Neon | Owner's isolated Free `aqlyra-staging` (PG18); connected Neon management tool rejects project ID because of incompatible connection scope. No real migration or off-host recovery test verified |
-| Review | PR #37 is draft; zero approving reviews; `main` not merged |
+| GitHub candidate | PR #37, draft, unmerged; Full branch `release/full-with-study-abroad-20261028` at `2c5cb54c6f71ac7b8ff7b5122fbffe05caf1cef8` (verify the head again before release) |
+| Exact-head CI | Full Release 7/7 PASS at the above head. Core branch `cf3835402d939df28726abb05dafe0d7c26d6b7b` 7/7 PASS. These are predeploy/synthetic gates, not live RAG acceptance. |
+| Vercel | Production READY, `dpl_5H1qFcDqaxZEfvXvXGTMwqjdafLd`, `https://aqlyra-navy.vercel.app`; Vercel Authentication enabled for all deployments. |
+| Render | `aqlyra-api-free-launch` remains core-only with auto-deploy disabled; core diagnostic SHA `cf3835402d939df28726abb05dafe0d7c26d6b7b` verified LIVE at 05:02:39 UTC (`dep-dbgo383bc2fs73b87vng`), with additional same-SHA redeploys queued. Do not trigger more until queue stabilizes. |
+| Public backend probe | Read-only GitHub job `122642307809` at 05:03:50 UTC: /health 200, /readiness 503, Study Abroad workflows 404, anonymous cases 404. FAIL-CLOSED schema readiness is working. |
+| Render failure stage | Safe log: `stage=schema_revision error_type=ProgrammingError approved_neon_target=true`. Boolean proves approved Neon *hostname* match only, not exact database contents or restore coverage. Do not expose the DSN. |
+| Neon | Management connector works for `rough-river-66110449` (Singapore, PG18). Exactly one branch `br-morning-water-a1lgl3s4` (`production`) and one user database `neondb`; application tables, Alembic revision and pgvector absent. |
+| Recovery | Snapshot `snap-restless-mouse-a144fpzy` exists but captures the EMPTY schema; isolated restore rehearsal is NOT_RUN. It is not a verified backup of any other data source. |
+| LiveKit | Previous owner evidence showed no `aqlyra-voice` agent deployment. Running status / real microphone/STT/RAG/TTS acceptance not yet independently verified. |
+| Review | PR #37 remains draft, no approval and no `main` merge. No public launch authorization. |
 
 **Never disclose, print, commit, or paste secret values.** Render key values
 are deliberately inaccessible to this runbook; check via service startup
@@ -23,20 +25,7 @@ errors and provider dashboard, not secret decryption.
 
 ## Cutover steps, in required order
 
-1. **Make Render start, without weak bypasses.** Owner enters
-   `GROQ_API_KEY` as a nonempty active secret in the **correct** Render
-   service. `HF_TOKEN` was previously accepted by settings validation;
-   do not reassign it or other secrets to placeholders. Existing safe
-   non-secret Render values already set:
-   `LLM_PROVIDER=groq`, `LLM_MODEL=openai/gpt-oss-20b`,
-   `EMBEDDING_PROVIDER=huggingface`,
-   `EMBEDDING_MODEL=ibm-granite/granite-embedding-97m-multilingual-r2`,
-   `VOICE_AGENT_NAME=aqlyra-voice`,
-   `CORS_ORIGINS=https://aqlyra-navy.vercel.app`,
-   `RAG_GROUNDING_VERIFIER_ENABLED=true`.
-   **Service start is not acceptance.** Recheck required Redis TLS, Google
-   OAuth client, Resend API key and verified sender and the actual Groq/HF
-   inference quotas using redacted logs and private dashboards.
+1. **Reverify provider configuration without reading secret values.** Render now starts and reaches PostgreSQL; earlier missing-key logs are historical and should not be treated as current blockers. Require real private Groq/Hugging Face access, Redis TLS and fail-closed rate limiting, Google OAuth, Resend sender verification, quotas, and isolated full E2E acceptance. Existing non-secret examples: `LLM_PROVIDER=groq`, `EMBEDDING_PROVIDER=huggingface`, `VOICE_AGENT_NAME=aqlyra-voice`, `CORS_ORIGINS=https://aqlyra-navy.vercel.app`, and `RAG_GROUNDING_VERIFIER_ENABLED=true`. Do not substitute placeholders or disable security checks to make readiness green.
 2. **Check the isolated Neon database and backups.** Verify the correct
    PG18 project and DB, not an unrelated production account. Reconnect
    the mis-scoped Neon plugin if necessary. Before migrations, take a
@@ -83,6 +72,14 @@ errors and provider dashboard, not secret decryption.
    documented acceptance; **do not merge protected `main` or open
    public registrations on CI status alone**.
 
+## Greenfield Neon initial-schema decision gate (NOT YET AUTHORIZED)
+
+- **Identification:** approved Neon hostname match is observed, but explicitly verify database name, effective role and branch against the connected Neon project before any schema-changing action. Do not infer this from the prior HTTP 200 readiness implementation.
+- **Data safety:** independent SQL currently shows zero application tables and no pgvector. This does **not** prove data in any other PostgreSQL instance or private object store were backed up. Check the intended application data retention/recovery scope first.
+- **Recovery:** the existing empty-schema Neon snapshot is a useful rollback checkpoint, but a snapshot ID alone is not proof of successful restoration. Document and validate the isolated recovery process, with no destructive production restore; any real restore requires owner approval.
+- **Migration chain:** initial users revision `b7369290f410` -> Core `b5e4a019dc72` -> Full `d4ec2f9b7860`, single linear sequence. The final migration adds private Study Abroad tables referencing existing users/documents. PostgreSQL 18/pgvector must be provisioned by reviewed migration steps, and schema checked afterward.
+- **Execution:** prohibit Render startup auto-migrations, wrong-target DDL and downgrades. Do not begin until the exact identity/recovery gates above and explicit schema-change authorization are satisfied. After approval, validate Full revision, table ownership/isolation, Redis/storage readiness and live endpoint contracts.
+
 ## Free-tier limitations
 
 Vercel Hobby is not suitable for a commercial public launch, Render Free
@@ -90,6 +87,4 @@ sleeps when inactive and has ephemeral disk, and LiveKit Build quotas are
 limited. A protected owner-controlled test can stay on free-tier service
 allowances. Do not authorize paid upgrades automatically.
 
-**Current honest verdict:** Source/tests PASS, protected frontend READY;
-public backend + LiveKit + Study Abroad real-data launch BLOCKED pending
-external provider setup, reviewed migration, worker deployment and E2E QA.
+**Current honest verdict:** Source/tests PASS, protected frontend READY, Core liveness PASS, strict database schema readiness BLOCKED; Full Release, LiveKit and Study Abroad real-data launch BLOCKED pending reviewed greenfield schema/recovery, authenticated worker deployment, actual provider access and two-user E2E QA.
