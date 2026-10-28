@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
+import hmac
 import json
 import re
 from uuid import UUID, uuid4
@@ -153,6 +154,24 @@ def _read_raw(s3, key: str, *, limit: int) -> bytes | None:
                 pass
 
 
+
+def _metadata_signature(owner: str, item: dict) -> str:
+    """Authenticate metadata without coupling it to JWT key rotation."""
+    key = settings.ARTIFACT_METADATA_HMAC_KEY
+    if not isinstance(key, str) or len(key.strip()) < 32:
+        raise RemoteArtifactError("Private artifact signing is not configured")
+    try:
+        encoded = json.dumps(
+            item, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        message = b"aqlyra/artifacts/metadata/v1:" + _uuid(owner).encode() + b":" + encoded
+        return hmac.new(key.encode("utf-8"), message, sha256).hexdigest()
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise RemoteArtifactError("Invalid artifact signature payload") from exc
+
+
+
 def _metadata(s3, owner: str, artifact_id: str) -> dict | None:
     key = _key(owner, artifact_id, "json")
     raw = _read_raw(s3, key, limit=MAX_METADATA_BYTES)
@@ -162,6 +181,19 @@ def _metadata(s3, owner: str, artifact_id: str) -> dict | None:
         item = json.loads(raw)
         if not isinstance(item, dict):
             return None
+        # Signature covers the complete canonical metadata payload and
+        # owner namespace. Never accept old/unsigned or provider-edited
+        # metadata even if both the bytes and SHA256 were replaced.
+        signature = item.pop("metadata_signature", None)
+        if (type(item.get("signature_version")) is not int
+            or item.get("signature_version") != 1
+            or not isinstance(signature, str)
+            or not _VALID_SHA.fullmatch(signature)
+            or not hmac.compare_digest(
+                signature, _metadata_signature(owner, item)
+            )):
+            return None
+        item.pop("signature_version", None)
         fmt = item.get("format")
         title = item.get("title")
         if (item.get("id") != artifact_id or fmt not in MIMES
@@ -201,7 +233,9 @@ def create_artifact(*, user_id: str, title: str, kind: str, content: str,
         "citation_count": citation_count, "content": content,
         "sha256": sha256(data).hexdigest(),
     }
-    metadata = json.dumps(item, ensure_ascii=False).encode("utf-8")
+    stored = {**item, "signature_version": 1}
+    stored["metadata_signature"] = _metadata_signature(owner, stored)
+    metadata = json.dumps(stored, ensure_ascii=False).encode("utf-8")
     if len(metadata) > MAX_METADATA_BYTES:
         raise RemoteArtifactError("Artifact metadata exceeds safe limit")
     s3 = _storage()
