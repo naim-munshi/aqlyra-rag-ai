@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -215,6 +216,9 @@ def create_voice_session(
             participant_identity
         )
         .with_name(user.username)
+        # Short-lived joining authority: an active session may continue.
+        # Do not rely on LiveKit's longer SDK default TTL.
+        .with_ttl(timedelta(minutes=10))
         .with_metadata(metadata)
         .with_grants(
             api.VideoGrants(
