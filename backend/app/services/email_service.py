@@ -4,6 +4,7 @@ import smtplib
 import ssl
 
 import httpx
+from email_validator import EmailNotValidError, validate_email
 
 from app.config.settings import settings
 
@@ -89,8 +90,17 @@ def _send_message(message: EmailMessage, username: str, password: str) -> None:
 def _send_via_resend(message: EmailMessage) -> None:
     """HTTPS transactional email for serverless hosts without SMTP ports."""
     api_key = settings.RESEND_API_KEY.strip()
-    if not api_key or not settings.SMTP_FROM_EMAIL.strip():
+    sender_address = settings.SMTP_FROM_EMAIL.strip()
+    if not api_key or not sender_address:
         raise EmailDeliveryError("Email delivery is not configured")
+
+    # SMTP_FROM_NAME is the display name; SMTP_FROM_EMAIL must contain only
+    # a mailbox. A value such as "Aqlyra" previously produced
+    # "Aqlyra <Aqlyra>" and a Resend 422 for every verification email.
+    try:
+        validate_email(sender_address, check_deliverability=False)
+    except EmailNotValidError as exc:
+        raise EmailDeliveryError("Email sender is misconfigured") from exc
 
     recipient = message.get("To")
     subject = message.get("Subject")
