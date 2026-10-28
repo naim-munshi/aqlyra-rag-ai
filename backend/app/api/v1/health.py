@@ -105,29 +105,10 @@ def readiness():
     except Exception as exc:
         # Only fixed stage labels and exception class are emitted. Never
         # log the database URL, SQL exception text or user data.
-        diagnostic_fields = {}
-        if check_stage == "schema_revision":
-            # This is a BOOLEAN comparison to the approved staging Neon
-            # endpoint fingerprint, not a URL or credential disclosure.
-            # Remove this diagnostic after establishing the DB target.
-            from hashlib import sha256
-            from sqlalchemy.engine import make_url
-
-            try:
-                host = (make_url(settings.DATABASE_URL).host or "").lower()
-                digest = sha256(host.encode("ascii")).hexdigest()
-                diagnostic_fields["approved_neon_target"] = digest in {
-                    "d7131b38ca2993513af0982fe1fd0ace3986de68f7b8ca225f92d073649ebdc7",
-                    "d9c322dca22c08012c0ffca1bf28b03240aea9eb3cc8dbeba192d508fe16f61f",
-                }
-            except (ValueError, UnicodeEncodeError):
-                diagnostic_fields["approved_neon_target"] = False
-
         app_logger.warning(
             "readiness_backend_not_ready",
             stage=check_stage,
             error_type=type(exc).__name__,
-            **diagnostic_fields,
         )
         raise HTTPException(
             status_code=(
