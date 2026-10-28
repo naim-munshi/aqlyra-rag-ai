@@ -27,7 +27,7 @@ class FakeCursor:
 
 class FakeConn:
     def __init__(self, *, phase="core", tables=None, refs=None, indexes=None,
-                 read_only=True):
+                 primary_keys=None, owner_columns=None, read_only=True):
         self.phase = phase
         self.tables = (
             tables if tables is not None
@@ -37,6 +37,12 @@ class FakeConn:
         )
         self.refs = refs if refs is not None else audit.STUDY_FOREIGN_KEYS
         self.indexes = indexes if indexes is not None else audit.STUDY_INDEXES
+        self.primary_keys = (
+            primary_keys if primary_keys is not None else audit.STUDY_PRIMARY_KEYS
+        )
+        self.owner_columns = (
+            owner_columns if owner_columns is not None else audit.STUDY_OWNER_COLUMNS
+        )
         self.read_only = read_only
         self.rolled_back = False
         self.executed = []
@@ -49,8 +55,12 @@ class FakeConn:
             return FakeCursor([(name,) for name in sorted(self.tables)])
         if "FROM pg_constraint" in sql:
             return FakeCursor(sorted(self.refs))
-        if "FROM pg_indexes" in sql:
-            return FakeCursor([(name,) for name in sorted(self.indexes)])
+        if "FROM pg_index" in sql:
+            return FakeCursor(sorted(self.indexes))
+        if "FROM pg_constraint pk" in sql:
+            return FakeCursor(sorted(self.primary_keys))
+        if "information_schema.columns" in sql:
+            return FakeCursor(sorted(self.owner_columns))
         raise AssertionError("Only approved read-only queries are permitted")
 
     def rollback(self):
@@ -73,8 +83,10 @@ class StudySchemaAuditTest(unittest.TestCase):
     def test_full_inventory_ownership_cascade_and_indexes(self):
         conn = FakeConn(phase="full")
         self.assertEqual(audit.audit_schema(conn, "full"), ("full", 20))
-        self.assertEqual(len(conn.executed), 3)
+        self.assertEqual(len(conn.executed), 5)
         self.assertEqual(len(audit.STUDY_FOREIGN_KEYS), 5)
+        self.assertEqual(len(audit.STUDY_PRIMARY_KEYS), 4)
+        self.assertEqual(len(audit.STUDY_OWNER_COLUMNS), 8)
 
     def test_wrong_target_or_partial_schema_fails_closed(self):
         scenarios = [
@@ -82,14 +94,39 @@ class StudySchemaAuditTest(unittest.TestCase):
             FakeConn(tables=audit.CORE_TABLES | {"rogue_table"}),
             FakeConn(phase="full", tables=audit.CORE_TABLES),
             FakeConn(phase="full", refs=audit.STUDY_FOREIGN_KEYS - {
-                ("study_cases", "users", "c")
+                ("study_cases", "users", "user_id", "id", "c")
             }),
             FakeConn(phase="full", refs=(
-                audit.STUDY_FOREIGN_KEYS - {("study_cases", "users", "c")}
-            ) | {("study_cases", "users", "a")}),
+                audit.STUDY_FOREIGN_KEYS - {
+                    ("study_cases", "users", "user_id", "id", "c")
+                }
+            ) | {("study_cases", "users", "id", "id", "c")}),
+            FakeConn(phase="full", refs=(
+                audit.STUDY_FOREIGN_KEYS - {
+                    ("study_cases", "users", "user_id", "id", "c")
+                }
+            ) | {("study_cases", "users", "user_id", "id", "a")}),
             FakeConn(phase="full", indexes=audit.STUDY_INDEXES - {
-                "ix_study_universities_case_id"
+                ("ix_study_cases_owner_updated", "study_cases", "btree",
+                 False, False, False, "user_id,updated_at")
             }),
+            FakeConn(phase="full", indexes=(
+                audit.STUDY_INDEXES - {
+                    ("ix_study_cases_owner_updated", "study_cases", "btree",
+                     False, False, False, "user_id,updated_at")
+                }
+            ) | {("ix_study_cases_owner_updated", "study_cases", "btree",
+                  False, False, False, "updated_at,user_id")}),
+            FakeConn(phase="full", primary_keys=(
+                audit.STUDY_PRIMARY_KEYS - {
+                    ("study_case_documents", "case_id,document_id")
+                }
+            ) | {("study_case_documents", "document_id")}),
+            FakeConn(phase="full", owner_columns=(
+                audit.STUDY_OWNER_COLUMNS - {
+                    ("study_cases", "user_id", "NO")
+                }
+            ) | {("study_cases", "user_id", "YES")}),
         ]
         for item in scenarios:
             with self.subTest(index=scenarios.index(item)):
