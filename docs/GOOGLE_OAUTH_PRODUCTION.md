@@ -17,10 +17,11 @@
 
 1. Open the Google Cloud Console → **Google Auth Platform** → **Clients**.
    Select an existing **Web application** OAuth client or create one.
-2. Under **Authorized JavaScript origins** add the exact production origin
-   `https://aqlyra-navy.vercel.app`. If the secondary canonical host is used
-   by users, also authorize `https://aqlyra-aqlyra.vercel.app`.
-   The values are origins, not `/login` URLs, and must use HTTPS.
+2. Under **Authorized JavaScript origins** add the **canonical**
+   production origin `https://aqlyra-ai.vercel.app`. Add
+   `https://aqlyra-navy.vercel.app` or
+   `https://aqlyra-aqlyra.vercel.app` only if those aliases are deliberately
+   offered to real users. The values are HTTPS origins, not `/login` URLs.
 3. Configure Google OAuth branding and audience (publishing status/test users).
    For public sign-in, ensure the app is permitted for the intended audience.
 4. Copy the **public Web Client ID** (ends in `.apps.googleusercontent.com`).
