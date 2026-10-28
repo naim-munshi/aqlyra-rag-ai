@@ -229,7 +229,9 @@ class Settings(BaseSettings):
     # Private Neon branch-scoped S3-compatible storage (opt-in; not routed
     # to browser uploads until durable finalization and deletion are tested).
     PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
-    # Separate opt-in: never silently move local generated files to cloud.\n    ARTIFACT_REMOTE_STORAGE_ENABLED: bool = False\n    # Keep browser direct-upload API off until staging security acceptance.
+    # Separate opt-in: never silently move local generated files to cloud.
+    ARTIFACT_REMOTE_STORAGE_ENABLED: bool = False
+    # Keep browser direct-upload API off until staging security acceptance.
     CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
     OBJECT_STORAGE_BUCKET: str = ""
     AWS_ENDPOINT_URL_S3: str = ""
