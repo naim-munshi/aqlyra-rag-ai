@@ -126,7 +126,9 @@ def _read_raw(s3, key: str, *, limit: int) -> bytes | None:
     try:
         result = s3.get_object(Bucket=settings.OBJECT_STORAGE_BUCKET, Key=key)
     except Exception as exc:
-        code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+        response = getattr(exc, "response", None)
+        error = response.get("Error") if isinstance(response, dict) else None
+        code = error.get("Code") if isinstance(error, dict) else None
         if code in ("404", "NoSuchKey", "NotFound"):
             return None
         raise RemoteArtifactError("Private artifact read unavailable") from exc
