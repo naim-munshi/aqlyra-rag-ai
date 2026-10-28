@@ -53,7 +53,7 @@ class FakeConn:
             return FakeCursor([("on" if self.read_only else "off",)])
         if "information_schema.tables" in sql:
             return FakeCursor([(name,) for name in sorted(self.tables)])
-        if "FROM pg_constraint" in sql:
+        if "FROM pg_constraint fk" in sql:
             return FakeCursor(sorted(self.refs))
         if "FROM pg_index" in sql:
             return FakeCursor(sorted(self.indexes))
