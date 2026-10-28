@@ -194,6 +194,35 @@ class NeonRemoteBackupSafetyTest(unittest.TestCase):
 
 
 
+    def test_psycopg_cursor_version_read_uses_fetchone_not_scalar_one(self):
+        """Regression for the owner's real Neon preflight failure.
+
+        psycopg3's cursor has fetchone, not SQLAlchemy's scalar_one.
+        """
+        from unittest.mock import Mock
+        class PsycopgCursor:
+            def __init__(self, value):
+                self.value = value
+            def fetchone(self):
+                return self.value
+
+        for raw, expected in [("180006", 18), ("160014", 16)]:
+            with self.subTest(raw=raw):
+                conn = Mock()
+                conn.execute.return_value = PsycopgCursor((raw,))
+                self.assertEqual(gate.neon_server_major(conn), expected)
+                conn.execute.assert_called_once_with(
+                    "SELECT current_setting('server_version_num')"
+                )
+
+        for bad in [None, (), ("x",), ("180006", "extra"), (180006,),
+                    ("999999",), ("0",)]:
+            with self.subTest(bad=bad):
+                conn = Mock()
+                conn.execute.return_value = PsycopgCursor(bad)
+                with self.assertRaises(gate.BackupClientVersionError):
+                    gate.neon_server_major(conn)
+
     def test_postgres_clients_require_server_compatible_major(self):
         from unittest.mock import patch
         # PostgreSQL 16 pg_dump/restore must not touch a Neon PG18 backup.
