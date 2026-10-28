@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Operator-only CORE database backup/recovery acceptance gate.
+# Operator-only CORE or FULL database backup/recovery acceptance gate.
 # Remote Neon is READ ONLY. A private pg_dump is restored ONLY into an
 # ephemeral --network none Docker container. Never upgrades, resets or merges.
 set -Eeuo pipefail
 umask 077
 
 usage() {
-  echo "Usage: bash $0 --url-file PRIVATE_FILE --expected-host EXACT_NEON_HOST --expected-database neondb --expected-role neondb_owner --backup-root PRIVATE_DIRECTORY" >&2
+  echo "Usage: bash $0 --url-file PRIVATE_FILE --expected-host EXACT_NEON_HOST --expected-database neondb --expected-role neondb_owner --backup-root PRIVATE_DIRECTORY [--expected-phase core|full]" >&2
   exit 2
 }
-url_file="" expected_host="" expected_database="" expected_role="" backup_root=""
+url_file="" expected_host="" expected_database="" expected_role="" backup_root="" expected_phase="core"
 while (( $# )); do
   case "$1" in
-    --url-file|--expected-host|--expected-database|--expected-role|--backup-root)
+    --url-file|--expected-host|--expected-database|--expected-role|--backup-root|--expected-phase)
       (( $# >= 2 )) || usage
       case "$1" in
         --url-file) url_file="$2" ;;
@@ -20,12 +20,23 @@ while (( $# )); do
         --expected-database) expected_database="$2" ;;
         --expected-role) expected_role="$2" ;;
         --backup-root) backup_root="$2" ;;
+        --expected-phase) expected_phase="$2" ;;
       esac
       shift 2 ;;
     *) usage ;;
   esac
 done
 [[ -n "$url_file" && -n "$expected_host" && -n "$expected_database" && -n "$expected_role" && -n "$backup_root" ]] || usage
+[[ "$expected_phase" == "core" || "$expected_phase" == "full" ]] || {
+  echo "RECOVERY_GATE=BLOCKED expected phase invalid" >&2
+  exit 2
+}
+expected_revision="b5e4a019dc72"
+expected_schema="MIGRATION_PENDING"
+if [[ "$expected_phase" == "full" ]]; then
+  expected_revision="d4ec2f9b7860"
+  expected_schema="READY"
+fi
 
 # Explicit expected identity is mandatory; do not silently guess or select
 # the default branch. A second target database must be reviewed separately.
@@ -56,8 +67,8 @@ restore_script="$ROOT/scripts/ops/neon_restore_rehearsal.sh"
   echo "RECOVERY_GATE=BLOCKED missing reviewed Aqlyra recovery scripts" >&2
   exit 2
 }
-# Before any backup exists, confirm the actual database/role and migrated
-# CORE schema using a read-only PostgreSQL session.
+# Before any backup exists, confirm the actual database/role and exact
+# selected Core or Full schema using a read-only PostgreSQL session.
 preflight="$(python3 "$backup_script" \
   --url-file "$url_file" --expected-host "$expected_host" \
   --expected-database "$expected_database" --expected-role "$expected_role")" || {
@@ -66,11 +77,23 @@ preflight="$(python3 "$backup_script" \
 }
 [[ "$preflight" == *"NEON_TARGET_AND_TLS=PASS"* &&
    "$preflight" == *"NEON_SCHEMA=PASS"* &&
-   "$preflight" == *"ALEMBIC_REVISION=b5e4a019dc72"* &&
-   "$preflight" == *"FULL_RELEASE_SCHEMA=MIGRATION_PENDING"* ]] || {
+   "$preflight" == *"ALEMBIC_REVISION=$expected_revision"* &&
+   "$preflight" == *"FULL_RELEASE_SCHEMA=$expected_schema"* ]] || {
   echo "RECOVERY_GATE=BLOCKED unexpected schema head; do not run a migration" >&2
   exit 2
 }
+
+# Validate exact migrated table, index, owner-FK and primary-key catalog
+# before generating a dump; this also enforces a read-only session.
+if [[ "$expected_phase" == "full" ]]; then
+  python3 "$ROOT/scripts/ops/neon_study_schema_audit.py" \
+    --url-file "$url_file" --expected-host "$expected_host" \
+    --expected-database "$expected_database" --expected-role "$expected_role" \
+    --expected-phase full >/dev/null || {
+    echo "RECOVERY_GATE=BLOCKED Full schema catalog preflight failed" >&2
+    exit 2
+  }
+fi
 
 # Refuse symlinks and broad permissions on private backup root.
 [[ ! -L "$backup_root" ]] || {
@@ -101,7 +124,7 @@ PY
 
 # Each run gets an isolated non-overwriting private folder. Never log the
 # URL or contents. Preserve the backup on failure for operator inspection.
-run_dir="$(mktemp -d "$backup_root/aqlyra-core-recovery.XXXXXXXX")"
+run_dir="$(mktemp -d "$backup_root/aqlyra-$expected_phase-recovery.XXXXXXXX")"
 [[ -d "$run_dir" && ! -L "$run_dir" ]] || {
   echo "RECOVERY_GATE=BLOCKED private run directory could not be created" >&2
   exit 2
@@ -139,13 +162,28 @@ postflight="$(python3 "$backup_script" \
   echo "RECOVERY_GATE=BLOCKED post-backup Neon check failed" >&2
   exit 2
 }
-[[ "$postflight" == *"ALEMBIC_REVISION=b5e4a019dc72"* ]] || {
+[[ "$postflight" == *"ALEMBIC_REVISION=$expected_revision"* &&
+   "$postflight" == *"FULL_RELEASE_SCHEMA=$expected_schema"* ]] || {
   echo "RECOVERY_GATE=BLOCKED Neon revision changed during backup" >&2
   exit 2
 }
+if [[ "$expected_phase" == "full" ]]; then
+  python3 "$ROOT/scripts/ops/neon_study_schema_audit.py" \
+    --url-file "$url_file" --expected-host "$expected_host" \
+    --expected-database "$expected_database" --expected-role "$expected_role" \
+    --expected-phase full >/dev/null || {
+    echo "RECOVERY_GATE=BLOCKED Full schema catalog postflight failed" >&2
+    exit 2
+  }
+fi
 echo "NEON_PRIVATE_BACKUP=PASS"
 echo "NEON_ISOLATED_RESTORE=PASS"
-echo "NEON_CORE_SCHEMA_HEAD=PASS"
-echo "FULL_RELEASE_DATABASE_MIGRATION=NOT_RUN"
-echo "OWNER_APPROVAL_REQUIRED_FOR_MIGRATION=true"
+if [[ "$expected_phase" == "full" ]]; then
+  echo "NEON_FULL_SCHEMA_HEAD=PASS"
+  echo "FULL_RELEASE_DATABASE_MIGRATION=ALREADY_APPLIED_NOT_RUN_BY_GATE"
+else
+  echo "NEON_CORE_SCHEMA_HEAD=PASS"
+  echo "FULL_RELEASE_DATABASE_MIGRATION=NOT_RUN"
+  echo "OWNER_APPROVAL_REQUIRED_FOR_MIGRATION=true"
+fi
 echo "PRIVATE_BACKUP_LOCATION=$run_dir"
