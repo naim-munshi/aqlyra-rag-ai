@@ -1,6 +1,6 @@
 # Aqlyra Full Release — Neon backup, restore rehearsal and controlled migration
 
-**Verified Core staging state (2026-10-28):** Neon project
+**Verified historical Core state (before 2026-10-28 Full migration):** Neon project
 `rough-river-66110449` (`aqlyra-staging`), default branch
 `production` (`br-morning-water-a1lgl3s4`), database `neondb`
 and role `neondb_owner` were independently checked. Core's one-time
@@ -26,11 +26,17 @@ a synthetic custom-format pg_dump, and isolated networkless PG18 Docker
 restore. This proves local recovery plumbing, **not** a restore of
 the live Neon database. On 2026-10-28, the owner created a private real-Neon pg_dump and matching SHA-256 manifest, then successfully restored that exact archive in isolated networkless PG18 Docker (RESTORE_REHEARSAL=PASS, revision b5e4a019dc72, disposable container cleanup). The all-in-one wrapper was interrupted because Docker was initially stopped; the owner completed its restore step separately. Independent live read-only Neon postflight verified the same Core revision and zero users/documents. This proves database recovery, NOT uploaded-file or S3 object recovery. Preserve the private archive off-repository.
 
-**Remaining migrations:** Do not repeat Core bootstrap or reset the
-database. Only the additive, owner-approved Full Release migration
-`b5e4a019dc72 -> d4ec2f9b7860` remains. It creates four private
-Study Abroad tables. The protected frontend, Core backend and main
-branch must remain untouched while preparing recovery.
+**Current production (2026-10-28):** The owner approved the Study Abroad
+schema migration. One atomic transaction on verified Neon production
+advanced Alembic from `b5e4a019dc72` to **`d4ec2f9b7860`**.
+Independent read-only postflight confirmed four new Study Abroad tables,
+20 public tables, five exact cascading foreign keys, three ordered BTREE
+indexes, all four primary keys, pgvector and zero users/documents. The
+older Core backup remains private and valid for its earlier point in
+time; **a fresh Full-head backup plus isolated restore is required**
+before Full Render cutover. Never downgrade this production schema to
+Core merely to restore the old revision. Core Render, protected Vercel
+and main branch remain unchanged.
 
 **Never paste Neon, Upstash, Groq, Hugging Face or LiveKit credentials into
 ChatGPT, GitHub commits, workflow logs or support tickets.** Only the
@@ -38,8 +44,8 @@ owner's trusted local Mac should hold the connection URL.
 
 ## 1. Reverify scope without changing live resources
 
-The connected Neon project is already correctly scoped and the Core
-database is initialized. Recheck the exact branch, database, role,
+The connected Neon project is correctly scoped and the Full Study
+Abroad migration has already been applied to production. Recheck the exact branch, database, role,
 current Alembic head, user/document counts and provider recovery
 resources immediately before any local backup. Do not create a
 second staging project, repeat migrations, alter Render credentials,
@@ -150,7 +156,13 @@ data as sensitive. A verified successful run prints
 If backup, restore or revision checks fail, **STOP**. Never run an
 unreviewed migration or `alembic downgrade`.
 
-## 4A. Recommended single-command private recovery gate (operator Mac)
+## 4A. Historical Core backup recovery gate (before Full migration)
+
+**Historical only:** The existing Core-mode gate expects revision
+`b5e4a019dc72` and will correctly reject the now-migrated production
+database. To take a current Full backup, use section 4C with the
+explicit `--expected-phase full` flag. Do not reset production to make
+an obsolete Core-mode preflight pass.
 
 Instead of manually matching archive filenames from sections 2–4,
 the reviewed script now performs **both** required read-only Neon
@@ -197,38 +209,66 @@ The Full phase additionally checks five cascading Study Abroad foreign
 keys and three reviewed indexes, along with the matching Alembic head.
 It opens a read-only transaction and never performs database DDL or DML.
 
-Before any separately approved production schema write, from the
-owner's Full Release worktree:
+For the **current production Full schema**, from the owner's
+separate Full Release recovery worktree:
 
 ```bash
 python3 scripts/ops/neon_study_schema_audit.py \
   --url-file "$HOME/.aqlyra/private/neon-url" \
   --expected-host "ep-calm-resonance-a17kpw1l.ap-southeast-1.aws.neon.tech" \
   --expected-database neondb --expected-role neondb_owner \
-  --expected-phase core
+  --expected-phase full
 ```
 
-Core acceptance requires `NEON_SCHEMA_TABLES=PASS`,
-`NEON_TABLE_COUNT=16`, and `ALEMBIC_REVISION=b5e4a019dc72`.
-Only after approved migration, repeat with `--expected-phase full` and
-require `NEON_STUDY_FK_INDEX=PASS`, `NEON_TABLE_COUNT=20`, and
-`ALEMBIC_REVISION=d4ec2f9b7860`.
+Current production acceptance requires `NEON_SCHEMA_TABLES=PASS`,
+`NEON_STUDY_FK_INDEX=PASS`, `NEON_TABLE_COUNT=20`, and
+`ALEMBIC_REVISION=d4ec2f9b7860`. Before migration the expected Core
+revision was `b5e4a019dc72` with 16 public tables; it is historical.
 Neither result proves authenticated production RAG/Study Abroad E2E.
-## 5. Owner-approved, manual database migration
+## 4C. Fresh post-migration Full backup and isolated restore
 
-Only **after** verifying the project, private backup, and successful
-isolated restore rehearsal, review the additive full-release migration:
+The owner's earlier successful backup captured the **Core** schema.
+The production revision is now `d4ec2f9b7860`. On the owner Mac with
+Docker Desktop running, PostgreSQL 18.6 tools in PATH, and an existing
+private mode-600 direct Neon URL, use the separate worktree:
+
+```bash
+cd "$HOME/aqlyra-full-recovery"
+git fetch origin release/full-with-study-abroad-20261028
+git switch --detach origin/release/full-with-study-abroad-20261028
+source "$HOME/.aqlyra/recovery-venv/bin/activate"
+export PATH="$(brew --prefix libpq)/bin:$PATH"
+
+bash scripts/ops/neon_full_release_recovery_gate.sh \
+  --url-file "$HOME/.aqlyra/private/neon-url" \
+  --expected-host "ep-calm-resonance-a17kpw1l.ap-southeast-1.aws.neon.tech" \
+  --expected-database neondb \
+  --expected-role neondb_owner \
+  --backup-root "$HOME/.aqlyra/private/neon-backups" \
+  --expected-phase full
+```
+
+Require `NEON_PRIVATE_BACKUP=PASS`, `NEON_ISOLATED_RESTORE=PASS`,
+`NEON_FULL_SCHEMA_HEAD=PASS` and
+`FULL_RELEASE_DATABASE_MIGRATION=ALREADY_APPLIED_NOT_RUN_BY_GATE`.
+Neon reads are read-only; dump files remain owner-private and restore
+uses a disposable PostgreSQL 18 Docker container without networking.
+Retain both old Core and new Full archives in different directories.
+**This post-Full backup/recovery evidence has not yet been recorded.**
+Do not deploy the Full backend until independently verified.
+## 5. Owner-approved production migration — COMPLETED
+
+**2026-10-28: production Full schema migration already applied and
+verified. Do NOT run it again.** The originally reviewed migration is:
 `backend/alembic/versions/d4ec2f9b7860_study_abroad_cases.py`.
 The expected predecessor is `b5e4a019dc72` and the expected head is
 `d4ec2f9b7860`.
 
-An authenticated owner/operator can run the reviewed Alembic upgrade
-**against the correct Neon project** in a controlled maintenance
-window. This is a database WRITE and is deliberately not part of the
-read-only audit or backup scripts. Do not apply migrations to the
-wrong project, automatically at Render startup, or by rebuilding a
-Docker image. Re-run step 2 afterward and require
-`FULL_RELEASE_SCHEMA=READY`.
+The actual production revision is now `d4ec2f9b7860` and already
+passed independent catalog verification. Do not replay Alembic DDL or
+issue a destructive downgrade. Keep Render migration mode `manual`.
+The next gate is a new Full off-host private backup and isolated
+PG18 restore, not another schema migration.
 
 ## 6. Protected backend and voice cutover (only after above PASS)
 
