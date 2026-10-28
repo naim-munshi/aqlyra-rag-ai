@@ -480,8 +480,11 @@ export function VoiceCallButton({
       );
 
       room.on(RoomEvent.ParticipantDisconnected, () => {
-        if (roomRef.current === room &&
-            room.remoteParticipants.size === 0) {
+        if (
+          room !== null &&
+          roomRef.current === room &&
+          room.remoteParticipants.size === 0
+        ) {
           waitForAgent(room);
         }
       });
