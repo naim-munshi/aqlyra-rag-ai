@@ -9,6 +9,9 @@ browser can connect, but there is **no `aqlyra-voice` agent running to
 transcribe speech, call Aqlyra RAG, and play spoken replies**.
 
 The code already exists in:
+- `backend/app/voice/job_metadata.py`: strict canonical UUID, bounded
+  document-scope and duplicate-key validation before the worker opens
+  a voice session. SQL still enforces conversation/document ownership.
 - `backend/app/voice/worker.py`: registered `aqlyra-voice` agent,
   Groq STT, LiveKit Inference TTS, multilingual language detection,
   existing owner-scoped RAG answer generation and transcript persistence
