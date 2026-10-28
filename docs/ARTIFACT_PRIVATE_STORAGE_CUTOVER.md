@@ -28,7 +28,16 @@ release gate. Keep the protected Vercel frontend closed to public traffic.
 - The final metadata JSON object acts as an inventory visibility marker.
   The underlying object store does not provide a multi-object transaction:
   interruption between object writes may leave orphan binary objects.
-  Cleanup/reconciliation is a separate operational requirement.
+  A new internal read-only `audit_owner_inventory(user_id=...)`
+  reports count-only `complete_records`, `missing_binaries`,
+  `invalid_metadata`, `orphan_binaries`, `unexpected_keys`,
+  and `total_objects` while holding the owner's PostgreSQL
+  transaction advisory lock. It never lists filenames/keys in the
+  response and never deletes data. It does not expose any public API
+  and is intended for trusted operator-side diagnostics after private
+  S3 credentials and feature gating have been validated. No automated
+  garbage collection/deletion has been authorized. A nonzero anomaly
+  count must block acceptance pending a human-reviewed recovery plan.
 
 ## Required configuration — **not configured by this code commit**
 
@@ -92,6 +101,10 @@ controlled transition. Never clear the S3 prefix or reset the database.
 ## Verified evidence boundary
 
 Offline regression tests use only fake private S3 objects and an
-advisory-lock surrogate. They are **not** proof of real Neon S3 access,
+advisory-lock surrogate for other tests. A separate test now exercises
+real PostgreSQL advisory transaction locking on independent sessions
+under both PG16/PG18, and new fake-S3 tests exercise read-only
+inventory anomaly counting and tenant separation. These checks
+still are **not** proof of real Neon S3 access,
 production credentials, live user isolation or restart durability.
 The live rollout remains BLOCKED until all pre-enable checks pass.
