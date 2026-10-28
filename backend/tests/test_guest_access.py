@@ -188,3 +188,36 @@ def test_guest_ip_audit_ttl_and_no_message_or_token(
     assert pipe.operations[-1][2] == 24 * 3600
     assert "203.0.113.11" not in pipe.operations[0][1]
     assert "message" not in pipe.operations[0][2]
+
+
+def test_guest_visit_records_ip_without_chat_or_database(
+    client: TestClient, monkeypatch, db_session,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    content = b"{}"
+    result = client.post(
+        "/api/v1/guest/visit",
+        content=content, headers=signed_headers(content),
+    )
+    assert result.status_code == 200
+    assert result.json() == {"ok": True}
+    assert audits == ["203.0.113.11"]
+    assert budgets[0]["bucket"] == "guest-visit-ip"
+    from app.models.conversation import Conversation
+    assert db_session.query(Conversation).count() == 0
+
+
+def test_guest_visit_denies_unsigned_or_expired_requests(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    content = b"{}"
+    assert client.post(
+        "/api/v1/guest/visit", content=content,
+    ).status_code == 403
+    assert client.post(
+        "/api/v1/guest/visit", content=content,
+        headers=signed_headers(content, age=180),
+    ).status_code == 403
+    assert budgets == []
+    assert audits == []
