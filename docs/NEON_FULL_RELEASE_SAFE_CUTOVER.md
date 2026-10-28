@@ -170,7 +170,12 @@ bash scripts/ops/neon_full_release_recovery_gate.sh \
 direct unpooled Neon connection, existing 0700 backup directory (or
 new empty directory), local Python environment with `psycopg`,
 PostgreSQL 18-compatible `pg_dump` and `pg_restore`, and Docker
-Desktop running. Existing shell and safety tests validate syntax and
+Desktop running. Neon currently runs PostgreSQL 18.6: pg_dump 16.x is
+incompatible with the newer server. The recovery preflight now checks
+both PostgreSQL client versions and reports a sanitized mismatch before
+a dump is created. The Mac operator should confirm pg_dump and pg_restore
+are 18.x, selecting Homebrew libpq before any older PostgreSQL clients.
+No other Homebrew tap needs to be trusted. Existing shell and safety tests validate syntax and
 negative cases in CI. The script refuses wrong DB/role, wrong revision,
 insecure permissions and mismatched archives. A successful run prints
 `NEON_PRIVATE_BACKUP=PASS`,
