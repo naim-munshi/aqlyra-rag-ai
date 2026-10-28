@@ -49,10 +49,10 @@ langchain-core==1.5.2
 langchain-openai==1.4.1
 langchain-protocol==0.0.18
 langchain-text-splitters==1.1.2
-langgraph==1.2.10
+langgraph==1.2.14
 langgraph-checkpoint==4.1.1
 langgraph-prebuilt==1.1.0
-langgraph-sdk==0.4.4
+langgraph-sdk==0.4.6
 langsmith==0.10.11
 loguru==0.7.3
 lxml==6.1.1
