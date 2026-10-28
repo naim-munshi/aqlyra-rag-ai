@@ -7,6 +7,7 @@ authenticated provider E2E, backup/restore, or an agent audio round trip.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from urllib.error import HTTPError, URLError
@@ -48,12 +49,21 @@ def probe(path: str) -> tuple[int, object | None]:
             return status, None
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--expected-phase", choices=("core", "full"), default="full",
+        help="Explicit phase expected on the fixed live Render origin",
+    )
+    args = parser.parse_args(argv)
+    study_expected, cases_expected = (
+        (404, 404) if args.expected_phase == "core" else (200, 401)
+    )
     checks = [
         ("liveness", "/api/v1/health", 200),
         ("database_storage_redis", "/api/v1/readiness", 200),
-        ("study_abroad_workflow", "/api/v1/study-abroad/workflows", 200),
-        ("anonymous_study_cases_denied", "/api/v1/study-abroad/cases", 401),
+        ("study_abroad_workflow", "/api/v1/study-abroad/workflows", study_expected),
+        ("anonymous_study_cases_denied", "/api/v1/study-abroad/cases", cases_expected),
     ]
     failures = []
     for name, path, expected in checks:
@@ -72,7 +82,7 @@ def main() -> int:
                         for k in ("database", "storage", "redis")
                     )
                 )
-            if valid and name == "study_abroad_workflow":
+            if valid and name == "study_abroad_workflow" and args.expected_phase == "full":
                 valid = isinstance(payload, list) and any(
                     isinstance(workflow, dict)
                     and workflow.get("id") == "student"
@@ -106,9 +116,16 @@ def main() -> int:
             )
             failures.append(name)
     if failures:
-        print(f"LIVE_RELEASE_GATE=BLOCKED count={len(failures)}", flush=True)
+        print(
+            f"LIVE_{args.expected_phase.upper()}_GATE=BLOCKED count={len(failures)}",
+            flush=True,
+        )
         return 1
-    print("LIVE_RELEASE_GATE=PASS (read-only, not real provider E2E)", flush=True)
+    if args.expected_phase == "core":
+        print("LIVE_CORE_GATE=PASS (read-only)", flush=True)
+        print("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", flush=True)
+    else:
+        print("LIVE_RELEASE_GATE=PASS (read-only, not real provider E2E)", flush=True)
     return 0
 
 
