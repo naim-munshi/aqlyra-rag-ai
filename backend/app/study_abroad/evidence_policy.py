@@ -119,11 +119,11 @@ def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
         if not line:
             flush()
             continue
-        if re.match(r"^#{1,6}\\s+", line):
+        if re.match(r"^#{1,6}\s+", line):
             flush()
             # A heading can itself assert a material immigration claim.
             # Only short structural headings remain exempt from citation.
-            blocks.append(re.sub(r"^#{1,6}\\s+", "", line))
+            blocks.append(re.sub(r"^#{1,6}\s+", "", line))
             continue
         if re.match(r"^[-*+]\s+|^\d+[.)]\s+", line):
             flush()
