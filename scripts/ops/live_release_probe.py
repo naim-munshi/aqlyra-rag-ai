@@ -12,6 +12,7 @@ import json
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from time import sleep
 
 ORIGIN = "https://aqlyra-api-free-launch.onrender.com"
 MAX_BODY = 32768
@@ -49,6 +50,31 @@ def probe(path: str) -> tuple[int, object | None]:
             return status, None
 
 
+
+def probe_health_with_free_tier_cold_start() -> tuple[int, object | None]:
+    """Retry only harmless GET health while Render Free wakes from sleep.
+
+    Other dependency/authorization checks are never retried or weakened;
+    both transport errors and gateway 502/503/504 can occur during a
+    legitimate cold start. Never inspect or log a raw backend response.
+    """
+    for attempt in range(3):
+        try:
+            status, payload = probe("/api/v1/health")
+        except (URLError, TimeoutError, OSError):
+            if attempt == 2:
+                raise
+        else:
+            if status not in (502, 503, 504):
+                return status, payload
+            if attempt == 2:
+                return status, payload
+        sleep(5)
+    raise ValueError("Unreachable health attempt")
+
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -68,7 +94,10 @@ def main(argv: list[str] | None = None) -> int:
     failures = []
     for name, path, expected in checks:
         try:
-            status, payload = probe(path)
+            status, payload = (
+                probe_health_with_free_tier_cold_start()
+                if name == "liveness" else probe(path)
+            )
             valid = status == expected
             if valid and name == "liveness":
                 valid = isinstance(payload, dict) and payload.get("status") == "healthy"
