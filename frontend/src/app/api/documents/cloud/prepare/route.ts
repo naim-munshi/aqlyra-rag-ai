@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/auth/session";
 import { backendUrl, readJson } from "@/lib/api/backend";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "private, no-store" };
@@ -17,8 +18,13 @@ export async function POST(request: NextRequest) {
   }
   let manifest: unknown;
   try {
-    manifest = await request.json();
-  } catch {
+    manifest = await readBoundedJson(request, 4096);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json(
+        { detail: "Upload manifest too large" }, { status: 413, headers: noStore },
+      );
+    }
     return NextResponse.json(
       { detail: "Invalid manifest" }, { status: 400, headers: noStore },
     );
