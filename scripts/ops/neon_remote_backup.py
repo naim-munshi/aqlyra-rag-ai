@@ -122,6 +122,22 @@ def audit_revision(conn) -> tuple[str, bool]:
     revision = versions[0]
     if revision not in (EXPECTED_PREVIOUS, EXPECTED_FULL):
         raise ValueError("Database revision requires manual review")
+
+    # Alembic can be stamped or drift independently of the actual schema.
+    # Verify ALL four Study Abroad tables, not just the revision label.
+    study_schema = conn.execute(
+        "SELECT "
+        "to_regclass('public.study_cases') IS NOT NULL, "
+        "to_regclass('public.study_case_documents') IS NOT NULL, "
+        "to_regclass('public.study_research_reports') IS NOT NULL, "
+        "to_regclass('public.study_universities') IS NOT NULL"
+    ).fetchone()
+    if study_schema is None or len(study_schema) != 4:
+        raise ValueError("Study Abroad schema inspection unavailable")
+    if revision == EXPECTED_FULL and not all(study_schema):
+        raise ValueError("Full migration revision but Study Abroad tables missing")
+    if revision == EXPECTED_PREVIOUS and any(study_schema):
+        raise ValueError("Unexpected Study Abroad tables before full migration")
     return revision, revision == EXPECTED_FULL
 
 
