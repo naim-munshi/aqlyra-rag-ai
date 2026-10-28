@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowUp, LockKeyhole, Paperclip, Sparkles } from "lucide-react";
 
 import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
@@ -19,6 +19,12 @@ export function GuestChat() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [usage, setUsage] = useState(5);
+
+  useEffect(() => {
+    // Same-origin Vercel proxy signs the visitor IP; browser cannot set it.
+    // Only visit counts/IP are retained, never guest chat contents.
+    void fetch("/api/guest/visit", { method: "POST" }).catch(() => {});
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
