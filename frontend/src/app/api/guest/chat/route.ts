@@ -12,12 +12,19 @@ const headers = { "Cache-Control": "private, no-store" };
 const maxBodyBytes = 20_000;
 
 export async function POST(request: Request) {
+  if (process.env.NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true") {
+    return NextResponse.json(
+      { detail: "Guest chat is not enabled" },
+      { status: 503, headers },
+    );
+  }
   // Never trust browser-supplied IP values or expose the signing key.
   // Vercel overwrites X-Forwarded-For at its own ingress.
   const secret = process.env.GUEST_PROXY_SECRET;
+  // Require the Vercel-authored client-IP header; never fall back to
+  // arbitrary forwarded headers supplied along another ingress path.
   const clientIp = process.env.VERCEL === "1"
-    ? request.headers.get("x-vercel-forwarded-for") ??
-      request.headers.get("x-forwarded-for")
+    ? request.headers.get("x-vercel-forwarded-for")
     : null;
   if (!secret || secret.length < 32 || !clientIp || isIP(clientIp) === 0) {
     return NextResponse.json(
