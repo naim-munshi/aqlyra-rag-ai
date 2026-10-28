@@ -9,7 +9,7 @@ access-controlled Vercel origin. This is NOT public launch authorization.
 | Surface | Evidence and release state |
 |---|---|
 | PR #37 | DRAFT / unmerged; protected `main` unchanged. Review and approval still required. |
-| Full Release branch | `release/full-with-study-abroad-20261028`, prior docs-only head `24b30dd5b911a843d02620a7dcc53d9603c35a4a`, exact-head CI 7/7 PASS; recheck head and CI immediately before cutover. |
+| Full Release branch | `release/full-with-study-abroad-20261028`, last confirmed release candidate `deb7973e1d13a1698650e0a26173559871ad3877` passed 7/7 CI, including isolated **synthetic** PG16/18 backup/restore. Later commits add a private owner-operated backup gate; reverify current HEAD and exact-head CI before cutover. |
 | Core branch | `release/core-without-study-abroad-20261027`, cleanup commit `dc3920fb1428e143b8c393fd25941f7206c35b4c` exact-head CI 7/7 PASS. Temporary DB hostname diagnostic removed. |
 | Render backend | Existing `srv-dbgjt0ei0phs73akd8j0` core-only branch, auto-deploy OFF, exact cleanup SHA LIVE at `dep-dbgo7nh42hec73dkfc4g`. One-time Core migration completed and `DATABASE_MIGRATION_MODE` restored to `manual` (no startup auto migration). |
 | Read-only external probe | GitHub run `40624724953`, job `122644969614`: HTTP 200 for `/api/v1/health` and strict `/api/v1/readiness`. Study Abroad routes remain 404 until Full Release backend. This proves Core dependency readiness, **not** logged-in RAG E2E. |
@@ -27,6 +27,14 @@ errors and provider dashboard, not secret decryption.
 
 1. **Reverify provider configuration without reading secret values.** Render now starts and reaches PostgreSQL; earlier missing-key logs are historical and should not be treated as current blockers. Require real private Groq/Hugging Face access, Redis TLS and fail-closed rate limiting, Google OAuth, Resend sender verification, quotas, and isolated full E2E acceptance. Existing non-secret examples: `LLM_PROVIDER=groq`, `EMBEDDING_PROVIDER=huggingface`, `VOICE_AGENT_NAME=aqlyra-voice`, `CORS_ORIGINS=https://aqlyra-navy.vercel.app`, and `RAG_GROUNDING_VERIFIER_ENABLED=true`. Do not substitute placeholders or disable security checks to make readiness green.
 2. **Preserve the verified migrated Core database and recovery branch.** Neon is correctly connected; Core `b5e4a019dc72` is already applied. Before further migrations, confirm exact target, current data counts, the non-default Core recovery branch and a usable isolated restore procedure. Do not waste time repeating Core bootstrap or overwrite the existing snapshot. A Neon branch is not a substitute for independent off-host restore rehearsal.
+   To run the *actual* private Neon off-host backup and isolated restore
+   from an owner-authenticated Mac, follow
+   `docs/NEON_FULL_RELEASE_SAFE_CUTOVER.md`, section 4A, with
+   `scripts/ops/neon_full_release_recovery_gate.sh`. Its credentials
+   stay in a 0600 local file, and its output must explicitly include
+   `NEON_PRIVATE_BACKUP=PASS` and `NEON_ISOLATED_RESTORE=PASS`.
+   This check is NOT YET RUN against real Neon and is not supplied
+   by the existing synthetic CI evidence.
 3. **Review the additive Full migration with a controlled recovery plan.** Revision `d4ec2f9b7860` depends on `b5e4a019dc72` and adds the four Study Abroad tables. Verify no drift or unexpected data changes and confirm both source and recovery. Only with explicit authorization execute the reviewed upgrade on the verified intended database. Keep Render migration mode `manual`; never enable startup auto-migrations for normal deploys. Afterward query `public.alembic_version` and table ownership, and verify Full readiness independently.
 4. **Switch Render to the full-release branch** using Render dashboard
    → service Settings → Build & Deploy → Branch →
@@ -62,7 +70,7 @@ errors and provider dashboard, not secret decryption.
    documented acceptance; **do not merge protected `main` or open
    public registrations on CI status alone**.
 
-## Remaining database recovery and migration gates (NOT YET AUTHORIZED)
+## Remaining database recovery and migration gates (require explicit owner approval for schema writes)
 
 - **Core bootstrap is complete.** Never reset or rerun the initial chain. Confirm the current revision and counts via read-only SQL immediately before cutover.
 - **Existing protection:** keep `snap-restless-mouse-a144fpzy` (pre-Core, empty) and the no-compute Core branch `br-damp-credit-a1mksvnz`; do not delete either. A second snapshot may be unavailable on Neon Free. Neither is verified cross-provider disaster recovery.
