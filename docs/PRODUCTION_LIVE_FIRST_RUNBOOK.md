@@ -5,16 +5,79 @@ that deployed origin, instead of maintaining an extra `aqlyra-preview`
 Neon child branch. This is a deployment plan, **not authorization to bypass
 required security and data-integrity gates**, and not proof of public launch.
 
+## Verified production-target deployment evidence (2026-10-28)
+
+**Vercel Production READY — frontend only, not full-stack acceptance.**
+
+- Connected target: team `Aqlyra`, project `aqlyra` (ID
+  `prj_mu3muy8q3YB5nJYeG0xMPQtIyzvc`), Hobby plan.
+- Deployment `dpl_HHnju3eH8iH2zE8zgAzLtqvkd8fP` is **READY**, from
+  reviewed core-only commit `4ec9a4d35f075ded387665b4e0abebf4594b3106`
+  (NOT merged into GitHub `main`). Production alias:
+  `https://aqlyra-navy.vercel.app`.
+- After the first successful frontend build, configured **server-only**
+  `BACKEND_API_URL=https://aqlyra-api-free-launch.onrender.com/api/v1`,
+  then forced a fresh production build from the **same exact commit**.
+  Vercel reports that new deployment READY.
+- Production `NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED=false` and
+  `NEXT_PUBLIC_AQLYRA_DEMO_ONLY=false`, independently re-read.
+  All Vercel deployments are configured with `ssoProtection: all`
+  (Vercel Authentication). An external anonymous request test has **not**
+  succeeded in the current execution environment; confirm access
+  enforcement from an incognito browser before enabling any public traffic.
+
+**Render Free backend CREATED, but NOT READY.**
+
+- Service `srv-dbgjt0ei0phs73akd8j0` is
+  `aqlyra-api-free-launch`, endpoint
+  `https://aqlyra-api-free-launch.onrender.com`, Singapore,
+  **Free** plan, core-only release branch, auto-deploy **OFF**.
+  Docker uses context `backend` and `backend/Dockerfile`;
+  data migrations on startup are **disabled**.
+- First deploy `dep-dbgjt0ui0phs73akda7g` built the image but
+  failed startup with **missing `SECRET_KEY` and `DATABASE_URL`**.
+  These are REQUIRED private settings. Do not use placeholder secrets or
+  claim the backend is live. A subsequent env-only deploy was triggered
+  when enabling the required `RAG_GROUNDING_VERIFIER_ENABLED=true`
+  security flag and maintaining disabled public cloud upload.
+- **Owner action required in Render secret dashboard, not chat:** set
+  `SECRET_KEY` (random strong secret, 32+ characters);
+  `DATABASE_URL` (the **pooled**, TLS-enabled URL from the isolated
+  Neon `aqlyra-staging` project); `REDIS_URL` (TLS enabled);
+  `GOOGLE_CLIENT_ID` (a real web OAuth client ID);
+  `RESEND_API_KEY`, `SMTP_FROM_EMAIL` (verified sender domain);
+  `GROQ_API_KEY` and `HF_TOKEN` for model inference.
+  The nonsecret settings `CORS_ORIGINS=https://aqlyra-navy.vercel.app`,
+  `APP_ENV=production`, `EMAIL_VERIFICATION_REQUIRED=true`,
+  `RATE_LIMIT_ENABLED=true`, `DATABASE_MIGRATION_MODE=manual`,
+  `PRIVATE_OBJECT_STORAGE_ENABLED=false`, and
+  `CLOUD_UPLOAD_PUBLIC_ENABLED=false` were set at service creation.
+- Backend production config **also requires**
+  `RAG_GROUNDING_VERIFIER_ENABLED=true` and rejects deterministic
+  inference, weak secrets, and unverified email configuration.
+  Correct behavior with missing credentials is **fail closed**.
+- Do not connect real customer accounts until database migration and
+  backup+restore rehearsals pass. The Render Free disk is ephemeral
+  and is unsuitable for persistent local document uploads.
+- The Neon management connector still rejects ID
+  `rough-river-66110449` because it is incorrectly scoped to a
+  GitHub URL. No database migration or connected storage operations
+  have been performed.
+
+**Operational status:** frontend deployment READY, Render backend BLOCKED
+by external credentials and schema; public full-stack acceptance BLOCKED.
+No paid plan, GitHub merge, API secret exposure or customer data access
+was performed as part of these deployments.
+
 ## Exact targets and current state
 
 - Source: `naim-munshi/aqlyra-rag-ai`; core-only candidate PR #36 from
   `release/core-without-study-abroad-20261027`. Study Abroad stays excluded.
-- Vercel project: existing `aqlyra`, Hobby team. No deployment or domain
-  verified as live. Production env keys explicitly set:
-  `NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED=false` and
-  `NEXT_PUBLIC_AQLYRA_DEMO_ONLY=false`. These are feature flags only;
-  `BACKEND_API_URL` is not configured. Project Vercel Auth covers deployment
-  URLs; verify actual access controls before any URL is shared.
+- Vercel project: existing `aqlyra`, Hobby team. Protected
+  Production deployment is READY at `https://aqlyra-navy.vercel.app`;
+  `BACKEND_API_URL` points to the allocated Render backend endpoint.
+  The backend is not yet functional, so all authenticated live flows
+  remain BLOCKED. See the dated evidence above.
 - Neon: separate Free `aqlyra-staging`, ID `rough-river-66110449`,
   Singapore PostgreSQL 18; its default branch happens to be called
   `production`. User-supplied console view confirms
@@ -22,9 +85,10 @@ required security and data-integrity gates**, and not proof of public launch.
   read grants, upload CORS or user isolation work. Use this disposable
   project for initial limited-access launch, **never an existing unrelated
   production database**.
-- Render: no Aqlyra backend service yet. Existing unrelated
-  `sakuraglam-private-preview` is out of scope. Render Free lacks persistent
-  disk and sleeps after inactivity. Never store uploaded bytes on its disk.
+- Render: `aqlyra-api-free-launch` exists on the Free plan, but
+  startup fails closed without `SECRET_KEY` and Neon `DATABASE_URL`.
+  Existing unrelated `sakuraglam-private-preview` remains out of scope.
+  Render Free lacks persistent disk and sleeps after inactivity.
 - Neon MCP tool project scope is incorrectly a GitHub repository URL. Do
   not call mutating Neon tools until the connected scope is the actual ID.
 
@@ -82,8 +146,9 @@ required security and data-integrity gates**, and not proof of public launch.
 - Neon project-scoped management access or operator-provisioned credentials
   must be available before migration/backend config. The existing incorrect
   connector scope cannot be bypassed with an arbitrary project ID.
-- No Render Aqlyra service, backend env secrets, active Redis, email sender,
-  model quota or Vercel `BACKEND_API_URL` have been independently verified.
+- Render service and Vercel backend URL now exist, but required backend
+  secrets, active Redis, verified email sender, real model quota and database
+  schema migration/restore evidence are still missing.
 - Existing CI success is necessary but does **not** prove live HTTPS
   usability, off-host restoration, RAG quality or public security.
 - Vercel Hobby and Render Free are not a reliable platform for a public
