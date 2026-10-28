@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const login = read("../src/app/login/page.tsx");
+const guestPage = read("../src/app/guest/page.tsx");
 const guest = read("../src/components/guest/guest-chat.tsx");
 const proxy = read("../src/app/api/guest/chat/route.ts");
 const admin = read("../src/app/api/admin/guest-traffic/route.ts");
@@ -38,4 +39,11 @@ test("guest IP admin proxy requires an authenticated JWT cookie", () => {
   assert.match(admin, /getAccessToken/);
   assert.match(admin, /if \(!token\)/);
   assert.match(admin, /backendUrl\("\/admin\/guest-traffic"\)/);
+});
+
+
+test("real guest chat only appears after public release flag is enabled", () => {
+  assert.match(login, /NEXT_PUBLIC_AQLYRA_GUEST_ENABLED === "true"/);
+  assert.match(guestPage, /NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true"/);
+  assert.match(guestPage, /redirect\("\/login"\)/);
 });
