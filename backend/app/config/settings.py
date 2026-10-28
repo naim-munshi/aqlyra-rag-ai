@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     EMAIL_DELIVERY_PROVIDER: str = "smtp"
     RESEND_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USERNAME: str = ""
@@ -787,8 +788,8 @@ class Settings(BaseSettings):
     @classmethod
     def validate_email_delivery_provider(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"smtp", "resend"}:
-            raise ValueError("EMAIL_DELIVERY_PROVIDER must be smtp or resend")
+        if normalized not in {"smtp", "resend", "brevo"}:
+            raise ValueError("EMAIL_DELIVERY_PROVIDER must be smtp, resend, or brevo")
         return normalized
 
     @field_validator("APP_ENV")
@@ -868,8 +869,10 @@ class Settings(BaseSettings):
                 "SMTP_USERNAME": self.SMTP_USERNAME,
                 "SMTP_PASSWORD": self.SMTP_PASSWORD,
             })
-        else:
+        elif self.EMAIL_DELIVERY_PROVIDER == "resend":
             email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
+        elif self.EMAIL_DELIVERY_PROVIDER == "brevo":
+            email_values["BREVO_API_KEY"] = self.BREVO_API_KEY
         for setting_name, setting_value in email_values.items():
             if not setting_value.strip():
                 raise ValueError(
