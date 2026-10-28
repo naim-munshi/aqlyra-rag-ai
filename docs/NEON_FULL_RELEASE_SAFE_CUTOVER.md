@@ -123,6 +123,11 @@ bash scripts/ops/neon_restore_rehearsal.sh \
   "$HOME/.aqlyra/private/neon-backups/<BACKUP_NAME>.json"
 ```
 
+Before reporting success, the rehearsal verifies the **actual** Full Release
+Study Abroad tables against Alembic revision `d4ec2f9b7860`; it also
+rejects a supposedly Core-only restored revision `b5e4a019dc72` if any
+unexpected Study Abroad table exists. The revision label alone is insufficient.
+
 The script verifies SHA256, starts a fresh `pgvector/pgvector:pg18`
 database with `--network none`, exposes **no host port**, restores
 the private dump, checks pgvector, core tables and the Alembic revision,
