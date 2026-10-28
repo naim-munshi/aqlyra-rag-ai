@@ -162,7 +162,7 @@ def _client_major(tool: str) -> int:
         raise BackupClientVersionError(f"{tool} version unavailable")
     # Version text is never echoed. Avoid terminal-control/log injection.
     match = re.fullmatch(
-        rf"{re.escape(tool)} \\(PostgreSQL\\) (\\d{{1,2}})(?:\\.\\d+)?(?: .*\))?",
+        rf"{re.escape(tool)} \(PostgreSQL\) (\d{{1,2}})(?:\.\d+)?(?: .*)?",
         output.stdout.strip(),
     )
     if not match:
