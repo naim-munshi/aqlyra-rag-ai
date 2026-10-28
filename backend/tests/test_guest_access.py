@@ -45,7 +45,7 @@ def setup_guest(monkeypatch):
         lambda **kwargs: budget.append(kwargs),
     )
     monkeypatch.setattr(
-        guest_api, "_record_guest_ip", lambda ip: audits.append(ip)
+        guest_api, "_record_guest_ip", lambda ip, *, event="chat": audits.append(ip)
     )
     monkeypatch.setattr(
         guest_api, "create_configured_llm_provider",
@@ -203,8 +203,8 @@ def test_guest_ip_audit_ttl_and_no_message_or_token(
         def hincrby(self, key, field, count):
             self.operations.append(("hincrby", key, field, count))
             return self
-        def expire(self, key, seconds):
-            self.operations.append(("expire", key, seconds))
+        def expire(self, key, seconds, *, nx=False):
+            self.operations.append(("expire", key, seconds, nx))
             return self
         def execute(self):
             return []
@@ -220,6 +220,8 @@ def test_guest_ip_audit_ttl_and_no_message_or_token(
     assert pipe.operations[0][2]["ip"] == "203.0.113.11"
     assert pipe.operations[-1][0] == "expire"
     assert pipe.operations[-1][2] == 24 * 3600
+    assert pipe.operations[-1][3] is True  # Never refresh IP record TTL
+    assert ("hincrby", pipe.operations[0][1], "chat_requests", 1) in pipe.operations
     assert "203.0.113.11" not in pipe.operations[0][1]
     assert "message" not in pipe.operations[0][2]
 
@@ -315,3 +317,60 @@ def test_signed_malformed_guest_chat_returns_sanitized_422(
     assert response.json()["detail"] == "Invalid guest chat request"
     assert budgets == []
     assert audits == []
+
+
+def test_guest_audit_counts_visits_and_chats_separately_without_extending_ttl(
+    monkeypatch,
+):
+    class AuditPipeline:
+        def __init__(self):
+            self.operations = []
+        def hset(self, key, mapping):
+            self.operations.append(("hset", key, mapping))
+            return self
+        def hincrby(self, key, field, amount):
+            self.operations.append(("hincrby", key, field, amount))
+            return self
+        def expire(self, key, ttl, *, nx=False):
+            self.operations.append(("expire", key, ttl, nx))
+            return self
+        def execute(self):
+            return []
+
+    pipelines = []
+    def new_pipeline(**_kwargs):
+        pipe = AuditPipeline()
+        pipelines.append(pipe)
+        return pipe
+
+    monkeypatch.setattr(settings, "GUEST_PROXY_SECRET", _SECRET)
+    monkeypatch.setattr(
+        guest_api, "get_rate_limit_redis",
+        lambda: SimpleNamespace(pipeline=new_pipeline),
+    )
+    guest_api._record_guest_ip("203.0.113.51", event="visit")
+    guest_api._record_guest_ip("203.0.113.51", event="chat")
+    first, second = (p.operations for p in pipelines)
+    assert first[-1][-1] is True and second[-1][-1] is True
+    assert ("hincrby", first[0][1], "visits", 1) in first
+    assert ("hincrby", second[0][1], "chat_requests", 1) in second
+    for operations in (first, second):
+        assert all("prompt" not in str(op) and "token" not in str(op) for op in operations)
+
+
+def test_guest_audit_admin_counts_legacy_records_safely(monkeypatch):
+    monkeypatch.setattr(settings, "GUEST_CHAT_ENABLED", True)
+    class FakeRedis:
+        def scan_iter(self, **_kwargs):
+            return iter(["aqlyra:guest:traffic:hash-only"])
+        def hgetall(self, _key):
+            return {"ip": "203.0.113.11", "requests": "2", "last_seen_utc": "1780000000"}
+
+    monkeypatch.setattr(guest_api, "get_rate_limit_redis", lambda: FakeRedis())
+    assert guest_api.recent_guest_traffic() == [{
+        "ip": "203.0.113.11",
+        "requests": 2,
+        "visits": 0,
+        "chat_requests": 0,
+        "last_seen_utc": 1780000000,
+    }]
