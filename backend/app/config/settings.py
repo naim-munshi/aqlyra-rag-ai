@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # immutable user UUIDs. Never use emails/usernames as admin identities.
     ADMIN_USER_IDS: str = ""
 
+    # Guest-only, stateless public AI chat. Fail closed until a shared
+    # server-to-server signing key and distributed Redis limits exist.
+    GUEST_CHAT_ENABLED: bool = False
+    GUEST_PROXY_SECRET: str = ""
+    GUEST_CHAT_HOURLY_IP_LIMIT: int = 5
+    GUEST_CHAT_DAILY_IP_LIMIT: int = 20
+    GUEST_CHAT_GLOBAL_DAILY_LIMIT: int = 1000
+
+
     # Verified identity
     EMAIL_VERIFICATION_REQUIRED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
@@ -856,6 +865,15 @@ class Settings(BaseSettings):
         if self.DEBUG:
             raise ValueError(
                 "DEBUG must be false in production"
+            )
+
+        if self.GUEST_CHAT_ENABLED and (
+            len(self.GUEST_PROXY_SECRET.strip()) < 32
+            or not self.RATE_LIMIT_ENABLED
+        ):
+            raise ValueError(
+                "Production guest chat requires a 32+ character "
+                "proxy secret and distributed rate limiting"
             )
 
         if not self.EMAIL_VERIFICATION_REQUIRED:
