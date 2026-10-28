@@ -5,6 +5,7 @@ aqlyra-voice worker, actual provider credentials and a browser are required.
 """
 import base64
 import json
+import time
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -74,6 +75,8 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
         document_ids=documents,
     )
     claims = _jwt_claims(result.participant_token)
+    # Joining authority lasts 10 minutes, not the SDK's multi-hour default.
+    assert 0 < claims["exp"] - int(time.time()) <= 610
     grant = claims["video"]
     assert result.server_url == "wss://voice.test.invalid"
     assert result.mode == "knowledge"
@@ -125,3 +128,12 @@ def test_foreign_or_unready_document_rejection_stops_token_issue(monkeypatch):
             conversation_id=str(conversation.id), title="Voice",
             document_ids=(str(uuid4()),),
         )
+
+
+def test_anonymous_browser_cannot_request_voice_room(client):
+    response = client.post(
+        "/api/v1/voice/session",
+        json={"mode": "normal", "document_ids": []},
+    )
+    assert response.status_code == 401
+    assert "participant_token" not in response.text
