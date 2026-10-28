@@ -35,7 +35,16 @@ _TTL_SECONDS = 24 * 3600
 class GuestTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: str
-    content: str = Field(min_length=1, max_length=800)
+    # The API itself may generate up to 2,000 characters in an answer.
+    # Accept that answer on the next request without rejecting chat history.
+    content: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def bound_user_history(cls, value: str, info) -> str:
+        if info.data.get("role") == "user" and len(value) > 800:
+            raise ValueError("Guest user history exceeds 800 characters")
+        return value
 
     @field_validator("role")
     @classmethod
