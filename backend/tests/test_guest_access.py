@@ -152,6 +152,40 @@ def test_guest_length_and_history_constraints(
         assert result.status_code == 422
 
 
+def test_guest_can_follow_up_after_long_assistant_reply(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    long_reply = "Detailed public answer. " * 70
+    assert 800 < len(long_reply) < 2000
+    payload = body(
+        "Could you summarize that?",
+        history=[
+            {"role": "user", "content": "Explain this concept"},
+            {"role": "assistant", "content": long_reply},
+        ],
+    )
+    result = client.post(
+        "/api/v1/guest/chat",
+        content=payload,
+        headers=signed_headers(payload),
+    )
+    assert result.status_code == 200, result.text
+    assert audits == ["203.0.113.11"]
+    assert len(budgets) == 3
+
+    # Never permit an attacker to use extended AI-reply limits to inject
+    # oversized user turns into the anonymous model context.
+    invalid = body("Now tell me more", history=[
+        {"role": "user", "content": "u" * 801},
+    ])
+    blocked = client.post(
+        "/api/v1/guest/chat",
+        content=invalid, headers=signed_headers(invalid),
+    )
+    assert blocked.status_code == 422
+
+
 def test_guest_admin_ip_list_requires_admin_jwt(client: TestClient):
     response = client.get("/api/v1/admin/guest-traffic")
     assert response.status_code == 401
