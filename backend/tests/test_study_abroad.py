@@ -35,6 +35,50 @@ def example_profile() -> dict:
     }
 
 
+def test_real_jwt_two_account_study_case_isolation(client):
+    """Actual register/login JWT boundary, not a dependency override.
+
+    Uses only the disposable per-test database, never real user accounts.
+    """
+    # Explicitly ensure this test uses the app's real JWT dependency path.
+    app.dependency_overrides.pop(get_current_user, None)
+
+    def login(name: str) -> dict[str, str]:
+        email = f"{name}@example.org"
+        registered = client.post("/api/v1/auth/register", json={
+            "username": name, "email": email, "password": "SecurePass123!",
+        })
+        assert registered.status_code == 201, registered.text
+        logged_in = client.post("/api/v1/auth/login", json={
+            "email": email, "password": "SecurePass123!",
+        })
+        assert logged_in.status_code == 200, logged_in.text
+        return {
+            "Authorization": "Bearer " + logged_in.json()["access_token"],
+        }
+
+    alpha = login("studyjwtalpha")
+    beta = login("studyjwtbeta")
+    base = "/api/v1/study-abroad/cases"
+    assert client.get(base).status_code == 401
+
+    created = client.post(base, headers=alpha, json=example_profile())
+    assert created.status_code == 201, created.text
+    case_id = created.json()["id"]
+    uri = f"{base}/{case_id}"
+
+    assert client.get(uri, headers=alpha).status_code == 200
+    assert client.get(base, headers=beta).json() == []
+    assert client.get(uri, headers=beta).status_code == 404
+    assert client.patch(uri, headers=beta, json={"notes": "unauthorized"}).status_code == 404
+    assert client.get(uri + "/documents", headers=beta).status_code == 404
+    assert client.get(uri + "/research", headers=beta).status_code == 404
+    assert client.delete(uri, headers=beta).status_code == 404
+    assert client.get(uri, headers=alpha).status_code == 200
+    assert client.delete(uri, headers=alpha).status_code == 204
+    assert client.get(uri, headers=alpha).status_code == 404
+
+
 def test_workflows_default_to_student_only(client):
     result = client.get("/api/v1/study-abroad/workflows")
     assert result.status_code == 200
