@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -141,11 +142,56 @@ def audit_revision(conn) -> tuple[str, bool]:
     return revision, revision == EXPECTED_FULL
 
 
+class BackupClientVersionError(ValueError):
+    """Only vetted, non-secret PostgreSQL tool/version diagnostics."""
+
+
+def _client_major(tool: str) -> int:
+    """Parse the installed pg_dump/pg_restore major, never its environment."""
+    location = shutil.which(tool)
+    if location is None:
+        raise BackupClientVersionError(f"{tool} is missing")
+    try:
+        output = subprocess.run(
+            [location, "--version"], capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BackupClientVersionError(f"{tool} version unavailable") from exc
+    if output.returncode != 0:
+        raise BackupClientVersionError(f"{tool} version unavailable")
+    # Version text is never echoed. Avoid terminal-control/log injection.
+    match = re.fullmatch(
+        rf"{re.escape(tool)} \\(PostgreSQL\\) (\\d{{1,2}})(?:\\.\\d+)?(?: .*\))?",
+        output.stdout.strip(),
+    )
+    if not match:
+        raise BackupClientVersionError(f"{tool} version unrecognized")
+    major = int(match.group(1))
+    if not 10 <= major <= 30:
+        raise BackupClientVersionError(f"{tool} version unsupported")
+    return major
+
+
+def verify_backup_clients(server_major: int) -> None:
+    """Refuse a client older than Neon, before touching backup files."""
+    if not isinstance(server_major, int) or not 10 <= server_major <= 30:
+        raise BackupClientVersionError("Neon server version unrecognized")
+    for tool in ("pg_dump", "pg_restore"):
+        major = _client_major(tool)
+        if major < server_major:
+            raise BackupClientVersionError(
+                f"{tool} {major} is older than PostgreSQL {server_major}"
+            )
+
+
 def create_backup(
-    connection_url: str, backup_dir: Path, revision: str
+    connection_url: str, backup_dir: Path, revision: str,
+    server_major: int,
 ) -> None:
-    if not shutil.which("pg_dump") or not shutil.which("pg_restore"):
-        raise ValueError("PostgreSQL pg_dump and pg_restore required")
+    # Detect the exact PG16->PG18 failure seen on the owner Mac.
+    # Fail before creating files or executing a backup subprocess.
+    verify_backup_clients(server_major)
     backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     if backup_dir.is_symlink() or backup_dir.stat().st_mode & 0o077:
         raise ValueError("Backup directory must be private (mode 700)")
@@ -261,6 +307,13 @@ def main(argv: list[str] | None = None) -> int:
                     pg_url, conn, args.expected_database, args.expected_role,
                 )
                 revision, is_full = audit_revision(conn)
+                # Read-only server version check; do not infer from a URL.
+                server_version_num = int(
+                    conn.execute(
+                        "SELECT current_setting('server_version_num')"
+                    ).scalar_one()
+                )
+                server_major = server_version_num // 10000
                 conn.rollback()
         finally:
             os.environ.update(inherited_pg)
@@ -269,8 +322,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ALEMBIC_REVISION={revision}")
         print("FULL_RELEASE_SCHEMA=" + ("READY" if is_full else "MIGRATION_PENDING"))
         if args.backup_dir is not None:
-            create_backup(pg_url, args.backup_dir, revision)
+            create_backup(pg_url, args.backup_dir, revision, server_major)
         return 0
+    except BackupClientVersionError as exc:
+        # Generated from validated tool names and numeric major versions only.
+        # Never include provider stderr, DSNs, credentials or object names.
+        print(f"NEON_BACKUP_CLIENT=BLOCKED ({exc})", file=sys.stderr)
+        return 2
     except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
         # Diagnostics are deliberately generic; DB exceptions may hold DSNs.
         print(f"NEON_PREFLIGHT=BLOCKED ({type(exc).__name__})", file=sys.stderr)
