@@ -121,6 +121,34 @@ def update_checklist(case_id: str, key: str, body: StudyChecklistUpdate,
     db.refresh(case)
     return case
 
+def _repair_checklist_after_document_move(
+    *, db: Session, case: StudyCase, checklist: dict,
+    checklist_key: str, removed_document_id: str,
+) -> None:
+    """Reconcile a removed/moved link without leaving a stale checklist ID.
+
+    Several documents may share one checklist category. Only change the
+    displayed document if it was the removed link; preserve another valid
+    selection otherwise. Call after flushing the changed association.
+    """
+    item = dict(checklist[checklist_key])
+    if item.get("document_id") != removed_document_id:
+        return
+    replacement = db.scalar(
+        select(StudyCaseDocument.document_id)
+        .where(
+            StudyCaseDocument.case_id == case.id,
+            StudyCaseDocument.checklist_key == checklist_key,
+            StudyCaseDocument.document_id != removed_document_id,
+        )
+        .order_by(StudyCaseDocument.document_id)
+        .limit(1)
+    )
+    item["document_id"] = replacement
+    item["state"] = "uploaded" if replacement is not None else "needs_verification"
+    checklist[checklist_key] = item
+
+
 @router.get("/cases/{case_id}/documents", response_model=list[StudyDocumentResponse])
 def list_study_documents(case_id: str, user: User = Depends(get_current_user),
                          db: Session = Depends(get_db)) -> list[StudyDocumentResponse]:
@@ -147,13 +175,23 @@ def attach_study_document(case_id: str, body: StudyDocumentLink,
     if doc.status != "ready":
         raise HTTPException(409, "Process the file before attaching it")
     link = db.get(StudyCaseDocument, (case.id, doc.id))
+    old_key = link.checklist_key if link is not None else None
     if link is None:
         link = StudyCaseDocument(case_id=case.id, document_id=doc.id,
                                  checklist_key=body.checklist_key)
         db.add(link)
     else:
         link.checklist_key = body.checklist_key
+
+    # Ensure the old-category replacement query sees the moved association.
+    # Both the link and JSON checklist changes still commit atomically.
+    db.flush()
     checklist = dict(case.checklist)
+    if old_key is not None and old_key != body.checklist_key:
+        _repair_checklist_after_document_move(
+            db=db, case=case, checklist=checklist,
+            checklist_key=old_key, removed_document_id=doc.id,
+        )
     item = dict(checklist[body.checklist_key])
     item["state"] = "uploaded"
     item["document_id"] = doc.id
@@ -173,18 +211,14 @@ def unlink_study_document(case_id: str, document_id: str,
     link = db.get(StudyCaseDocument, (case.id, document_id))
     if link is None:
         raise HTTPException(404, "Document association not found")
+    old_key = link.checklist_key
     db.delete(link)
+    db.flush()
     checklist = dict(case.checklist)
-    item = dict(checklist[link.checklist_key])
-    if item.get("document_id") == document_id:
-        remaining = db.scalar(select(StudyCaseDocument.document_id).where(
-            StudyCaseDocument.case_id == case.id,
-            StudyCaseDocument.document_id != document_id,
-            StudyCaseDocument.checklist_key == link.checklist_key,
-        ))
-        item["document_id"] = remaining
-        item["state"] = "uploaded" if remaining is not None else "needs_verification"
-    checklist[link.checklist_key] = item
+    _repair_checklist_after_document_move(
+        db=db, case=case, checklist=checklist,
+        checklist_key=old_key, removed_document_id=document_id,
+    )
     case.checklist = checklist
     case.updated_at = utc_now_naive()
     db.commit()
