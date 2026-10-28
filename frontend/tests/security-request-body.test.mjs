@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  readBoundedBodyBytes,
   readBoundedBodyText,
   readBoundedJson,
   RequestBodyTooLargeError,
@@ -64,5 +65,32 @@ test("malformed JSON and invalid UTF-8 are rejected", async () => {
   await assert.rejects(
     readBoundedBodyText(jsonRequest(bytes), 16_384),
     TypeError,
+  );
+});
+
+test("safe multipart file reconstruction parses bounded binary input", async () => {
+  const form = new FormData();
+  form.append("file", new Blob(["# Aqlyra safe upload"]), "sample.md");
+  const incoming = new Request("https://aqlyra.example/api/documents/upload", {
+    method: "POST", body: form,
+  });
+  const contentType = incoming.headers.get("content-type");
+  const bounded = await readBoundedBodyBytes(incoming, 4_096);
+  const reconstructed = new Request("https://aqlyra.example/api/documents/upload", {
+    method: "POST",
+    headers: { "Content-Type": contentType },
+    body: new Uint8Array(bounded),
+  });
+  const parsed = await reconstructed.formData();
+  assert.equal(parsed.get("file")?.name, "sample.md");
+});
+
+test("oversized multipart body fails before form parsing", async () => {
+  const request = new Request("https://aqlyra.example/api/documents/upload", {
+    method: "POST", body: new Uint8Array(5_000),
+  });
+  await assert.rejects(
+    readBoundedBodyBytes(request, 4_096),
+    RequestBodyTooLargeError,
   );
 });
