@@ -265,6 +265,99 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[bytes, dict] |
     return binary, {k: v for k, v in meta.items() if k != "sha256"}
 
 
+
+def audit_owner_inventory(*, user_id: str) -> dict[str, int]:
+    """Read-only S3 reconciliation for an operator-approved owner UUID.
+
+    Reports counts only. Never returns keys, titles, contents, source IDs,
+    object metadata, or user data; never writes to S3 or PostgreSQL.
+    A real per-owner SQL advisory lock serializes app writes during audit,
+    so partial two-object publishes cannot be misclassified.
+    """
+    owner = _uuid(user_id)
+    s3 = _storage()
+    prefix = _prefix(owner)
+    with _owner_lock(owner):
+        all_keys: set[str] = set()
+        continuation = None
+        for _ in range(10):
+            args = {
+                "Bucket": settings.OBJECT_STORAGE_BUCKET,
+                "Prefix": prefix, "MaxKeys": 1000,
+            }
+            if continuation is not None:
+                args["ContinuationToken"] = continuation
+            try:
+                page = s3.list_objects_v2(**args)
+            except Exception as exc:
+                raise RemoteArtifactError(
+                    "Private artifact inventory unavailable"
+                ) from exc
+            for item in page.get("Contents", []):
+                key = item.get("Key")
+                if isinstance(key, str) and key.startswith(prefix):
+                    all_keys.add(key)
+            if len(all_keys) > 10_000:
+                raise RemoteArtifactError(
+                    "Artifact inventory exceeds safe audit limit"
+                )
+            if not page.get("IsTruncated"):
+                break
+            continuation = page.get("NextContinuationToken")
+            if not isinstance(continuation, str) or not continuation:
+                raise RemoteArtifactError(
+                    "Invalid artifact inventory continuation"
+                )
+        else:
+            raise RemoteArtifactError("Artifact inventory pagination limit")
+
+        metadata_keys: dict[str, str] = {}
+        binaries: set[str] = set()
+        unexpected = 0
+        for key in all_keys:
+            suffix = key[len(prefix):]
+            artifact_id, dot, fmt = suffix.rpartition(".")
+            if not dot or fmt not in {*MIMES, "json"}:
+                unexpected += 1
+                continue
+            try:
+                if _key(owner, artifact_id, fmt) != key:
+                    unexpected += 1
+                    continue
+            except RemoteArtifactError:
+                unexpected += 1
+                continue
+            if fmt == "json":
+                metadata_keys[artifact_id] = key
+            else:
+                binaries.add(key)
+
+        complete = 0
+        missing_binary = 0
+        invalid_metadata = 0
+        referenced_binaries: set[str] = set()
+        for artifact_id in metadata_keys:
+            meta = _metadata(s3, owner, artifact_id)
+            if meta is None:
+                invalid_metadata += 1
+                continue
+            binary = _key(owner, artifact_id, meta["format"])
+            referenced_binaries.add(binary)
+            if binary in binaries:
+                complete += 1
+            else:
+                missing_binary += 1
+
+        return {
+            "complete_records": complete,
+            "missing_binaries": missing_binary,
+            "invalid_metadata": invalid_metadata,
+            "orphan_binaries": len(binaries - referenced_binaries),
+            "unexpected_keys": unexpected,
+            "total_objects": len(all_keys),
+        }
+
+
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
     owner = _uuid(user_id)
     try:
