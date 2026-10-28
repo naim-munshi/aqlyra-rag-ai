@@ -62,10 +62,15 @@ def parse_neon_url(value: str, expected_host: str) -> tuple[str, dict[str, str]]
     if port != 5432:
         raise ValueError("Unexpected Neon port")
     query = parse_qs(url.query, strict_parsing=True)
+    # libpq accepts host, hostaddr, port, user and dbname in URL query.
+    # Reject every override, including multi-valued keys, to prevent a
+    # visually approved Neon hostname pointing at a different server.
+    if not set(query).issubset({"sslmode", "channel_binding"}):
+        raise ValueError("Unexpected connection query parameter")
+    if any(len(values) != 1 for values in query.values()):
+        raise ValueError("Ambiguous connection query parameters")
     if query.get("sslmode") not in (["require"], ["verify-full"]):
         raise ValueError("TLS must be enforced by sslmode=require/verify-full")
-    if "password" in query or "user" in query:
-        raise ValueError("Credentials must be in URL authority")
     return value, {"host": host, "port": str(port), "tls": query["sslmode"][0]}
 
 
@@ -106,8 +111,13 @@ def create_backup(
     if partial.exists() or final.exists() or manifest.exists():
         raise ValueError("Backup filename collision")
     # Never place the DSN in command-line arguments or emitted logs.
-    env = {**os.environ, "PGCONNECT_TIMEOUT": "10"}
-    env["PGSERVICE"] = ""  # no implicit per-user service override
+    # Ignore inherited libpq parameters (especially PGHOSTADDR/PGSERVICE)
+    # that could redirect the local dump away from the checked Neon host.
+    env = {
+        key: val for key, val in os.environ.items()
+        if not key.startswith("PG")
+    }
+    env["PGCONNECT_TIMEOUT"] = "10"
     args = [
         "pg_dump", "--format=custom", "--no-owner", "--no-acl",
         "--file", str(partial),
