@@ -187,6 +187,32 @@ def test_remote_setting_requires_private_storage():
         Settings(**base)
 
 
+
+def test_remote_setting_requires_independent_stable_hmac_key():
+    from app.config.settings import Settings
+    base = settings.model_dump()
+    base.update(
+        PRIVATE_OBJECT_STORAGE_ENABLED=True,
+        ARTIFACT_REMOTE_STORAGE_ENABLED=True,
+        ARTIFACT_METADATA_HMAC_KEY="",
+        OBJECT_STORAGE_BUCKET="private-documents",
+        AWS_ENDPOINT_URL_S3=(
+            "https://br-private.storage.c-1.ap-southeast-1.aws.neon.tech"
+        ),
+        AWS_ACCESS_KEY_ID="test-only-id",
+        AWS_SECRET_ACCESS_KEY="test-only-secret",
+        AWS_REGION="ap-southeast-1",
+    )
+    with pytest.raises(ValueError, match="stable metadata signing key"):
+        Settings(**base)
+    base["ARTIFACT_METADATA_HMAC_KEY"] = (
+        "test-independent-artifact-metadata-key-2026"
+    )
+    verified = Settings(**base)
+    assert verified.ARTIFACT_REMOTE_STORAGE_ENABLED is True
+
+
+
 def test_remote_advisory_lock_uses_scoped_postgres_transaction(monkeypatch):
     events = []
     class Db:
