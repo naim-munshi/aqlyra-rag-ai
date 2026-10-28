@@ -105,3 +105,46 @@ def test_monitoring_does_not_include_raw_user_paths() -> None:
 def test_invalid_admin_ids_rejected(value):
     with pytest.raises(ValueError):
         Settings(_env_file=None, ADMIN_USER_IDS=value)
+
+
+
+def test_prometheus_metrics_are_private_to_verified_admin(
+    client: TestClient, db_session, monkeypatch,
+) -> None:
+    """Hidden OpenAPI route is not security; enforce the actual admin gate."""
+    reset_metrics_for_tests()
+    admin_id, admin_token = _new_user(client, "metricsowner")
+    ordinary_id, ordinary_token = _new_user(client, "metricsother")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+
+    anonymous = client.get("/api/v1/metrics")
+    assert anonymous.status_code == 401
+    assert "aqlyra_http_requests_total" not in anonymous.text
+
+    unauthorized = client.get(
+        "/api/v1/metrics",
+        headers={"Authorization": "Bearer " + ordinary_token},
+    )
+    assert unauthorized.status_code == 403
+    assert "aqlyra_http_requests_total" not in unauthorized.text
+
+    allowed = client.get(
+        "/api/v1/metrics",
+        headers={"Authorization": "Bearer " + admin_token},
+    )
+    assert allowed.status_code == 200
+    assert "aqlyra_http_requests_total" in allowed.text
+    assert allowed.headers["cache-control"] == "private, no-store"
+    assert "text/plain" in allowed.headers["content-type"]
+
+    user = db_session.get(User, admin_id)
+    assert user is not None
+    user.email_verified_at = None
+    db_session.flush()
+    revoked = client.get(
+        "/api/v1/metrics",
+        headers={"Authorization": "Bearer " + admin_token},
+    )
+    assert revoked.status_code == 403
+    assert "aqlyra_http_requests_total" not in revoked.text
+    assert ordinary_id not in revoked.text
