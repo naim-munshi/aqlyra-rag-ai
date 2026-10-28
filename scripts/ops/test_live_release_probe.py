@@ -60,6 +60,32 @@ class LivePhaseProbeTest(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("LIVE_CORE_GATE=BLOCKED", output)
 
+    def test_health_retries_cold_start_only_then_passes(self):
+        with patch.object(
+            probe, "probe", side_effect=[(503, None), (504, None), HEALTH]
+        ) as request, patch.object(probe, "sleep") as sleeper:
+            self.assertEqual(probe.probe_health_with_free_tier_cold_start(), HEALTH)
+            self.assertEqual(request.call_count, 3)
+            self.assertEqual(sleeper.call_count, 2)
+            request.assert_any_call("/api/v1/health")
+
+    def test_repeated_cold_start_503_does_not_claim_success(self):
+        with patch.object(probe, "probe", return_value=(503, None)) as request, \
+             patch.object(probe, "sleep") as sleeper:
+            self.assertEqual(
+                probe.probe_health_with_free_tier_cold_start(), (503, None)
+            )
+            self.assertEqual(request.call_count, 3)
+            self.assertEqual(sleeper.call_count, 2)
+
+    def test_health_transport_error_is_never_exposed_to_output(self):
+        from urllib.error import URLError
+        with patch.object(
+            probe, "probe", side_effect=URLError("private internal details")
+        ), patch.object(probe, "sleep"), redirect_stdout(StringIO()) as output:
+            self.assertEqual(probe.main(["--expected-phase", "core"]), 1)
+        self.assertNotIn("private internal details", output.getvalue())
+        self.assertIn("LIVE_CORE_GATE=BLOCKED", output.getvalue())
     def test_no_phase_passes_if_database_not_ready(self):
         broken = (503, {"detail": "Service is not ready"})
         for phase, study, cases in [
