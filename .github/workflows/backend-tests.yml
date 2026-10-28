@@ -226,6 +226,15 @@ jobs:
             --phase verify --state-file "$state"
           python scripts/ops/ci_artifact_s3_roundtrip.py \
             --phase cleanup --state-file "$state"
+          # Original user-document stage -> server-owned final isolation.
+          # Same loopback Moto only, but each phase starts a fresh app process.
+          original_state="$RUNNER_TEMP/aqlyra-original-private-state.json"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase write --state-file "$original_state"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase verify --state-file "$original_state"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase cleanup --state-file "$original_state"
       - name: Verify offline Neon backup and recovery safety contracts
         run: |
           python -m unittest discover \
