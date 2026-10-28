@@ -94,3 +94,164 @@ def test_unknown_provider_rejected():
 
 def test_legacy_smtp_remains_default():
     assert Settings(_env_file=None).EMAIL_DELIVERY_PROVIDER == "smtp"
+
+@pytest.fixture
+def gmail_api(monkeypatch):
+    monkeypatch.setattr(mail.settings, "EMAIL_DELIVERY_PROVIDER", "gmail_api")
+    monkeypatch.setattr(mail.settings, "SMTP_FROM_EMAIL", "aqlyra.verify@gmail.com")
+    monkeypatch.setattr(mail.settings, "SMTP_FROM_NAME", "Aqlyra")
+    monkeypatch.setattr(mail.settings, "GMAIL_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(mail.settings, "GMAIL_OAUTH_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setattr(mail.settings, "GMAIL_OAUTH_REFRESH_TOKEN", "test-refresh-token")
+    monkeypatch.setattr(mail.settings, "SMTP_USERNAME", "")
+    monkeypatch.setattr(mail.settings, "SMTP_PASSWORD", "")
+
+
+def test_gmail_api_sends_encoded_otp_without_smtp(monkeypatch, gmail_api):
+    import base64
+    from email import policy
+    from email.parser import BytesParser
+
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        if url == "https://oauth2.googleapis.com/token":
+            return SimpleNamespace(
+                status_code=200, json=lambda: {"access_token": "temporary-access"}
+            )
+        assert url == "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+        return SimpleNamespace(status_code=200, json=lambda: {"id": "gmail-message-id"})
+
+    monkeypatch.setattr(mail.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        mail.smtplib, "SMTP_SSL",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("SMTP not allowed")),
+    )
+    mail.send_verification_email(
+        recipient_email="student@example.com", code="123456"
+    )
+    mail.send_password_reset_email(
+        recipient_email="student@example.com", code="654321"
+    )
+
+    assert len(calls) == 4
+    for index in (0, 2):
+        url, token_req = calls[index]
+        assert url == "https://oauth2.googleapis.com/token"
+        assert token_req["data"] == {
+            "client_id": "test-client-id",
+            "client_secret": "test-client-secret",
+            "refresh_token": "test-refresh-token",
+            "grant_type": "refresh_token",
+        }
+        assert token_req["follow_redirects"] is False
+        send_url, send_req = calls[index + 1]
+        assert send_url == "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+        assert send_req["headers"]["Authorization"] == "Bearer temporary-access"
+        assert send_req["follow_redirects"] is False
+        raw = send_req["json"]["raw"]
+        decoded = base64.urlsafe_b64decode(raw.encode("ascii"))
+        msg = BytesParser(policy=policy.default).parsebytes(decoded)
+        assert msg["From"] == "Aqlyra <aqlyra.verify@gmail.com>"
+        assert msg["To"] == "student@example.com"
+        assert ("123456" if index == 0 else "654321") in msg.get_content()
+        assert "test-refresh-token" not in str(send_req)
+        assert "test-client-secret" not in str(send_req)
+
+
+@pytest.mark.parametrize("stage,status_code", [
+    ("token", 401), ("token", 429), ("token", 500),
+    ("send", 400), ("send", 401), ("send", 403), ("send", 429),
+])
+def test_gmail_api_provider_failures_do_not_leak_secrets(
+    monkeypatch, gmail_api, stage, status_code,
+):
+    def fake_post(url, **kwargs):
+        if stage == "token" or "gmail.googleapis.com" not in url:
+            if stage == "token":
+                return SimpleNamespace(status_code=status_code)
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"access_token": "temporary-access"},
+            )
+        return SimpleNamespace(status_code=status_code, text="private details")
+
+    monkeypatch.setattr(mail.httpx, "post", fake_post)
+    with pytest.raises(mail.EmailDeliveryError) as err:
+        mail.send_verification_email(
+            recipient_email="student@example.com", code="123456"
+        )
+    for secret in ("123456", "test-refresh-token", "test-client-secret", "private details"):
+        assert secret not in str(err.value)
+
+
+@pytest.mark.parametrize("missing_key", [
+    "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
+    "GMAIL_OAUTH_REFRESH_TOKEN", "SMTP_FROM_EMAIL",
+])
+def test_gmail_api_missing_credentials_never_call_network(
+    monkeypatch, gmail_api, missing_key,
+):
+    monkeypatch.setattr(mail.settings, missing_key, "")
+    monkeypatch.setattr(
+        mail.httpx, "post",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("Network must not run")),
+    )
+    with pytest.raises(mail.EmailDeliveryError, match="not configured"):
+        mail.send_password_reset_email(
+            recipient_email="student@example.com", code="654321"
+        )
+
+
+def test_gmail_api_rejects_malformed_sender_pre_network(monkeypatch, gmail_api):
+    monkeypatch.setattr(mail.settings, "SMTP_FROM_EMAIL", "Aqlyra")
+    monkeypatch.setattr(
+        mail.httpx, "post",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("Network must not run")),
+    )
+    with pytest.raises(mail.EmailDeliveryError, match="sender is misconfigured"):
+        mail.send_verification_email(
+            recipient_email="student@example.com", code="123456"
+        )
+
+
+def test_gmail_api_token_response_without_access_token_fails(
+    monkeypatch, gmail_api,
+):
+    monkeypatch.setattr(
+        mail.httpx, "post",
+        lambda *a, **k: SimpleNamespace(status_code=200, json=lambda: {}),
+    )
+    with pytest.raises(mail.EmailDeliveryError, match="delivery failed"):
+        mail.send_verification_email(
+            recipient_email="student@example.com", code="123456"
+        )
+
+
+def test_gmail_api_network_failure_fails_closed(monkeypatch, gmail_api):
+    def fail(*args, **kwargs):
+        raise httpx.ConnectError("offline")
+    monkeypatch.setattr(mail.httpx, "post", fail)
+    with pytest.raises(mail.EmailDeliveryError, match="delivery failed"):
+        mail.send_password_reset_email(
+            recipient_email="student@example.com", code="654321"
+        )
+
+
+def test_gmail_api_requires_refresh_credentials_in_production():
+    params = dict(
+        APP_ENV="production",
+        EMAIL_DELIVERY_PROVIDER="gmail_api",
+        SMTP_FROM_EMAIL="aqlyra.verify@gmail.com",
+        GMAIL_OAUTH_CLIENT_ID="",
+        GMAIL_OAUTH_CLIENT_SECRET="",
+        GMAIL_OAUTH_REFRESH_TOKEN="",
+    )
+    # The production validator must declare all three missing credentials.
+    from pathlib import Path
+    source = Path(mail.__file__).parent.parent / "config" / "settings.py"
+    settings_source = source.read_text(encoding="utf-8")
+    assert '"GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID' in settings_source
+    assert '"GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET' in settings_source
+    assert '"GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN' in settings_source
