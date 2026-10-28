@@ -82,8 +82,20 @@ def main() -> int:
             if valid:
                 print(f"PASS {name}: HTTP {status}", flush=True)
             else:
+                reason = ""
+                # Whitelist safe generic backend readiness messages only.
+                # Never emit arbitrary server response bodies or exception data.
+                if name == "database_storage_redis" and status == 503:
+                    if isinstance(payload, dict) and payload.get("detail") == (
+                        "Service dependencies are unavailable"
+                    ):
+                        reason = " (Redis rate-limit dependency unavailable)"
+                    elif isinstance(payload, dict) and payload.get("detail") == (
+                        "Service is not ready"
+                    ):
+                        reason = " (database/schema/upload readiness blocked)"
                 print(
-                    f"BLOCKED {name}: HTTP {status}, expected {expected} plus contract",
+                    f"BLOCKED {name}: HTTP {status}, expected {expected} plus contract{reason}",
                     flush=True,
                 )
                 failures.append(name)
