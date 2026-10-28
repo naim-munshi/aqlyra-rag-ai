@@ -26,8 +26,10 @@ not an unlimited public transactional email service.
 2. Consent as the *owner of the sender mailbox* and request **only**
    `https://www.googleapis.com/auth/gmail.send`, with offline access.
    Capture an OAuth refresh token securely using Google's authorization
-   code flow. Do **not** put OAuth secrets in chat, GitHub, the browser,
-   URL query parameters, or NEXT_PUBLIC variables. The refresh token gives
+   code flow. Do **not** put OAuth secrets in chat, GitHub, application frontend
+   code, URL query parameters, or NEXT_PUBLIC variables. The official
+   Google OAuth Playground requires entering your client credentials
+   into its protected configuration flow; use it only knowingly. The refresh token gives
    sending privileges and should be treated like a password.
 3. In the existing Render **private environment** set:
 
