@@ -76,8 +76,16 @@ the owner's Neon Connect panel, without password, port or protocol:**
 ```bash
 python3 scripts/ops/neon_remote_backup.py \
   --url-file "$HOME/.aqlyra/private/neon-url" \
-  --expected-host "<NEON-HOST-FROM-DASHBOARD>"
+  --expected-host "<NEON-HOST-FROM-DASHBOARD>" \
+  --expected-database neondb \
+  --expected-role neondb_owner
 ```
+
+The `--expected-database` and `--expected-role` arguments are mandatory:
+both the submitted PostgreSQL URL and the connected session are checked
+against the independently inspected Neon database/role. If the approved role
+changes, re-verify it through Neon before editing the command; never guess.
+This is a read-only identity check, not a backup or migration.
 
 This read-only audit rejects non-Neon hosts, mismatched hostnames,
 non-TLS URLs, unreadable/insecure secret files, missing pgvector/core
@@ -94,6 +102,8 @@ Run the same audit with an explicit private backup directory:
 python3 scripts/ops/neon_remote_backup.py \
   --url-file "$HOME/.aqlyra/private/neon-url" \
   --expected-host "<NEON-HOST-FROM-DASHBOARD>" \
+  --expected-database neondb \
+  --expected-role neondb_owner \
   --backup-dir "$HOME/.aqlyra/private/neon-backups"
 ```
 
