@@ -95,8 +95,15 @@ def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
     This is a structural check, not semantic entailment verification.
     It cannot prove a referenced page actually supports the claim.
     """
-    allowed = {str(item.get("citation")) for item in sources}
-    mentioned = set(_CITATION_RE.findall(answer))
+    # Citation IDs are case-insensitive, but must be complete IDs;
+    # do not treat a synthetic prefix or malformed source label as proof.
+    allowed = {
+        citation.upper()
+        for item in sources
+        if isinstance((citation := item.get("citation")), str)
+        and _CITATION_RE.fullmatch(citation)
+    }
+    mentioned = {citation.upper() for citation in _CITATION_RE.findall(answer)}
     if not mentioned or any(cite.upper() not in allowed for cite in mentioned):
         raise UnsupportedStudyClaims("Research lacks valid attached source references")
     blocks: list[str] = []
@@ -112,8 +119,11 @@ def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
         if not line:
             flush()
             continue
-        if line.startswith("#"):
+        if re.match(r"^#{1,6}\\s+", line):
             flush()
+            # A heading can itself assert a material immigration claim.
+            # Only short structural headings remain exempt from citation.
+            blocks.append(re.sub(r"^#{1,6}\\s+", "", line))
             continue
         if re.match(r"^[-*+]\s+|^\d+[.)]\s+", line):
             flush()
@@ -129,7 +139,6 @@ def validate_study_citation_coverage(answer: str, sources: list[dict]) -> None:
     if any(
         len(_TOKEN_RE.findall(block)) >= 6
         and not _CITATION_RE.search(block)
-        and not block.endswith(":")
         for block in blocks
     ):
         raise UnsupportedStudyClaims(
