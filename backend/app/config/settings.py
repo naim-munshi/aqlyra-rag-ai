@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_CLIENT_IP_HEADER: str = (
         "X-Aqlyra-Client-IP"
     )
+    # Public Render ingress must never trust caller-controlled IP headers.
+    # Only explicitly listed, directly connected private proxy socket IPs
+    # may supply this header in production. Leave empty on public Render.
+    RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS: str = ""
     RATE_LIMIT_REDIS_TIMEOUT_SECONDS: float = 1.0
 
     RATE_LIMIT_REGISTER_IP_LIMIT: int = 5
