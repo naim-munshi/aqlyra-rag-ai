@@ -8,10 +8,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (process.env.NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true") {
+    return NextResponse.json(
+      { ok: false },
+      { status: 503, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
   const secret = process.env.GUEST_PROXY_SECRET;
+  // Require the Vercel-authored client-IP header; never fall back to
+  // arbitrary forwarded headers supplied along another ingress path.
   const clientIp = process.env.VERCEL === "1"
-    ? request.headers.get("x-vercel-forwarded-for") ??
-      request.headers.get("x-forwarded-for")
+    ? request.headers.get("x-vercel-forwarded-for")
     : null;
   const noStore = { "Cache-Control": "private, no-store" };
   if (!secret || secret.length < 32 || !clientIp || isIP(clientIp) === 0) {
