@@ -53,6 +53,29 @@ def readiness():
             text("SELECT 1")
         )
 
+        # SELECT 1 succeeds on an empty Neon database. In production,
+        # block RAG and accounts until the exact reviewed schema and
+        # pgvector core dependencies have actually been migrated.
+        if settings.is_production:
+            version = db.execute(
+                text("SELECT version_num FROM public.alembic_version")
+            ).scalar_one_or_none()
+            if version != "b5e4a019dc72":
+                raise RuntimeError("Aqlyra database revision is not current")
+
+            core_schema_ready = db.execute(
+                text(
+                    "SELECT "
+                    "to_regclass('public.users') IS NOT NULL "
+                    "AND to_regclass('public.documents') IS NOT NULL "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_extension WHERE extname = 'vector'"
+                    ")"
+                )
+            ).scalar_one()
+            if not core_schema_ready:
+                raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
+
         upload_dir = (
             settings
             .UPLOAD_DIR
