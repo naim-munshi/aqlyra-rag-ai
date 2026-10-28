@@ -106,7 +106,8 @@ def readiness():
             redis_ready = bool(
                 get_rate_limit_redis().ping()
             )
-        except RedisError:
+        except (RedisError, ValueError):
+            # Malformed Redis URLs also fail closed instead of HTTP 500.
             redis_ready = False
 
         if not redis_ready:
