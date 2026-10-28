@@ -67,6 +67,29 @@ real Neon S3 key, endpoint, IAM policy, quota, actual provider
 availability, or persistence across S3 provider restarts is accepted.
 Keep `ARTIFACT_REMOTE_STORAGE_ENABLED=false` on live Render until
 the real provider acceptance steps below have independently passed.
+## Original RAG document S3 HTTP rehearsal (separate from artifacts)
+
+The same disposable Moto HTTP service now also has an independent
+original-user-document test, `scripts/ops/ci_private_document_s3_roundtrip.py`.
+It simulates a browser's private staging PUT using **synthetic UTF-8**
+content, validates SHA-256 and file magic, promotes it to a separately
+generated **server-only final key**, and verifies that the final object
+survives a fresh application process. A simulated replay of the original
+staging PUT must not corrupt the final key. Cross-owner staging/final
+access is rejected and both test keys are removed at cleanup.
+
+The script refuses non-GitHub Actions environments, non-local PostgreSQL
+test databases, arbitrary state-file paths and any S3 endpoint other than
+the loopback Moto server. No production Neon Storage key or document is
+used, and no Render/Vercel/Neon settings change.
+
+**Important:** this confirms only the private object-storage primitives
+on synthetic S3-compatible HTTP. It does NOT prove end-to-end user
+upload-intent SQL transaction, actual browser presigned PUT, original
+RAG parsing and vector retrieval, Render restart persistence, real Neon
+bucket IAM/quotas, or final deletion after signed-grant expiry.
+`PRIVATE_OBJECT_STORAGE_ENABLED` and `CLOUD_UPLOAD_PUBLIC_ENABLED`
+must remain **false** in production until those separate gates pass.
 ## Required configuration — **not configured by this code commit**
 
 Use only trusted provider dashboards/secret managers for values. Do not
