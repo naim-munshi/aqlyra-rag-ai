@@ -90,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         ("database_storage_redis", "/api/v1/readiness", 200),
         ("study_abroad_workflow", "/api/v1/study-abroad/workflows", study_expected),
         ("anonymous_study_cases_denied", "/api/v1/study-abroad/cases", cases_expected),
+        ("anonymous_admin_metrics_denied", "/api/v1/metrics", 401),
     ]
     failures = []
     for name, path, expected in checks:
