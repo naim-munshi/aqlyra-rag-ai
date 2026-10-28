@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     EMAIL_DELIVERY_PROVIDER: str = "smtp"
     RESEND_API_KEY: str = ""
     BREVO_API_KEY: str = ""
+    # Server-side OAuth only. Never expose Gmail refresh credentials to the browser.
+    GMAIL_OAUTH_CLIENT_ID: str = ""
+    GMAIL_OAUTH_CLIENT_SECRET: str = ""
+    GMAIL_OAUTH_REFRESH_TOKEN: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USERNAME: str = ""
@@ -788,8 +792,8 @@ class Settings(BaseSettings):
     @classmethod
     def validate_email_delivery_provider(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"smtp", "resend", "brevo"}:
-            raise ValueError("EMAIL_DELIVERY_PROVIDER must be smtp, resend, or brevo")
+        if normalized not in {"smtp", "resend", "brevo", "gmail_api"}:
+            raise ValueError("EMAIL_DELIVERY_PROVIDER must be smtp, resend, brevo, or gmail_api")
         return normalized
 
     @field_validator("APP_ENV")
@@ -873,6 +877,12 @@ class Settings(BaseSettings):
             email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
         elif self.EMAIL_DELIVERY_PROVIDER == "brevo":
             email_values["BREVO_API_KEY"] = self.BREVO_API_KEY
+        elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
+            email_values.update({
+                "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
+                "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
+                "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
+            })
         for setting_name, setting_value in email_values.items():
             if not setting_value.strip():
                 raise ValueError(
