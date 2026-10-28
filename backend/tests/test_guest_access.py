@@ -269,3 +269,49 @@ def test_signed_ipv6_is_normalized_for_rate_limiting(
     assert result.status_code == 200, result.text
     assert audits == ["2001:db8::abcd"]
     assert budgets[0]["identity"] == "guest:2001:db8::abcd"
+
+
+def test_direct_render_guest_chat_rejects_oversized_body_before_provider(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    oversized = b'{"message":"' + b"a" * 21_000 + b'"}'
+    # Public Render clients can bypass Vercel. Even unsigned requests must
+    # never be parsed or buffered without an independent backend byte cap.
+    response = client.post(
+        "/api/v1/guest/chat",
+        content=oversized,
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 413
+    assert budgets == []
+    assert audits == []
+
+
+def test_direct_render_guest_visit_rejects_oversized_body(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    response = client.post(
+        "/api/v1/guest/visit",
+        content=b"{} " + b"x" * 50,
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 413
+    assert budgets == []
+    assert audits == []
+
+
+def test_signed_malformed_guest_chat_returns_sanitized_422(
+    client: TestClient, monkeypatch,
+):
+    budgets, audits = setup_guest(monkeypatch)
+    malformed = b'{"message":'
+    response = client.post(
+        "/api/v1/guest/chat", content=malformed,
+        headers=signed_headers(malformed),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid guest chat request"
+    assert budgets == []
+    assert audits == []
