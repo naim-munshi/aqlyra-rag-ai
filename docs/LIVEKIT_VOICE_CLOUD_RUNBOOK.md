@@ -81,7 +81,7 @@ place of Aqlyra's existing RAG-backed worker.
    Full Release repository (not the temporary agent bundle):
 
    ```bash
-   python3 scripts/ops/livekit_voice_secrets_preflight.py \\
+   python3 scripts/ops/livekit_voice_secrets_preflight.py \
      --secrets-file "$HOME/.aqlyra/livekit-agent-secrets.env"
    ```
 
