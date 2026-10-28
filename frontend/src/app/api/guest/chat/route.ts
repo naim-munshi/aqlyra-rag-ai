@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const headers = { "Cache-Control": "private, no-store" };
-const maxBodyBytes = 4500;
+// Account for UTF-8 Japanese, Bangla and emoji in 5 bounded turns.
+const maxBodyBytes = 20_000;
 
 export async function POST(request: Request) {
   // Never trust browser-supplied IP values or expose the signing key.
