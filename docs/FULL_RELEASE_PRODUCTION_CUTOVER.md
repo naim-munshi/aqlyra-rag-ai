@@ -4,20 +4,20 @@ This document supersedes the **core-only** deployment snapshot in
 `docs/PRODUCTION_LIVE_FIRST_RUNBOOK.md`. Production still uses an
 access-controlled Vercel origin. This is NOT public launch authorization.
 
-## Verified reference state (updated 2026-10-28 05:05 UTC)
+## Verified reference state (2026-10-28, refreshed after Core bootstrap)
 
-| Surface | Verified state |
+| Surface | Evidence and release state |
 |---|---|
-| GitHub candidate | PR #37, draft, unmerged; Full branch `release/full-with-study-abroad-20261028` at `2c5cb54c6f71ac7b8ff7b5122fbffe05caf1cef8` (verify the head again before release) |
-| Exact-head CI | Full Release 7/7 PASS at the above head. Core branch `cf3835402d939df28726abb05dafe0d7c26d6b7b` 7/7 PASS. These are predeploy/synthetic gates, not live RAG acceptance. |
-| Vercel | Production READY, `dpl_5H1qFcDqaxZEfvXvXGTMwqjdafLd`, `https://aqlyra-navy.vercel.app`; Vercel Authentication enabled for all deployments. |
-| Render | `aqlyra-api-free-launch` remains core-only with auto-deploy disabled; core diagnostic SHA `cf3835402d939df28726abb05dafe0d7c26d6b7b` verified LIVE at 05:02:39 UTC (`dep-dbgo383bc2fs73b87vng`), with additional same-SHA redeploys queued. Do not trigger more until queue stabilizes. |
-| Public backend probe | Read-only GitHub job `122642307809` at 05:03:50 UTC: /health 200, /readiness 503, Study Abroad workflows 404, anonymous cases 404. FAIL-CLOSED schema readiness is working. |
-| Render failure stage | Safe log: `stage=schema_revision error_type=ProgrammingError approved_neon_target=true`. Boolean proves approved Neon *hostname* match only, not exact database contents or restore coverage. Do not expose the DSN. |
-| Neon | Management connector works for `rough-river-66110449` (Singapore, PG18). Exactly one branch `br-morning-water-a1lgl3s4` (`production`) and one user database `neondb`; application tables, Alembic revision and pgvector absent. |
-| Recovery | Snapshot `snap-restless-mouse-a144fpzy` exists but captures the EMPTY schema; isolated restore rehearsal is NOT_RUN. It is not a verified backup of any other data source. |
-| LiveKit | Previous owner evidence showed no `aqlyra-voice` agent deployment. Running status / real microphone/STT/RAG/TTS acceptance not yet independently verified. |
-| Review | PR #37 remains draft, no approval and no `main` merge. No public launch authorization. |
+| PR #37 | DRAFT / unmerged; protected `main` unchanged. Review and approval still required. |
+| Full Release branch | `release/full-with-study-abroad-20261028`, prior docs-only head `24b30dd5b911a843d02620a7dcc53d9603c35a4a`, exact-head CI 7/7 PASS; recheck head and CI immediately before cutover. |
+| Core branch | `release/core-without-study-abroad-20261027`, cleanup commit `dc3920fb1428e143b8c393fd25941f7206c35b4c` exact-head CI 7/7 PASS. Temporary DB hostname diagnostic removed. |
+| Render backend | Existing `srv-dbgjt0ei0phs73akd8j0` core-only branch, auto-deploy OFF, exact cleanup SHA LIVE at `dep-dbgo7nh42hec73dkfc4g`. One-time Core migration completed and `DATABASE_MIGRATION_MODE` restored to `manual` (no startup auto migration). |
+| Read-only external probe | GitHub run `40624724953`, job `122644969614`: HTTP 200 for `/api/v1/health` and strict `/api/v1/readiness`. Study Abroad routes remain 404 until Full Release backend. This proves Core dependency readiness, **not** logged-in RAG E2E. |
+| Neon | Connected `rough-river-66110449`, branch `br-morning-water-a1lgl3s4`, DB `neondb`, role `neondb_owner`. Independently read-only verified Core Alembic `b5e4a019dc72`, **16** application tables, pgvector installed, users=0, documents=0. Full Study Abroad revision `d4ec2f9b7860` NOT applied. |
+| Recovery | Original snapshot `snap-restless-mouse-a144fpzy` is of EMPTY pre-bootstrap schema. Non-default, no-compute recovery branch `backup-core-schema-20261028` (`br-damp-credit-a1mksvnz`) has been created and verified READY. Neither proves a restored off-host backup. Preserve both and test recovery before higher-risk cutover. |
+| Vercel | Production READY, protected via Vercel Authentication on all deployments. Keep private through acceptance. |
+| Object storage | Neon private bucket `private-documents` exists. Generated artifacts currently use local `UPLOAD_DIR/artifact-workspace` and are NOT verified durable across Render Free restarts. Do not assume file history or document uploads survive redeploy without validated remote storage. |
+| LiveKit | `aqlyra-voice` worker has no independently verified running deployment or real microphone/STT/RAG/TTS acceptance. |
 
 **Never disclose, print, commit, or paste secret values.** Render key values
 are deliberately inaccessible to this runbook; check via service startup
@@ -26,18 +26,8 @@ errors and provider dashboard, not secret decryption.
 ## Cutover steps, in required order
 
 1. **Reverify provider configuration without reading secret values.** Render now starts and reaches PostgreSQL; earlier missing-key logs are historical and should not be treated as current blockers. Require real private Groq/Hugging Face access, Redis TLS and fail-closed rate limiting, Google OAuth, Resend sender verification, quotas, and isolated full E2E acceptance. Existing non-secret examples: `LLM_PROVIDER=groq`, `EMBEDDING_PROVIDER=huggingface`, `VOICE_AGENT_NAME=aqlyra-voice`, `CORS_ORIGINS=https://aqlyra-navy.vercel.app`, and `RAG_GROUNDING_VERIFIER_ENABLED=true`. Do not substitute placeholders or disable security checks to make readiness green.
-2. **Check the isolated Neon database and backups.** Verify the correct
-   PG18 project and DB, not an unrelated production account. Reconnect
-   the mis-scoped Neon plugin if necessary. Before migrations, take a
-   recoverable snapshot/backup and rehearse a restore on an isolated
-   test database/branch. Never assume a Render Free local file is durable.
-3. **Review migrations in the full release**, not the old core:
-   full-release Alembic head `d4ec2f9b7860` adds Study Abroad after
-   `b5e4a019dc72` (cloud document tombstones). Verify there is exactly
-   one head and no unexpected changes before manually applying
-   `alembic upgrade head` in an explicitly selected, backed-up isolated
-   Neon database with an owner-controlled environment. Do **not** run
-   automatic migrations at Render startup.
+2. **Preserve the verified migrated Core database and recovery branch.** Neon is correctly connected; Core `b5e4a019dc72` is already applied. Before further migrations, confirm exact target, current data counts, the non-default Core recovery branch and a usable isolated restore procedure. Do not waste time repeating Core bootstrap or overwrite the existing snapshot. A Neon branch is not a substitute for independent off-host restore rehearsal.
+3. **Review the additive Full migration with a controlled recovery plan.** Revision `d4ec2f9b7860` depends on `b5e4a019dc72` and adds the four Study Abroad tables. Verify no drift or unexpected data changes and confirm both source and recovery. Only with explicit authorization execute the reviewed upgrade on the verified intended database. Keep Render migration mode `manual`; never enable startup auto-migrations for normal deploys. Afterward query `public.alembic_version` and table ownership, and verify Full readiness independently.
 4. **Switch Render to the full-release branch** using Render dashboard
    → service Settings → Build & Deploy → Branch →
    `release/full-with-study-abroad-20261028`; leave auto-deploy
@@ -72,13 +62,14 @@ errors and provider dashboard, not secret decryption.
    documented acceptance; **do not merge protected `main` or open
    public registrations on CI status alone**.
 
-## Greenfield Neon initial-schema decision gate (NOT YET AUTHORIZED)
+## Remaining database recovery and migration gates (NOT YET AUTHORIZED)
 
-- **Identification:** approved Neon hostname match is observed, but explicitly verify database name, effective role and branch against the connected Neon project before any schema-changing action. Do not infer this from the prior HTTP 200 readiness implementation.
-- **Data safety:** independent SQL currently shows zero application tables and no pgvector. This does **not** prove data in any other PostgreSQL instance or private object store were backed up. Check the intended application data retention/recovery scope first.
-- **Recovery:** the existing empty-schema Neon snapshot is a useful rollback checkpoint, but a snapshot ID alone is not proof of successful restoration. Document and validate the isolated recovery process, with no destructive production restore; any real restore requires owner approval.
-- **Migration chain:** initial users revision `b7369290f410` -> Core `b5e4a019dc72` -> Full `d4ec2f9b7860`, single linear sequence. The final migration adds private Study Abroad tables referencing existing users/documents. PostgreSQL 18/pgvector must be provisioned by reviewed migration steps, and schema checked afterward.
-- **Execution:** prohibit Render startup auto-migrations, wrong-target DDL and downgrades. Do not begin until the exact identity/recovery gates above and explicit schema-change authorization are satisfied. After approval, validate Full revision, table ownership/isolation, Redis/storage readiness and live endpoint contracts.
+- **Core bootstrap is complete.** Never reset or rerun the initial chain. Confirm the current revision and counts via read-only SQL immediately before cutover.
+- **Existing protection:** keep `snap-restless-mouse-a144fpzy` (pre-Core, empty) and the no-compute Core branch `br-damp-credit-a1mksvnz`; do not delete either. A second snapshot may be unavailable on Neon Free. Neither is verified cross-provider disaster recovery.
+- **Recovery rehearsal:** test private, isolated recovery without altering the production branch; an actual restore/reset requires explicit owner approval. Preserve user documents and any other populated data sources separately.
+- **Full migration:** only `b5e4a019dc72` -> `d4ec2f9b7860` remains, not the base-to-Core migration. Before any schema change, check exact DB/role/branch, reviewed Alembic diff, storage/backup and authorized maintenance window.
+- **Application durability:** artifact generation uses local Render storage; create/enable a verified private, durable backend before marking AI document history production ready. Treat uploaded local documents with the same caution.
+- **Release acceptance:** after approved migration and backend branch switch, require Full readiness HTTP 200, workflows 200, anonymous cases 401, authenticated cases/documents scoped to two separate test accounts, RAG citations, voice audio and restart-persistence verification.
 
 ## Free-tier limitations
 
@@ -87,4 +78,4 @@ sleeps when inactive and has ephemeral disk, and LiveKit Build quotas are
 limited. A protected owner-controlled test can stay on free-tier service
 allowances. Do not authorize paid upgrades automatically.
 
-**Current honest verdict:** Source/tests PASS, protected frontend READY, Core liveness PASS, strict database schema readiness BLOCKED; Full Release, LiveKit and Study Abroad real-data launch BLOCKED pending reviewed greenfield schema/recovery, authenticated worker deployment, actual provider access and two-user E2E QA.
+**Current honest verdict:** Core migrated/schema/pgvector/Redis readiness PASS LIVE; Full Release migration, Study Abroad endpoints, voice worker, generated-file durability and real two-user production E2E remain BLOCKED. The site is not yet approved for public launch.
