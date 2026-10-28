@@ -21,6 +21,8 @@ test("guest UI explicitly gates uploads and discloses short IP retention", () =>
   assert.match(guest, /IP address/);
   assert.match(guest, /24 hours/);
   assert.match(guest, /not saved/);
+  assert.match(guest, /external\s+AI provider/);
+  assert.match(guest, /privacy terms/);
   assert.match(guest, /\/api\/guest\/chat/);
   assert.doesNotMatch(guest, /localStorage/);
 });
