@@ -2,11 +2,13 @@ import tempfile
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
 from sqlalchemy import text
 
+from app.api.admin import get_current_admin
 from app.config.settings import settings
 from app.core.logging import app_logger
 from app.database.connection import SessionLocal
@@ -163,6 +165,7 @@ def readiness():
 @router.get(
     "/metrics",
     include_in_schema=False,
+    dependencies=[Depends(get_current_admin)],
 )
 def metrics():
     return Response(
@@ -173,6 +176,6 @@ def metrics():
             "charset=utf-8"
         ),
         headers={
-            "Cache-Control": "no-store",
+            "Cache-Control": "private, no-store",
         },
     )
