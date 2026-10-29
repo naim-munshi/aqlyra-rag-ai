@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
-from app.services.storage_durability_policy import local_writes_permitted, artifact_writes_permitted
+from app.services.storage_durability_policy import local_writes_permitted
 
 
 router = APIRouter()
@@ -173,15 +173,11 @@ def readiness():
             "storage": upload_storage_status,
             # "configured" is not real-provider acceptance or a successful
             # cloud object write: it only describes the selected code path.
+            # Core deliberately has no remote artifact/cloud-upload settings.
             "artifact_storage": (
-                "remote_configured" if settings.ARTIFACT_REMOTE_STORAGE_ENABLED
-                else "ready" if artifact_writes_permitted()
-                else "writes_disabled"
+                "ready" if local_writes_permitted() else "writes_disabled"
             ),
-            "cloud_uploads": (
-                "configured" if settings.CLOUD_UPLOAD_PUBLIC_ENABLED
-                else "disabled"
-            ),
+            "cloud_uploads": "disabled",
             **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
