@@ -335,19 +335,14 @@ export function VoiceCallButton({
 
     roomRef.current = null;
 
-    if (room) {
-      try {
-        await room.localParticipant
-          .setMicrophoneEnabled(false);
-      } catch {
-        // Best-effort cleanup.
-      }
-
-      await room.disconnect();
-    }
-
+    // Release the device immediately, even if network teardown stalls.
     stopMicrophoneTrack();
     clearAudioElements();
+    if (room) {
+      void room.disconnect().catch(() => {
+        // Local tracks are already stopped; disconnect is best effort.
+      });
+    }
 
     setActive(false);
     setStarting(false);
