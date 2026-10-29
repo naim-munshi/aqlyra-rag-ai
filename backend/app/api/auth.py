@@ -29,7 +29,6 @@ from app.schemas.auth import (
     PasswordResetRequest,
     PasswordResetConfirmRequest,
     PasswordResetMessage,
-    PasswordResetAuthenticatedResponse,
     TokenResponse,
     VerificationDispatchResponse,
 )
@@ -467,15 +466,15 @@ def request_password_reset(
 
 @router.post(
     "/reset-password",
-    response_model=PasswordResetAuthenticatedResponse,
+    response_model=PasswordResetMessage,
     dependencies=[Depends(limit_password_reset_request)],
 )
 def confirm_password_reset(
     body: PasswordResetConfirmRequest,
     db: Session = Depends(get_db),
-) -> PasswordResetAuthenticatedResponse:
+) -> PasswordResetMessage:
     try:
-        user_id, auth_epoch = reset_password(
+        reset_password(
             db, str(body.email).strip().lower(), body.code, body.new_password
         )
     except PasswordResetError as exc:
@@ -483,9 +482,6 @@ def confirm_password_reset(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset code",
         ) from exc
-    return PasswordResetAuthenticatedResponse(
-        message="Password updated. You are now signed in.",
-        access_token=create_access_token(
-            subject=user_id, token_version=auth_epoch,
-        ),
+    return PasswordResetMessage(
+        message="Password updated. Please sign in with your new password."
     )
