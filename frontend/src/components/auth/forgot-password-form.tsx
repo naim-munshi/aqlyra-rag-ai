@@ -1,12 +1,14 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoaderCircle, Mail, LockKeyhole } from "lucide-react";
 
 type ApiMessage = { message?: string; detail?: string };
 
 export function ForgotPasswordForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -64,10 +66,26 @@ export function ForgotPasswordForm() {
         setError(data.detail ?? "Unable to reset password.");
         return;
       }
+      // Only after a successful single-use recovery code: sign in through
+      // the existing secure login endpoint, which sets an HttpOnly cookie.
+      const login = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+        }),
+      });
       setPassword("");
       setConfirmPassword("");
       setCode("");
-      setMessage(data.message ?? "Password updated.");
+      if (login.ok) {
+        router.replace("/");
+        router.refresh();
+        return;
+      }
+      // A login outage or rate limit must never imply the reset failed.
+      setMessage("Password updated. Sign in with your new password.");
       setStep("done");
     } catch {
       setError("Unable to connect to Aqlyra.");
