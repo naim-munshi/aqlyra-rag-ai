@@ -1,4 +1,4 @@
-export type ChatToolId = "upload" | "web" | "browser" | "knowledge" | "documents" | "artifacts";
+export type ChatToolId = "upload" | "web" | "browser" | "knowledge" | "documents";
 
 export type ChatTool = {
   id: ChatToolId;
@@ -25,12 +25,6 @@ export function getChatTools(mode: "normal" | "knowledge"): ChatTool[] {
       label: "Browser Agent",
       description: "Review and approve a read-only browser task",
       href: "/agent/browser",
-    },
-    {
-      id: "artifacts",
-      label: "AI Files",
-      description: "Create Word, Excel, PowerPoint, PDF and Markdown files",
-      href: "/artifacts",
     },
     {
       id: "knowledge",
