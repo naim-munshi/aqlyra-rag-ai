@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  FileUp, Files, FilePlus2, Globe2, MousePointer2,
+  FileUp, Files, Globe2, MousePointer2,
   Plus, BookOpen, MessageSquareText, X,
 } from "lucide-react";
 
@@ -29,7 +29,6 @@ const icons = {
   browser: MousePointer2,
   knowledge: BookOpen,
   documents: Files,
-  artifacts: FilePlus2,
 } as const;
 
 export function ChatToolsMenu({
