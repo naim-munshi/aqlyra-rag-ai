@@ -59,6 +59,7 @@ from app.services.user_service import (
     DuplicateUserError,
     authenticate_user,
     create_user,
+    discard_new_registration_after_email_failure,
     get_or_create_google_user,
     get_user_by_email,
 )
@@ -113,12 +114,24 @@ def register_user(
                         ),
                     )
                 )
-            except EmailDeliveryError:
+            except EmailDeliveryError as exc:
                 discard_verification_code(
                     db,
                     challenge_id=issued_code.challenge_id,
                 )
-                verification_email_sent = False
+                cleaned_up = discard_new_registration_after_email_failure(
+                    db, user_id=str(user.id)
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "Verification email unavailable. Registration was "
+                        "not completed; please try again."
+                        if cleaned_up
+                        else "Verification email unavailable. An unfinished "
+                        "registration may remain; use email recovery."
+                    ),
+                ) from exc
 
         return RegistrationResponse(
             **UserResponse.model_validate(
@@ -136,6 +149,19 @@ def register_user(
         )
 
     except DuplicateUserError as exc:
+        if exc.field == "email" and settings.EMAIL_VERIFICATION_REQUIRED:
+            existing = get_user_by_email(
+                db, str(user_data.email).strip().lower()
+            )
+            if existing is not None and existing.email_verified_at is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This email has an unfinished registration. "
+                        "Use pending email recovery to verify and "
+                        "secure the mailbox before activating an account."
+                    ),
+                ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
