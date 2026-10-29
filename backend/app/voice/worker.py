@@ -20,6 +20,7 @@ from livekit.plugins import groq, silero
 
 from app.config.settings import settings
 from app.voice.job_metadata import VoiceJobData
+from app.voice.job_authorization import authorize_voice_job
 from app.database.connection import (
     SessionLocal,
 )
@@ -388,6 +389,8 @@ class AqlyraVoiceAgent(Agent):
         db = SessionLocal()
 
         try:
+            # A short-lived room token can outlive identity or document revocation.
+            authorize_voice_job(db, self._job_data)
             conversation = (
                 get_conversation_for_user(
                     db=db,
@@ -495,6 +498,8 @@ class AqlyraVoiceAgent(Agent):
         db = SessionLocal()
 
         try:
+            # A short-lived room token can outlive identity or document revocation.
+            authorize_voice_job(db, self._job_data)
             conversation = (
                 get_conversation_for_user(
                     db=db,
@@ -714,11 +719,15 @@ async def aqlyra_voice_session(
         )
     )
 
+    # Refuse revoked dispatch before allocating paid STT/TTS capacity.
+    def authorize_initial_job() -> None:
+        with SessionLocal() as db:
+            authorize_voice_job(db, job_data)
+
+    await asyncio.to_thread(authorize_initial_job)
+
+    # Keep stable user/conversation UUIDs out of general worker logs.
     ctx.log_context_fields = {
-        "conversation_id": (
-            job_data.conversation_id
-        ),
-        "user_id": job_data.user_id,
         "mode": job_data.mode,
     }
 
