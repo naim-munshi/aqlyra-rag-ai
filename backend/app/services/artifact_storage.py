@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from app.config.settings import settings
+from app.services.storage_durability_policy import artifact_writes_permitted
 from app.services.artifact_rendering import MIMES, render_artifact
 
 MAX_ARTIFACTS_PER_USER = 50
@@ -86,6 +87,8 @@ def create_artifact(
     provider_name: str, source_document_ids: list[str],
     citation_count: int,
 ) -> dict:
+    if not artifact_writes_permitted():
+        raise ArtifactStorageError("Durable artifact storage is not configured")
     if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
         return _remote_call(
             "create_artifact", user_id=user_id, title=title, kind=kind,
