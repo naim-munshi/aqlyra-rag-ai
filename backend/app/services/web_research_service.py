@@ -151,6 +151,7 @@ def research_web(
     include_domains: list[str] | None = None,
     client: httpx.Client | None = None,
     provider: LLMProvider | None = None,
+    iterative: bool = False,
 ) -> WebResearchResponse:
     if not settings.WEB_RESEARCH_ENABLED:
         raise WebResearchUnavailable("Web research is disabled")
@@ -198,56 +199,61 @@ def research_web(
                 "published_date": None,
             }]
         else:
-            search = _tavily_json(
-                client=active_client,
-                endpoint=TAVILY_SEARCH,
-                api_key=key,
-                data={
-                    "query": question,
-                    # Advanced mode is explicitly selected by the user and
-                    # may consume more Tavily credits than a basic search.
-                    "search_depth": "advanced" if mode == "deep" else "basic",
-                    "max_results": min(10, max_sources + 5),
-                    **({"time_range": time_range} if time_range else {}),
-                    **({"include_domains": domains} if domains else {}),
-                    "include_answer": False,
-                    "include_raw_content": False,
-                    "include_images": False,
-                },
-            )
-            raw_results = search.get("results")
-            if not isinstance(raw_results, list):
-                raise WebResearchUnavailable("Search returned invalid results")
+            # Only explicit Deep Chat requests use a second bounded search
+            # for independent primary-source evidence. All URLs still pass
+            # existing HTTPS/domain checks and the same five-source cap.
+            queries = [question]
+            if iterative and mode == "deep":
+                queries.append(
+                    ("original primary-source evidence documentation " + question)[:600]
+                )
             seen: set[str] = set()
-            for entry in raw_results:
-                if not isinstance(entry, dict):
-                    continue
-                url = safe_public_url(entry.get("url"))
-                if not url or url in seen:
-                    continue
-                if domains and not any(
-                    (urlsplit(url).hostname or "").lower() == domain
-                    or (urlsplit(url).hostname or "").lower().endswith("." + domain)
-                    for domain in domains
-                ):
-                    # Never trust the search provider alone to enforce scope.
-                    continue
-                title = entry.get("title")
-                seen.add(url)
-                candidates.append({
-                    "url": url,
-                    "title": (title[:180] if isinstance(title, str) else url),
-                    "published_date": (
-                        entry["published_date"][:32]
-                        if isinstance(entry.get("published_date"), str)
-                        else None
-                    ),
-                })
-                # Comparison modes inspect more candidates to avoid relying
-                # on several links from the same publisher.
-                limit = min(10, max_sources + 5) if mode in (
-                    "compare", "deep"
-                ) else max_sources
+            limit = min(10, max_sources + 5) if mode in ("compare", "deep") else max_sources
+            per_search = min(6, max_sources + 1) if len(queries) > 1 else min(10, max_sources + 5)
+            for research_query in queries:
+                search = _tavily_json(
+                    client=active_client,
+                    endpoint=TAVILY_SEARCH,
+                    api_key=key,
+                    data={
+                        "query": research_query,
+                        "search_depth": "advanced" if mode == "deep" else "basic",
+                        "max_results": per_search,
+                        **({"time_range": time_range} if time_range else {}),
+                        **({"include_domains": domains} if domains else {}),
+                        "include_answer": False,
+                        "include_raw_content": False,
+                        "include_images": False,
+                    },
+                )
+                raw_results = search.get("results")
+                if not isinstance(raw_results, list):
+                    raise WebResearchUnavailable("Search returned invalid results")
+                for entry in raw_results[:per_search]:
+                    if not isinstance(entry, dict):
+                        continue
+                    url = safe_public_url(entry.get("url"))
+                    if not url or url in seen:
+                        continue
+                    if domains and not any(
+                        (urlsplit(url).hostname or "").lower() == domain
+                        or (urlsplit(url).hostname or "").lower().endswith("." + domain)
+                        for domain in domains
+                    ):
+                        continue
+                    title = entry.get("title")
+                    seen.add(url)
+                    candidates.append({
+                        "url": url,
+                        "title": (title[:180] if isinstance(title, str) else url),
+                        "published_date": (
+                            entry["published_date"][:32]
+                            if isinstance(entry.get("published_date"), str)
+                            else None
+                        ),
+                    })
+                    if len(candidates) >= limit:
+                        break
                 if len(candidates) >= limit:
                     break
 
