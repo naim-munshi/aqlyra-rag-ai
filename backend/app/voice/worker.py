@@ -649,9 +649,12 @@ class AqlyraVoiceAgent(Agent):
                 "voice_llm_persist_done"
             )
 
-        except Exception:
-            logger.exception(
-                "voice_llm_node_failed"
+        except Exception as exc:
+            # Provider exceptions can embed prompts, transcript fragments or
+            # request URLs. Record only the exception class in agent logs.
+            logger.error(
+                "voice_llm_node_failed exception_type=%s",
+                type(exc).__name__,
             )
             raise
 
