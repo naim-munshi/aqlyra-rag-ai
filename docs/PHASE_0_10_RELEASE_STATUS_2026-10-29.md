@@ -48,6 +48,27 @@ python3 scripts/ops/production_db_isolation_gate.py \
 
 RLS policy design must run on staging with a restricted role first; after off-host backup/restoration and independent security approval, schedule a separate owner-controlled production change. The current database must **not** be modified to make the gate green.
 
+## Source hardening added after previous verified CI
+
+- Production local writes are now fail-closed by default when
+  `APP_ENV=production` and no durable local volume has been independently
+  verified: direct document upload and AI Files create/render return 503
+  rather than silently persisting to an ephemeral disk.
+- `LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED` is false by default, must never
+  be enabled on Render Free ephemeral disks, and must only be enabled for a
+  mounted, backup/restore-tested local volume. Explicit private S3 generated
+  artifact mode remains a separate production opt-in.
+- Existing local uploads and generated files are **not deleted** or
+  automatically migrated. Their reads/downloads remain available.
+- Current Neon `private-documents` storage bucket is private, but read-only
+  inventory was empty at last review. Existence of a private bucket is not
+  proof that the backend has functioning S3 credentials, that existing local
+  files have been migrated, or that file paths persist across Render restarts.
+- New regression coverage prevents upload buffering, paid LLM generation
+  and local artifact writes when durable persistence is unavailable.
+- This is only source hardening until the Core/Full branch is approved for
+  controlled deployment and exact-HEAD CI passes.
+
 ## Next acceptance sequence
 
 1. Resolve the real embedding credit/quota with the provider or an owner-approved same-model serving endpoint. **Do not** mix vectors from a different model into existing pgvector indexes or enable deterministic production embeddings.
