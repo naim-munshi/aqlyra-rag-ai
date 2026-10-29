@@ -181,7 +181,9 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
 
-    # Realtime voice
+    # Real-time voice must stay disabled until a LiveKit worker and
+    # real STT/TTS providers have passed the owner-controlled E2E gate.
+    VOICE_AGENT_READY: bool = False
     LIVEKIT_URL: str = ""
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
