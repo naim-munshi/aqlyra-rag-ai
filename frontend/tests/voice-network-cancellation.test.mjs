@@ -25,3 +25,8 @@ test("unavailable worker can be rechecked without soliciting microphone permissi
   assert.match(voice, /Check voice availability again/);
   assert.match(voice, /if \(!availability\?\.available\)/);
 });
+
+test("free-tier LiveKit cold starts are not mistaken for missing workers", () => {
+  assert.match(voice, /\}, 45000\); \/\/ Free LiveKit Cloud agents can cold-start/);
+  assert.match(voice, /The AI voice agent did not join/);
+});
