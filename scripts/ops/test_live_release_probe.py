@@ -54,6 +54,35 @@ class LivePhaseProbeTest(unittest.TestCase):
         self.assertIn("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", output)
         self.assertNotIn("LIVE_RELEASE_GATE=PASS", output)
 
+    def test_storage_writes_disabled_is_a_safe_explicit_degraded_state(self):
+        response = (200, {
+            "status": "ready",
+            "checks": {
+                "database": "ready",
+                "storage": "writes_disabled",
+                "artifact_storage": "writes_disabled",
+                "redis": "ready",
+            },
+        })
+        status, output = self.run_case(
+            "study-core", [HEALTH, response, WORKFLOWS, (401, None)]
+        )
+        self.assertEqual(status, 0)
+        self.assertIn("uploads disabled; not durable", output)
+
+    def test_invalid_storage_state_cannot_pass_readiness(self):
+        invalid = (200, {
+            "status": "ready",
+            "checks": {
+                "database": "ready", "storage": "unverified", "redis": "ready"
+            },
+        })
+        status, output = self.run_case(
+            "study-core", [HEALTH, invalid, WORKFLOWS, (401, None)]
+        )
+        self.assertEqual(status, 1)
+        self.assertIn("BLOCKED database_storage_redis", output)
+
     def test_study_core_phase_accepts_released_study_routes_without_claiming_full(self):
         status, output = self.run_case(
             "study-core", [HEALTH, READY, WORKFLOWS, (401, None)]
