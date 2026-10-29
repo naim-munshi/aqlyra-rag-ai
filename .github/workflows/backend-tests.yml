@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/password-reset-chat-provider-20261029
     paths:
       - "backend/**"
       - "docker-compose.yml"
