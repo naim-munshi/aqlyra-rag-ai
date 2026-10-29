@@ -242,6 +242,8 @@ class Settings(BaseSettings):
     PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
     # Keep browser direct-upload API off until staging security acceptance.
     CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
+    # Small authenticated browser-proxy uploads; no S3 browser CORS needed.
+    CLOUD_UPLOAD_PROXY_ENABLED: bool = False
     OBJECT_STORAGE_BUCKET: str = ""
     AWS_ENDPOINT_URL_S3: str = ""
     AWS_ACCESS_KEY_ID: str = ""
@@ -740,7 +742,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cloud_upload_gate(self) -> Self:
-        if self.CLOUD_UPLOAD_PUBLIC_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+        if (self.CLOUD_UPLOAD_PUBLIC_ENABLED or self.CLOUD_UPLOAD_PROXY_ENABLED) and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Cloud upload requires private object storage")
         return self
 
