@@ -8,6 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
+from app.services.auto_web_research_service import (
+    choose_web_mode,
+    cited_web_answer,
+)
+from app.services.web_research_service import research_web
 from app.llms import (
     LLMError,
     LLMProvider,
@@ -590,6 +595,35 @@ def _load_normal_attachment_context(
     )
 
 
+def generate_web_chat_reply(
+    *,
+    message: str,
+    research_mode: str,
+    provider: LLMProvider | None = None,
+) -> ChatExecutionResult:
+    # Only the current user message is sent externally: NEVER history,
+    # user memories, uploaded document content or knowledge retrieval text.
+    research = research_web(
+        message,
+        max_sources=5,
+        mode=research_mode,
+        provider=provider,
+    )
+    return ChatExecutionResult(
+        content=cited_web_answer(research.answer, research.sources),
+        mode="normal",
+        provider_name=research.provider_name,
+        model_name=research.model_name,
+        response_id=None,
+        citations=(),  # Web citations are clickable links, not private [S#] chunks.
+        is_refusal=False,
+        input_tokens=None,
+        output_tokens=None,
+        total_tokens=None,
+        evidence_tokens=None,
+    )
+
+
 def generate_normal_chat_reply(
     *,
     db: Session,
@@ -892,6 +926,7 @@ def execute_chat_turn(
     document_ids: tuple[str, ...] = (),
     top_k: int = 8,
     provider: LLMProvider | None = None,
+    web_mode: str = "auto",
 ) -> ChatExecutionResult:
     cleaned = message.strip()
 
@@ -911,6 +946,14 @@ def execute_chat_turn(
                     top_k=top_k,
                     provider=provider,
                 )
+            )
+
+        research_mode = choose_web_mode(cleaned, web_mode)
+        if research_mode is not None:
+            return generate_web_chat_reply(
+                message=cleaned,
+                research_mode=research_mode,
+                provider=provider,
             )
 
         return generate_normal_chat_reply(
