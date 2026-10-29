@@ -1,6 +1,7 @@
 from fastapi import (
     APIRouter,
     Depends,
+    Response,
     HTTPException,
     status,
 )
@@ -24,6 +25,7 @@ from app.services.voice_session_service import (
     VoiceConversationNotFoundError,
     VoiceDocumentValidationError,
     create_voice_session,
+    voice_is_ready,
 )
 
 
@@ -31,6 +33,25 @@ router = APIRouter(
     prefix="/voice",
     tags=["Voice"],
 )
+
+
+@router.get("/status")
+def voice_status(
+    response: Response,
+    _current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Credential-free and private; readiness does not assert a live RTC call."""
+    response.headers["Cache-Control"] = "private, no-store"
+    available = voice_is_ready()
+    return {
+        "available": available,
+        "detail": (
+            "Voice calling is ready to connect."
+            if available
+            else "Voice calling is not available yet. "
+                 "Please continue with text chat."
+        ),
+    }
 
 
 @router.post(

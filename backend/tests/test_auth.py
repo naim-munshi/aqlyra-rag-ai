@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 import app.api.auth as auth_api
 from app.config.settings import settings
+from app.auth.security import create_access_token
 from app.models.email_verification_code import (
     EmailVerificationCode,
 )
@@ -161,6 +162,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": wrong_code,
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -171,6 +173,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -191,6 +194,7 @@ def test_email_account_requires_valid_otp_before_login(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -240,6 +244,7 @@ def test_email_otp_locks_after_maximum_wrong_attempts(
             json={
                 "code": wrong_code,
                 "verification_token": verification_token,
+            "password": USER_DATA["password"],
             },
         )
         assert rejected.status_code == 400
@@ -249,6 +254,7 @@ def test_email_otp_locks_after_maximum_wrong_attempts(
         json={
             "code": sent_codes[0],
             "verification_token": verification_token,
+            "password": USER_DATA["password"],
         },
     )
 
@@ -302,113 +308,114 @@ def test_resend_verification_enforces_cooldown(
     assert len(sent_codes) == 2
 
 
-def test_registration_stays_unverified_when_email_delivery_fails(
-    client: TestClient,
-    monkeypatch,
+def test_email_failure_does_not_reserve_email_and_retry_needs_otp(
+    client: TestClient, db_session: Session, monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        settings,
-        "EMAIL_VERIFICATION_REQUIRED",
-        True,
-    )
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
 
     def fail_delivery(**kwargs) -> None:
         del kwargs
         raise EmailDeliveryError("simulated failure")
 
+    monkeypatch.setattr(auth_api, "send_verification_email", fail_delivery)
+
+    failed = register_user(client)
+    assert failed.status_code == 503
+    assert get_user_by_email(db_session, USER_DATA["email"]) is None
+    assert login_user(client).status_code == 401
+
+    sent_codes = []
     monkeypatch.setattr(
         auth_api,
         "send_verification_email",
-        fail_delivery,
+        lambda *, recipient_email, code: sent_codes.append(code),
     )
-
-    registered = register_user(client)
-
-    assert registered.status_code == 201
-    assert registered.json()["verification_email_sent"] is False
+    pending = register_user(client)
+    assert pending.status_code == 201
+    assert pending.json()["verification_email_sent"] is True
+    assert len(sent_codes) == 1
     assert login_user(client).status_code == 403
 
+    user = get_user_by_email(db_session, USER_DATA["email"])
+    assert user is not None and user.email_verified_at is None
 
-def test_new_registration_replaces_unverified_squatted_account(
-    client: TestClient,
-    monkeypatch,
-) -> None:
-    sent_codes: list[str] = []
-
-    monkeypatch.setattr(
-        settings,
-        "EMAIL_VERIFICATION_REQUIRED",
-        True,
+    # A stale or mistakenly issued JWT cannot bypass verification.
+    token = create_access_token(
+        subject=str(user.id), token_version=user.auth_epoch,
     )
-    monkeypatch.setattr(
-        auth_api,
-        "send_verification_email",
-        lambda *, recipient_email, code: sent_codes.append(
-            code
-        ),
+    protected = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
     )
-
-    attacker = client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": "attacker_name",
-            "email": "victim@gmail.com",
-            "password": "AttackerPass123!",
-        },
-    )
-    owner = client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": "real_owner",
-            "email": "victim@gmail.com",
-            "password": "OwnerPass123!",
-        },
-    )
-
-    assert attacker.status_code == 201
-    assert owner.status_code == 201
-
-    stale = client.post(
-        "/api/v1/auth/verify-email",
-        json={
-            "code": sent_codes[0],
-            "verification_token": attacker.json()[
-                "verification_token"
-            ],
-        },
-    )
-
-    assert stale.status_code == 400
+    assert protected.status_code == 403
 
     verified = client.post(
         "/api/v1/auth/verify-email",
         json={
-            "code": sent_codes[1],
-            "verification_token": owner.json()[
-                "verification_token"
-            ],
+            "code": sent_codes[0],
+            "verification_token": pending.json()["verification_token"],
+            "password": USER_DATA["password"],
         },
     )
-
     assert verified.status_code == 200
+    assert login_user(client).status_code == 200
 
-    attacker_login = client.post(
-        "/api/v1/auth/login",
+
+def test_duplicate_pending_registration_cannot_overwrite_credentials(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """Unauthenticated registration must never take control of pending account."""
+    sent_codes: list[str] = []
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
+    monkeypatch.setattr(
+        auth_api,
+        "send_verification_email",
+        lambda *, recipient_email, code: sent_codes.append(code),
+    )
+
+    original = client.post(
+        "/api/v1/auth/register",
         json={
-            "email": "victim@gmail.com",
+            "username": "pending_owner",
+            "email": "pending@example.com",
+            "password": "OriginalPass123!",
+        },
+    )
+    replacement = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "attacker_name",
+            "email": "pending@example.com",
             "password": "AttackerPass123!",
         },
     )
-    owner_login = client.post(
-        "/api/v1/auth/login",
+
+    assert original.status_code == 201
+    assert replacement.status_code == 409
+    assert len(sent_codes) == 1
+
+    # Original mailbox holder can still redeem the original code.
+    verified = client.post(
+        "/api/v1/auth/verify-email",
         json={
-            "email": "victim@gmail.com",
-            "password": "OwnerPass123!",
+            "code": sent_codes[0],
+            "verification_token": original.json()["verification_token"],
+            "password": "OriginalPass123!",
         },
     )
+    assert verified.status_code == 200
 
-    assert attacker_login.status_code == 401
+    owner_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pending@example.com", "password": "OriginalPass123!"},
+    )
+    attacker_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "pending@example.com", "password": "AttackerPass123!"},
+    )
     assert owner_login.status_code == 200
+    assert attacker_login.status_code == 401
 
 
 def test_verified_google_credential_creates_stable_account(
