@@ -325,6 +325,15 @@ export function DocumentPanel() {
         ),
       ]);
 
+      // A successful cloud upload means bytes are durable, not that
+      // a quota-limited embedding provider has indexed the document.
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true") {
+        setError(
+          "File saved in private storage. AI indexing is currently unavailable; you can retry processing later."
+        );
+        return;
+      }
+
       await processDocument(
         uploadedDocument.id,
       );
