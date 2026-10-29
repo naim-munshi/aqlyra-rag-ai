@@ -248,6 +248,9 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-2"
 
+    # Do not persist new user files to ephemeral production disks.
+    LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED: bool = False
+
     # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
