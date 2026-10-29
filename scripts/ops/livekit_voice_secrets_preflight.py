@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 
 REQUIRED = frozenset({
     "SECRET_KEY", "DATABASE_URL", "REDIS_URL", "GROQ_API_KEY",
-    "HF_TOKEN", "GOOGLE_CLIENT_ID", "RESEND_API_KEY", "SMTP_FROM_EMAIL",
+    "HF_TOKEN", "GOOGLE_CLIENT_ID", "SMTP_FROM_EMAIL",
     "EMAIL_DELIVERY_PROVIDER", "LLM_PROVIDER", "EMBEDDING_PROVIDER",
     "RAG_GROUNDING_VERIFIER_ENABLED", "RATE_LIMIT_ENABLED", "CORS_ORIGINS",
     "APP_ENV", "DEBUG", "VOICE_AGENT_NAME",
@@ -117,7 +117,18 @@ def approved_url(value: str, *, redis: bool) -> bool:
 def validate(values: dict[str, str]) -> None:
     if AUTO_INJECTED & values.keys():
         raise VoicePreflightBlocked("LiveKit-managed keys must not be uploaded")
-    missing = REQUIRED - values.keys()
+    provider = values.get("EMAIL_DELIVERY_PROVIDER")
+    provider_keys = {
+        "resend": {"RESEND_API_KEY"},
+        "gmail_api": {
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+        },
+    }
+    if provider not in provider_keys:
+        raise VoicePreflightBlocked("unsupported email delivery provider")
+    missing = (REQUIRED | provider_keys[provider]) - values.keys()
     if missing:
         # Only key names, never values.
         raise VoicePreflightBlocked("missing mandatory key names")
@@ -128,21 +139,28 @@ def validate(values: dict[str, str]) -> None:
     if not approved_url(values["REDIS_URL"], redis=True):
         raise VoicePreflightBlocked("REDIS_URL must be approved TLS Upstash")
     expected = {
-        "EMAIL_DELIVERY_PROVIDER": "resend",
-        "LLM_PROVIDER": "groq",
+         "LLM_PROVIDER": "groq",
         "EMBEDDING_PROVIDER": "huggingface",
         "RAG_GROUNDING_VERIFIER_ENABLED": "true",
         "RATE_LIMIT_ENABLED": "true",
         "APP_ENV": "production",
         "DEBUG": "false",
         "VOICE_AGENT_NAME": "aqlyra-voice",
-        "CORS_ORIGINS": "https://aqlyra-navy.vercel.app",
+        "CORS_ORIGINS": "https://aqlyra-ai.vercel.app",
     }
     for name, approved in expected.items():
         if values[name] != approved:
             raise VoicePreflightBlocked("production-safe configuration mismatch")
     if values["SMTP_FROM_EMAIL"].count("@") != 1:
         raise VoicePreflightBlocked("SMTP_FROM_EMAIL invalid")
+    if provider == "gmail_api":
+        if not values["GMAIL_OAUTH_CLIENT_ID"].endswith(
+            ".apps.googleusercontent.com"
+        ):
+            raise VoicePreflightBlocked("Gmail client ID invalid")
+        # This check never makes a token request or prints credentials.
+        if not all(values[key].strip() for key in provider_keys[provider]):
+            raise VoicePreflightBlocked("Gmail OAuth credentials incomplete")
 
 
 def main(argv: list[str] | None = None) -> int:
