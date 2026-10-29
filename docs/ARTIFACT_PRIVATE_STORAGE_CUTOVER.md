@@ -5,6 +5,23 @@ artifacts. It does **not** claim that original uploaded RAG source files are
 durable. The authenticated document-ingestion/storage lifecycle has its own
 release gate. Keep the protected Vercel frontend closed to public traffic.
 
+## Production data-loss prevention (new source gate; not yet live on Core Render)
+
+New Full Release source defaults `LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED=false`.
+When `APP_ENV=production`, `/documents/upload` and local AI Files create/render
+return HTTP 503 **before writing user content**, until independently validated
+durable local storage is configured. Generated artifacts can instead use the
+existing private S3 backend when `ARTIFACT_REMOTE_STORAGE_ENABLED=true`
+after real provider acceptance. No data is erased, existing local files remain
+readable/downloadable, and local development upload behavior is unchanged.
+Do **not** set the local-volume flag true on Render Free's ephemeral disk.
+Cloud uploads are a separate pipeline gated by `CLOUD_UPLOAD_PUBLIC_ENABLED`
+and require end-to-end owner/auth/object checks before rollout.
+
+When this patch reaches live Render, users may see a deliberate 503 rather
+than a false successful upload that disappears on restart. Resolve external
+private storage/restore acceptance before advertising upload readiness.
+
 ## Existing behavior and rollout boundary
 
 - Existing `backend/app/services/artifact_storage.py` remains the
