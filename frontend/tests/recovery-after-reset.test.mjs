@@ -14,8 +14,8 @@ test("successful OTP reset alone is required before sign in attempt", () => {
   assert.ok(reset >= 0 && success > reset && login > success);
   assert.match(source, /if \(signedIn\) \{\s*router\.replace\("\/"\)/);
   assert.match(source, /setStep\("done"\)/);
-  assert.match(source, /setPassword\("")/);
-  assert.match(source, /setCode\("")/);
+  assert.ok(source.includes('setPassword("");'));
+  assert.ok(source.includes('setCode("");'));
   assert.doesNotMatch(source, /localStorage\.setItem\([^\n]*token/);
 });
 
