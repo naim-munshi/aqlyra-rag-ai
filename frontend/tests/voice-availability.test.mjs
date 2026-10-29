@@ -15,7 +15,11 @@ test("unavailable voice calls show user-visible error and cannot request microph
 
 test("Safari microphone and sound need direct user actions", () => {
   const source = read("components/voice/voice-call-button.tsx");
-  assert.match(source, /getUserMedia\(\{/);
+  assert.match(source, /createLocalAudioTrack\(\{/);
+  assert.match(source, /room\.localParticipant\.publishTrack\(microphoneTrack/);
+  assert.doesNotMatch(source, /getTracks\(\)\.forEach\(track => track\.stop\(\)\)/);
+  assert.match(source, /stopMicrophoneTrack\(\)/);
+  assert.match(source, /callAttemptRef\.current !== attempt/);
   assert.match(source, /RoomEvent\.AudioPlaybackStatusChanged/);
   assert.match(source, /await room\.startAudio\(\)/);
   assert.match(source, /Enable sound/);
