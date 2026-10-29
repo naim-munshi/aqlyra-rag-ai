@@ -23,7 +23,7 @@ This is a **release engineering ledger**, not authorization to remove Vercel SSO
 - Repository `naim-munshi/aqlyra-rag-ai`: `main` remains at `6bd16d5`, PR #36 Core and PR #37 Full are unmerged. The latest observed **pre-document-change** Core commit was `7065846` with 7/7 workflows passing; Full was `bb57298` with 8/8 passing. Revalidate after this file is committed.
 - Render `srv-dbgjt0ei0phs73akd8j0` deployment `dep-dbhikgdg1s2s73a67sng` LIVE at Core `7065846`; auto-deploy OFF; Full backend is not live.
 - Vercel `aqlyra` frontend deployment `dpl_877tonsouExdkZCWqAPWdDgB6r76` READY from Full `bb57298`; aliases `aqlyra-ai.vercel.app` and `aqlyra-navy.vercel.app`; SSO protection ON. `aqlyra.vercel.app` is assigned to a different project/team, not this project.
-- Neon production `rough-river-66110449`, `neondb` PostgreSQL 18.6, Alembic `d4ec2f9b7860`: 20 public ordinary tables, **0 RLS-enabled**, only database owner `neondb_owner` listed by project role API. Current snapshot schedule is empty; three recovery/schema branches and an older snapshot remain. None prove a new off-host Full-data restore.
+- Neon Full-schema revision has been verified through an owner-private read-only audit. Database isolation and recovery acceptance remain **BLOCKED**; exact role/policy deficiencies, backup inventory and infrastructure identifiers are intentionally kept in an owner-private security record, not this public repository.
 - Live Vercel and provider acceptance must not be inferred from source CI or a protected frontend's READY status.
 
 ## P0: database public launch gate (non-destructive)
