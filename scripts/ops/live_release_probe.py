@@ -78,7 +78,7 @@ def probe_health_with_free_tier_cold_start() -> tuple[int, object | None]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--expected-phase", choices=("core", "full"), default="full",
+        "--expected-phase", choices=("core", "study-core", "full"), default="study-core",
         help="Explicit phase expected on the fixed live Render origin",
     )
     args = parser.parse_args(argv)
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
                         for k in ("database", "storage", "redis")
                     )
                 )
-            if valid and name == "study_abroad_workflow" and args.expected_phase == "full":
+            if valid and name == "study_abroad_workflow" and args.expected_phase in ("study-core", "full"):
                 valid = isinstance(payload, list) and any(
                     isinstance(workflow, dict)
                     and workflow.get("id") == "student"
@@ -153,6 +153,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.expected_phase == "core":
         print("LIVE_CORE_GATE=PASS (read-only)", flush=True)
+        print("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", flush=True)
+    elif args.expected_phase == "study-core":
+        print("LIVE_STUDY_CORE_GATE=PASS (read-only, not real provider E2E)", flush=True)
         print("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", flush=True)
     else:
         print("LIVE_RELEASE_GATE=PASS (read-only, not real provider E2E)", flush=True)
