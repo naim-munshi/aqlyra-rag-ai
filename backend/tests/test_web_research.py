@@ -418,3 +418,16 @@ def test_iterative_deep_research_uses_two_searches_and_shared_source_budget(monk
     assert queries[0] != queries[1]
     assert len(result.sources) == 2
     assert [source.citation for source in result.sources] == ["[W1]", "[W2]"]
+
+def test_untrusted_web_urls_and_model_invented_links_are_rejected(monkeypatch):
+    assert safe_public_url("https://example.com/path\\nmalicious") is None
+    assert safe_public_url("https://example.com/path\\tmalicious") is None
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    with httpx.Client(transport=httpx.MockTransport(fake_tavily)) as client:
+        with pytest.raises(WebResearchEvidenceError, match="unapproved external links"):
+            research_web(
+                "What are the latest research figures?",
+                max_sources=3, client=client,
+                provider=StubProvider("An unsupported link [W1] https://phishing.example/bait"),
+            )
