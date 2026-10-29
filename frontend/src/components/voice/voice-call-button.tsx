@@ -38,6 +38,11 @@ type VoiceApiError = {
   detail?: unknown;
 };
 
+type VoiceAvailability = {
+  available: boolean;
+  detail: string;
+};
+
 type VoiceCallButtonProps = {
   mode: ConversationMode;
   conversationId: string | null;
@@ -107,6 +112,8 @@ function stateLabel(
   }
 
   switch (state) {
+    case "connecting":
+      return "Connecting";
     case "connecting":
       return "Connecting";
     case "thinking":
@@ -190,6 +197,35 @@ export function VoiceCallButton({
   const [error, setError] =
     useState("");
 
+  const [availability, setAvailability] =
+    useState<VoiceAvailability | null>(null);
+
+  const [needsAudioUnlock, setNeedsAudioUnlock] =
+    useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/voice/status", {
+      cache: "no-store",
+      signal: controller.signal,
+    }).then(async response => {
+      if (!response.ok) throw new Error("Voice status unavailable");
+      const data = (await response.json()) as VoiceAvailability;
+      if (typeof data.available !== "boolean") {
+        throw new Error("Invalid voice status");
+      }
+      setAvailability(data);
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setAvailability({
+          available: false,
+          detail: "Voice calling is temporarily unavailable. Please use text chat.",
+        });
+      }
+    });
+    return () => controller.abort();
+  }, []);
+
 
   function clearAgentJoinTimer() {
     if (agentJoinTimerRef.current !== null) {
@@ -224,8 +260,13 @@ export function VoiceCallButton({
         hasVoiceAgent(room)
       ) return;
       const message =
-        "AI voice agent did not join the call. " +
-        "End the call and try again when the voice service is online.";
+        "The AI voice agent did not join. The call was ended. " +
+        "Please retry once the voice service is online.";
+      roomRef.current = null;
+      void room.disconnect();
+      clearAudioElements();
+      setActive(false);
+      setStarting(false);
       setAgentState("error");
       setError(message);
       onError?.(message);
@@ -274,6 +315,7 @@ export function VoiceCallButton({
     setAgentState("idle");
     setLiveUserText("");
     setLiveAgentText("");
+    setNeedsAudioUnlock(false);
     setError("");
   }
 
@@ -287,6 +329,12 @@ export function VoiceCallButton({
       return;
     }
 
+    if (availability?.available === false) {
+      setError(availability.detail);
+      onError?.(availability.detail);
+      return;
+    }
+
     clearAgentJoinTimer();
     setStarting(true);
     setError("");
@@ -297,6 +345,16 @@ export function VoiceCallButton({
     let room: Room | null = null;
 
     try {
+      // Request iOS Safari microphone permission from the direct tap
+      // before network requests lose the user-activation context.
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("This browser does not support microphone calls.");
+      }
+      const microphone = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      microphone.getTracks().forEach(track => track.stop());
+
       const response =
         await fetch(
           "/api/voice/session",
@@ -410,6 +468,12 @@ export function VoiceCallButton({
         },
       );
 
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (roomRef.current === room) {
+          setNeedsAudioUnlock(!room!.canPlaybackAudio);
+        }
+      });
+
       room.on(
         RoomEvent.TrackSubscribed,
         (track) => {
@@ -428,6 +492,9 @@ export function VoiceCallButton({
           audioContainerRef
             .current
             ?.appendChild(element);
+          if (room && !room.canPlaybackAudio) {
+            setNeedsAudioUnlock(true);
+          }
         },
       );
 
@@ -513,6 +580,7 @@ export function VoiceCallButton({
           setActive(false);
           setStarting(false);
           setMuted(false);
+          setNeedsAudioUnlock(false);
           setAgentState("idle");
         },
       );
@@ -532,6 +600,7 @@ export function VoiceCallButton({
       setMuted(false);
       setActive(true);
       setStarting(false);
+      setNeedsAudioUnlock(!room.canPlaybackAudio);
 
       waitForAgent(room);
     } catch (startError) {
@@ -549,19 +618,38 @@ export function VoiceCallButton({
       clearAudioElements();
 
       const message =
-        startError instanceof Error
-          ? startError.message
-          : "Unable to start voice conversation.";
+        startError instanceof DOMException &&
+        (startError.name === "NotAllowedError" ||
+         startError.name === "PermissionDeniedError")
+          ? "Microphone access was denied. Allow the microphone in Safari or browser settings and retry."
+          : startError instanceof Error
+            ? startError.message
+            : "Unable to start voice conversation.";
 
       setError(message);
       setAgentState("error");
       setStarting(false);
       setActive(false);
+      setNeedsAudioUnlock(false);
 
       onError?.(message);
     }
   }
 
+
+  async function enableAudio() {
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      // Must run directly from the user's click on iOS Safari.
+      await room.startAudio();
+      setNeedsAudioUnlock(!room.canPlaybackAudio);
+      setError("");
+    } catch {
+      setNeedsAudioUnlock(true);
+      setError("Tap Enable sound again or allow audio playback in your browser.");
+    }
+  }
 
   async function toggleMute() {
     const room =
@@ -615,7 +703,7 @@ export function VoiceCallButton({
           type="button"
           disabled={disabled}
           aria-label="Start voice conversation"
-          title="Start voice conversation"
+          title={availability?.available === false ? "Voice service unavailable" : "Start voice conversation"}
           onClick={() => {
             void startCall();
           }}
@@ -629,10 +717,22 @@ export function VoiceCallButton({
           />
         </button>
 
-        <div
-          ref={audioContainerRef}
-          className="hidden"
-        />
+        {error && (
+          <div
+            role="alert"
+            className="absolute bottom-[calc(100%+8px)] right-0 z-40 w-[min(300px,calc(100vw-24px))] rounded-xl border border-red-500/30 bg-[var(--aq-panel)] p-3 text-xs leading-5 text-[var(--aq-text)] shadow-xl"
+          >
+            {error}
+            <button
+              type="button"
+              onClick={() => setError("")}
+              className="ml-2 font-semibold text-[var(--aq-cyan)] underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        <div ref={audioContainerRef} className="hidden" />
       </>
     );
   }
@@ -640,7 +740,7 @@ export function VoiceCallButton({
 
   return (
     <>
-      <div className="absolute bottom-[72px] right-4 z-40 w-[280px] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
+      <div className="absolute bottom-[72px] right-2 z-40 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col items-center">
           <VoiceOrb
             state={
@@ -720,10 +820,20 @@ export function VoiceCallButton({
           </div>
 
           {error ? (
-            <div className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
+            <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
               {error}
             </div>
           ) : null}
+
+          {needsAudioUnlock && (
+            <button
+              type="button"
+              onClick={() => { void enableAudio(); }}
+              className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
+            >
+              Enable sound
+            </button>
+          )
 
           <div className="mt-4 flex items-center justify-center gap-3">
             <button
