@@ -262,7 +262,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-2"
 
-    # Document uploads
+    # Production local writes are unsafe on ephemeral cloud disks. Enable only\n    # after independently verifying a durable mounted upload volume and restore.\n    # Remote cloud uploads/artifacts have their own explicit opt-in gates.\n    LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED: bool = False\n\n    # Document uploads
     UPLOAD_DIR: Path = Path(
         "uploads"
     )
