@@ -608,6 +608,7 @@ def generate_web_chat_reply(
         max_sources=5,
         mode=research_mode,
         provider=provider,
+        iterative=(research_mode == "deep"),
     )
     return ChatExecutionResult(
         content=cited_web_answer(research.answer, research.sources),
