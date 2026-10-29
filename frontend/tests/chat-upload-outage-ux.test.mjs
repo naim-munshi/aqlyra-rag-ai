@@ -14,8 +14,8 @@ test("ephemeral upload outage has a safe actionable UX message", () => {
 });
 
 test("chat composer removes stale errors after typing and permits dismissal", () => {
-  assert.match(workspace, /if \(attachmentError\) setAttachmentError\(" "\.trim\(\)\)/);
+  assert.match(workspace, /if \(attachmentError\) setAttachmentError\(""\)/);
   assert.match(workspace, /aria-label="Dismiss attachment error"/);
   assert.match(workspace, /role="alert"/);
-  assert.match(workspace, /onClick=\{\(\) => setAttachmentError\(" "\.trim\(\)\)\}/);
+  assert.match(workspace, /onClick=\{\(\) => setAttachmentError\(""\)\}/);
 });
