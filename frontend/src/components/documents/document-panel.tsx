@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  Download,
   LoaderCircle,
   RefreshCw,
   Eye,
@@ -540,6 +541,18 @@ export function DocumentPanel() {
                           document.error_message
                         }
                       </p>
+                    )}
+
+                    {["uploaded", "ready", "failed"].includes(document.status) && (
+                      <a
+                        href={`/api/documents/${encodeURIComponent(document.id)}/content`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-[10px] font-semibold hover:border-[var(--aq-blue)]"
+                      >
+                        <Download size={13} aria-hidden="true" />
+                        Download original
+                      </a>
                     )}
 
                     {document.status === "ready" &&
