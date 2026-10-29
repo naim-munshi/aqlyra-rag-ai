@@ -69,3 +69,7 @@ class PasswordResetConfirmRequest(BaseModel):
 
 class PasswordResetMessage(BaseModel):
     message: str
+
+
+class PasswordResetAuthenticatedResponse(TokenResponse):
+    message: str
