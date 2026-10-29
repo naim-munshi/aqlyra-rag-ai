@@ -17,9 +17,11 @@ Normal authenticated chat has four user-selectable modes:
 - **Web: On**: forces live source-backed public web research; when unconfigured,
   returns a transparent error rather than an ungrounded LLM answer.
 - **Deep web**: user-triggered two bounded Tavily Search calls (the original
-  query and a primary-source evidence variant) with advanced extraction,
-  cross-host diversification, and at most five source citations. This is a
-  two-query research workflow, **not** an unbounded autonomous agent.
+  query and a model-planned, subject-anchored primary/contrary evidence query).
+  Malformed, off-topic, unsafe or failed planning falls back to a bounded
+  deterministic query. Uses advanced extraction, cross-host diversification,
+  at most five verified source citations, and a bounded freshness filter.
+  This is a two-query research workflow, **not** an unbounded autonomous agent.
 - **Web: Off**: never searches public web.
 
 The mode travels from the chat composer through the existing authenticated
@@ -37,7 +39,8 @@ SSE `start/delta/complete/error` and conversation persistence are reused.
   filtering, bounded extraction, source citation verification, prompt
   injection isolation, existing account auth and rate limiting.
 - The response includes clickable, sanitized source links in conversation
-  Markdown and can be restored from history. Web [W#] source references
+  Markdown and can be restored from history. Unknown model-generated links
+  and URLs with control characters are rejected before response persistence. Web [W#] source references
   are never misrepresented as private Knowledge [S#] citations.
 - Never silently fall back from failed web research to a guessed general
   model answer. Real Tavily, embeddings, LLM and costs remain dependent on
@@ -56,7 +59,8 @@ SSE `start/delta/complete/error` and conversation persistence are reused.
    Tavily egress, On mandatory citations, Deep two bounded search passes,
    citations still available after a browser refresh, and mobile selector.
 4. Simulate Tavily timeout/429, malicious HTML/link/source title, invalid
-   provider [W99], misconfigured model, secret-looking prompts, unsupported
+   provider [W99], query-planner drift/failure, oversize questions,
+   misconfigured model, secret-looking prompts, unsupported
    document attachments and account isolation. Errors must be transparent
    and no failed answer should be committed to history.
 5. Validate provider cost/rate limits, monitoring and abuse resistance before
