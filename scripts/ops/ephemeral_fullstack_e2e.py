@@ -154,14 +154,40 @@ def run(client: Client) -> None:
     ), 401, "anonymous RAG")
     expect(client.request(
         "GET", "/api/v1/study-abroad/workflows",
-    ), 404, "deferred Study Abroad route")
-    print("PASS security baseline and deferred Study Abroad")
+    ), 200, "Study Abroad workflow metadata")
+    expect(client.request(
+        "GET", "/api/v1/study-abroad/cases",
+    ), 401, "anonymous private Study Abroad cases")
+    print("PASS security baseline and Study Abroad availability")
 
     token_a, id_a = create_account(client, "a")
     token_b, id_b = create_account(client, "b")
     if id_a == id_b:
         raise SmokeFailure("Synthetic identities are not distinct")
     print("PASS two-user registration, login and verified identities")
+
+    study = expect(client.request(
+        "POST", "/api/v1/study-abroad/cases", token=token_a,
+        data={
+            "workflow": "student",
+            "nationality": "Bangladesh",
+            "residence_country": "Japan",
+            "destination_country": "Germany",
+            "degree_level": "Bachelor's",
+            "study_field": "Computer Science",
+            "intake": "2027",
+        },
+    ), 201, "first user private study journey")
+    study_id = study.get("id")
+    if not isinstance(study_id, str):
+        raise SmokeFailure("Study case is missing id")
+    expect(client.request(
+        "GET", "/api/v1/study-abroad/cases/" + study_id, token=token_b,
+    ), 404, "cross-user Study Abroad isolation")
+    expect(client.request(
+        "GET", "/api/v1/study-abroad/cases/" + study_id, token=token_a,
+    ), 200, "study journey owner access")
+    print("PASS private Study Abroad workflow and two-user isolation")
 
     conv = expect(client.request(
         "POST", "/api/v1/conversations", token=token_a,
