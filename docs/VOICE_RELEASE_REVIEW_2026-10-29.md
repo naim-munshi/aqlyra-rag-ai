@@ -30,3 +30,26 @@ Render's authenticated `POST /voice/session` returned HTTP 503 in production. Th
 - Validate provider quotas, concurrent calls, token TTL, usage alerts, production backup/restore and private file durability before public availability.
 
 **Last verified state:** frontend/backend changes are source/CI work; no LiveKit Cloud deployment or real voice round-trip proof. Keep voice disabled and communicate why; do not label it working until acceptance passes.
+
+
+## Additional security and multilingual findings (2026-10-29)
+- **Revocation boundary:** Source-level gap fixed on the proposed feature branch:
+  a previously issued short-lived LiveKit job could outlive account deletion,
+  email verification revocation, conversation removal or document removal.
+  A centralized database-backed validator now checks all three scopes before
+  provider setup, before private RAG generation, and again before transcript
+  persistence. This is a code/test fix, not a claim that a production worker
+  has been deployed.
+- **Transport:** a configured LiveKit URI that is plaintext or points to a
+  private/loopback host must never receive production room JWTs. The backend
+  now restricts production transport to a safe public `wss://` endpoint;
+  local `ws://` remains available for development only.
+- **Bangla voice:** The default `cartesia/sonic-3.5` was an incompatible
+  choice for the requested Bengali/Bangla (`bn`) voice path. LiveKit's
+  current [Cartesia TTS model list](https://docs.livekit.io/agents/models/tts/cartesia/)
+  lists `bn` for `cartesia/sonic-3` but not Sonic 3.5. The default has
+  been changed to `cartesia/sonic-3`; EN/JA/BN audio is still **unverified**.
+  Operators overriding `VOICE_TTS_MODEL` must check model-language coverage.
+- **CI:** Run backend PostgreSQL 16/18 regression, frontend voice checks,
+  security scanning and container acceptance before promoting these changes.
+  A voice integration **cannot** PASS solely because static checks PASS.
