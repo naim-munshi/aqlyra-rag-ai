@@ -88,6 +88,20 @@ def _require_voice_configuration() -> None:
             "VOICE_AGENT_NAME is not configured"
         )
 
+    if not settings.VOICE_AGENT_READY:
+        raise VoiceConfigurationError(
+            "Voice service is not configured or enabled"
+        )
+
+
+def voice_is_ready() -> bool:
+    """Server-side readiness contract; never expose LiveKit credentials."""
+    try:
+        _require_voice_configuration()
+    except VoiceConfigurationError:
+        return False
+    return True
+
 
 def _resolve_conversation(
     *,
