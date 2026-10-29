@@ -3,6 +3,8 @@
 import {
   AlertCircle,
   Copy,
+  Download,
+  FilePlus2,
   LoaderCircle,
   PanelLeft,
   Send,
@@ -19,6 +21,7 @@ import {
 
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
 import { ChatToolsMenu } from "@/components/chat/chat-tools-menu";
+import { detectChatArtifactIntent, wantsChatArtifactList } from "@/lib/chat-artifact-intent";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
@@ -62,7 +65,14 @@ type UploadState =
 type ChatMode =
   ConversationMode;
 
+type ChatArtifact = {
+  id: string;
+  filename: string;
+  format: string;
+};
+
 type ChatTurn = {
+  artifacts?: ChatArtifact[];
   id: string;
   mode: ChatMode;
   question: string;
@@ -1384,6 +1394,91 @@ export function RAGWorkspace({
       controller;
 
     try {
+      // Explicit file requests are executed through the existing authenticated
+      // artifact API. Document evidence requires affirmative user consent;
+      // ordinary questions continue through RAG/conversation unchanged.
+      const fileIntent = detectChatArtifactIntent(effectiveQuestion);
+      if (fileIntent) {
+        const documentIds = attachedDocument ? [attachedDocument.id] : [];
+        const allowSources = documentIds.length === 0 ||
+          window.confirm(
+            "Share excerpts from the selected private document with the configured AI provider to create the requested file?",
+          );
+        if (!allowSources) {
+          setTurns(current => current.filter(turn => turn.id !== turnId));
+          setQuestion(effectiveQuestion);
+          setAttachedDocument(attachedDocument);
+          setAttachmentPreviewUrl(attachmentPreviewUrl);
+          return;
+        }
+        const generated: ChatArtifact[] = [];
+        try {
+          for (const format of fileIntent.formats) {
+            const response = await fetch("/api/artifacts/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: fileIntent.title,
+                prompt: fileIntent.prompt,
+                format,
+                document_ids: documentIds,
+                confirm_share_documents: documentIds.length > 0 && allowSources,
+              }),
+              signal: controller.signal,
+            });
+            const data = await response.json() as {
+              id?: string; filename?: string; format?: string; detail?: string;
+            };
+            if (!response.ok || typeof data.id !== "string" ||
+                typeof data.filename !== "string") {
+              throw new Error(
+                typeof data.detail === "string" ? data.detail : "Unable to generate the requested file.",
+              );
+            }
+            generated.push({ id: data.id, filename: data.filename, format });
+          }
+          setTurns(current => current.map(turn => turn.id === turnId
+            ? {
+                ...turn, loading: false, artifacts: generated,
+                streamedAnswer: generated.length === 1
+                  ? "File created. Download it below."
+                  : "Files created. Download them below.",
+              }
+            : turn));
+        } catch (fileError) {
+          setTurns(current => current.map(turn => turn.id === turnId
+            ? {
+                ...turn, loading: false, artifacts: generated,
+                error: fileError instanceof Error ? fileError.message : "File generation failed.",
+                streamedAnswer: generated.length > 0
+                  ? "These files were created before an error occurred:"
+                  : "",
+              }
+            : turn));
+        }
+        return;
+      }
+      if (wantsChatArtifactList(effectiveQuestion)) {
+        const response = await fetch("/api/artifacts", {
+          cache: "no-store", signal: controller.signal,
+        });
+        const data = await response.json() as {
+          items?: ChatArtifact[]; detail?: string;
+        };
+        if (!response.ok) throw new Error(
+          typeof data.detail === "string" ? data.detail : "Cannot load files.",
+        );
+        const artifacts = Array.isArray(data.items) ? data.items : [];
+        setTurns(current => current.map(turn => turn.id === turnId
+          ? {
+              ...turn, loading: false, artifacts,
+              streamedAnswer: artifacts.length
+                ? "Your generated files (private to your account):"
+                : "You have no generated files yet. Ask me to create a Word, PDF, Excel, PowerPoint or Markdown file.",
+            }
+          : turn));
+        return;
+      }
       if (chatMode === "normal") {
         const response =
           await fetch(
@@ -2326,12 +2421,33 @@ export function RAGWorkspace({
                         )}
 
                         {turn.streamedAnswer &&
-                          !turn.result && (
+                          !turn.result && !turn.artifacts?.length && (
                           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
                             <MarkdownMessage
                               content={turn.streamedAnswer}
-                              isStreaming
+                              isStreaming={turn.loading}
                             />
+                          </div>
+                        )}
+
+                        {turn.artifacts && turn.artifacts.length > 0 && (
+                          <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
+                            <p className="mb-3 text-sm font-semibold">
+                              {turn.streamedAnswer || "Files ready"}
+                            </p>
+                            <div className="space-y-2">
+                              {turn.artifacts.map(file => (
+                                <a
+                                  key={file.id}
+                                  href={"/api/artifacts/" + encodeURIComponent(file.id) + "/download"}
+                                  className="flex items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3 text-xs hover:border-[var(--aq-blue)]"
+                                >
+                                  <FilePlus2 size={18} className="shrink-0 text-[var(--aq-blue)]" />
+                                  <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+                                  <Download size={17} className="shrink-0" />
+                                </a>
+                              ))}
+                            </div>
                           </div>
                         )}
 
