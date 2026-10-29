@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.auth.security import InvalidTokenError, decode_access_token_with_version
+from app.config.settings import settings
 from app.database.connection import get_db
 from app.models.user import User
 from app.services.user_service import get_user_by_id
@@ -49,6 +50,14 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
+        )
+
+    # Pending signup rows must not grant API access, even with a forged
+    # or stale access token.
+    if settings.EMAIL_VERIFICATION_REQUIRED and user.email_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required",
         )
 
     return user
