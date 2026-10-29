@@ -13,6 +13,8 @@ from app.services import chat_service
     [
         ("What are the latest AI research developments this month?", "search"),
         ("I want the latest verified AI news", "search"),
+        ("I need the current AI market reports", "search"),
+        ("I want a story about today", None),
         ("Compare the latest GPU inference prices", "compare"),
         ("Fact-check whether today's headline is correct", "fact_check"),
         ("Do a deep research on current AI agents", "deep"),
