@@ -119,6 +119,9 @@ export function DocumentPanel() {
   const [uploading, setUploading] =
     useState(false);
 
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+
   const [processingId, setProcessingId] =
     useState<string | null>(null);
 
@@ -279,6 +282,43 @@ export function DocumentPanel() {
     }
   }
 
+  async function recoverPendingUploads() {
+    if (recovering) return;
+    setRecovering(true);
+    setError("");
+    setRecoveryNotice("");
+    try {
+      const response = await fetch("/api/documents/cloud/recover", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+      });
+      if (!response.ok) {
+        setError("Unable to recover pending uploads. Please retry later.");
+        return;
+      }
+      const result = (await response.json()) as {
+        recovered?: DocumentResponse[];
+        attempted?: number;
+        failed?: number;
+      };
+      const recoveredCount = result.recovered?.length ?? 0;
+      setRecoveryNotice(
+        recoveredCount > 0
+          ? `Recovered ${recoveredCount} private file(s). They are ready to download.`
+          : (result.failed ?? 0) > 0
+            ? "Some pending files could not be verified. They were preserved for another retry."
+            : "No recoverable uploads found."
+      );
+      await refreshDocuments();
+      if ((result.failed ?? 0) > 0) {
+        setError("Some files still need recovery. Existing cloud objects were preserved.");
+      }
+    } catch {
+      setError("Upload recovery temporarily unavailable.");
+    } finally {
+      setRecovering(false);
+    }
+  }
+
   async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>,
   ) {
@@ -372,6 +412,19 @@ export function DocumentPanel() {
         </div>
 
         <div className="flex items-center gap-2">
+          {process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" && (
+            <button
+              type="button"
+              disabled={recovering || uploading}
+              onClick={() => void recoverPendingUploads()}
+              aria-label="Recover unfinished private file uploads"
+              className="flex h-8 items-center gap-1 rounded-lg border border-[var(--aq-border)] px-2 text-[10px] font-semibold text-[var(--aq-muted)] hover:text-[var(--aq-text)] disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={recovering ? "animate-spin" : ""} />
+              {recovering ? "Recovering..." : "Recover uploads"}
+            </button>
+          )}
+
           <button
             type="button"
             aria-label="Refresh documents"
@@ -414,6 +467,12 @@ export function DocumentPanel() {
           </button>
         </div>
       </div>
+
+      {recoveryNotice && (
+        <p role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
+          {recoveryNotice}
+        </p>
+      )}
 
       {error && (
         <div className="mt-4 flex gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs leading-5 text-red-400">
