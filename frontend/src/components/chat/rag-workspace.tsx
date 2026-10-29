@@ -3,9 +3,10 @@
 import {
   AlertCircle,
   Copy,
+  Download,
+  FilePlus2,
   LoaderCircle,
   PanelLeft,
-  Paperclip,
   Send,
   Sparkles,
   X,
@@ -19,6 +20,8 @@ import {
 } from "react";
 
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
+import { ChatToolsMenu } from "@/components/chat/chat-tools-menu";
+import { detectChatArtifactIntent, wantsChatArtifactList } from "@/lib/chat-artifact-intent";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
@@ -62,7 +65,14 @@ type UploadState =
 type ChatMode =
   ConversationMode;
 
+type ChatArtifact = {
+  id: string;
+  filename: string;
+  format: string;
+};
+
 type ChatTurn = {
+  artifacts?: ChatArtifact[];
   id: string;
   mode: ChatMode;
   question: string;
@@ -655,6 +665,25 @@ export function RAGWorkspace({
       focusChat,
     );
 
+    // Sidebar controls on AI Files/other pages navigate here with an
+    // explicit intent; the destination must process it after mounting.
+    const pageUrl = new URL(window.location.href);
+    const intent = pageUrl.searchParams.get("aqlyraIntent");
+    if (intent === "documents") {
+      openDocuments();
+    } else if (intent === "new-chat") {
+      resetChat();
+    } else if (intent === "focus") {
+      focusChat();
+    }
+    if (["documents", "new-chat", "focus"].includes(intent ?? "")) {
+      pageUrl.searchParams.delete("aqlyraIntent");
+      window.history.replaceState(
+        window.history.state, "",
+        pageUrl.pathname + pageUrl.search + pageUrl.hash,
+      );
+    }
+
     return () => {
       window.removeEventListener(
         "aqlyra:new-chat",
@@ -901,6 +930,31 @@ export function RAGWorkspace({
     } catch {
       window.localStorage.removeItem(
         storageKey,
+      );
+    }
+
+    // A project created on a different page passes its new conversation
+    // through a short-lived navigation intent. The message endpoint remains
+    // owner-checked and is responsible for authorizing the requested ID.
+    const navigationUrl = new URL(window.location.href);
+    const requestedId = navigationUrl.searchParams.get("aqlyraConversationId");
+    const requestedMode = navigationUrl.searchParams.get("aqlyraConversationMode");
+    if (
+      requestedId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedId) &&
+      (requestedMode === "normal" || requestedMode === "knowledge")
+    ) {
+      restoredMode = requestedMode;
+      restoredConversationId = requestedId;
+      restoredDraft = "";
+    }
+    if (requestedId !== null || requestedMode !== null) {
+      navigationUrl.searchParams.delete("aqlyraConversationId");
+      navigationUrl.searchParams.delete("aqlyraConversationMode");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        navigationUrl.pathname + navigationUrl.search + navigationUrl.hash,
       );
     }
 
@@ -1154,10 +1208,12 @@ export function RAGWorkspace({
 
         if (!duplicateId) {
           throw new Error(
-            getDocumentErrorMessage(
-              uploadData as DocumentApiError,
-              "Document upload failed.",
-            ),
+            uploadResponse.status === 503
+              ? "Secure file uploads are temporarily unavailable. You can still chat without a file."
+              : getDocumentErrorMessage(
+                  uploadData as DocumentApiError,
+                  "Document upload failed.",
+                ),
           );
         }
 
@@ -1177,6 +1233,21 @@ export function RAGWorkspace({
       } else {
         document =
           uploadData as DocumentResponse;
+      }
+
+      // Private upload is durable, but RAG indexing is independently
+      // gated by the embedding provider. Never claim an uploaded file
+      // is already AI-ready when cloud beta is active.
+      if (
+        process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+        document.status === "uploaded"
+      ) {
+        setAttachedDocument(null);
+        setDocumentsVersion((current) => current + 1);
+        setAttachmentError(
+          "File saved in private storage. Open Documents to review it; AI indexing is not yet available."
+        );
+        return;
       }
 
       const readyDocument =
@@ -1340,6 +1411,91 @@ export function RAGWorkspace({
       controller;
 
     try {
+      // Explicit file requests are executed through the existing authenticated
+      // artifact API. Document evidence requires affirmative user consent;
+      // ordinary questions continue through RAG/conversation unchanged.
+      const fileIntent = detectChatArtifactIntent(effectiveQuestion);
+      if (fileIntent) {
+        const documentIds = attachedDocument ? [attachedDocument.id] : [];
+        const allowSources = documentIds.length === 0 ||
+          window.confirm(
+            "Share excerpts from the selected private document with the configured AI provider to create the requested file?",
+          );
+        if (!allowSources) {
+          setTurns(current => current.filter(turn => turn.id !== turnId));
+          setQuestion(effectiveQuestion);
+          setAttachedDocument(attachedDocument);
+          setAttachmentPreviewUrl(attachmentPreviewUrl);
+          return;
+        }
+        const generated: ChatArtifact[] = [];
+        try {
+          for (const format of fileIntent.formats) {
+            const response = await fetch("/api/artifacts/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: fileIntent.title,
+                prompt: fileIntent.prompt,
+                format,
+                document_ids: documentIds,
+                confirm_share_documents: documentIds.length > 0 && allowSources,
+              }),
+              signal: controller.signal,
+            });
+            const data = await response.json() as {
+              id?: string; filename?: string; format?: string; detail?: string;
+            };
+            if (!response.ok || typeof data.id !== "string" ||
+                typeof data.filename !== "string") {
+              throw new Error(
+                typeof data.detail === "string" ? data.detail : "Unable to generate the requested file.",
+              );
+            }
+            generated.push({ id: data.id, filename: data.filename, format });
+          }
+          setTurns(current => current.map(turn => turn.id === turnId
+            ? {
+                ...turn, loading: false, artifacts: generated,
+                streamedAnswer: generated.length === 1
+                  ? "File created. Download it below."
+                  : "Files created. Download them below.",
+              }
+            : turn));
+        } catch (fileError) {
+          setTurns(current => current.map(turn => turn.id === turnId
+            ? {
+                ...turn, loading: false, artifacts: generated,
+                error: fileError instanceof Error ? fileError.message : "File generation failed.",
+                streamedAnswer: generated.length > 0
+                  ? "These files were created before an error occurred:"
+                  : "",
+              }
+            : turn));
+        }
+        return;
+      }
+      if (wantsChatArtifactList(effectiveQuestion)) {
+        const response = await fetch("/api/artifacts", {
+          cache: "no-store", signal: controller.signal,
+        });
+        const data = await response.json() as {
+          items?: ChatArtifact[]; detail?: string;
+        };
+        if (!response.ok) throw new Error(
+          typeof data.detail === "string" ? data.detail : "Cannot load files.",
+        );
+        const artifacts = Array.isArray(data.items) ? data.items : [];
+        setTurns(current => current.map(turn => turn.id === turnId
+          ? {
+              ...turn, loading: false, artifacts,
+              streamedAnswer: artifacts.length
+                ? "Your generated files (private to your account):"
+                : "You have no generated files yet. Ask me to create a Word, PDF, Excel, PowerPoint or Markdown file.",
+            }
+          : turn));
+        return;
+      }
       if (chatMode === "normal") {
         const response =
           await fetch(
@@ -1907,7 +2063,7 @@ export function RAGWorkspace({
       <form
         onSubmit={handleSubmit}
         className={[
-          "w-full rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-4 shadow-xl",
+          "min-w-0 w-full rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-3 shadow-xl sm:p-4",
           centered
             ? "max-w-[760px]"
             : "max-w-[900px]",
@@ -1937,12 +2093,17 @@ export function RAGWorkspace({
         )}
 
         {attachmentError && (
-          <div className="mb-3 flex items-center gap-2 text-[10px] text-red-400">
-            <AlertCircle
-              size={13}
-            />
-
-            {attachmentError}
+          <div role="alert" className="mb-3 flex min-w-0 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs text-[var(--aq-muted)]">
+            <AlertCircle size={15} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">{attachmentError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss attachment error"
+              className="shrink-0 rounded-md p-1 hover:text-[var(--aq-text)]"
+              onClick={() => setAttachmentError("")}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
           </div>
         )}
 
@@ -1950,11 +2111,10 @@ export function RAGWorkspace({
           rows={2}
           value={question}
           disabled={ragLoading}
-          onChange={(event) =>
-            setQuestion(
-              event.target.value,
-            )
-          }
+          onChange={(event) => {
+            setQuestion(event.target.value);
+            if (attachmentError) setAttachmentError("");
+          }}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -1975,30 +2135,19 @@ export function RAGWorkspace({
           className="w-full resize-none bg-transparent text-sm leading-6 text-[var(--aq-text)] outline-none placeholder:text-[var(--aq-muted)]"
         />
 
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            aria-label="Attach document"
-            disabled={
-              uploadState !== "idle"
-            }
-            title="Attach document"
-            onClick={() =>
-              fileInputRef.current?.click()
-            }
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-muted)] transition hover:text-[var(--aq-blue)] disabled:opacity-50"
-          >
-            {uploadState === "idle" ? (
-              <Paperclip
-                size={16}
-              />
-            ) : (
-              <LoaderCircle
-                size={16}
-                className="animate-spin"
-              />
+        <div className="mt-3 flex min-w-0 items-center gap-2 sm:gap-3">
+          <ChatToolsMenu
+            mode={chatMode}
+            disabled={ragLoading || uploadState !== "idle"}
+            onUpload={() => fileInputRef.current?.click()}
+            onOpenDocuments={() => {
+              setEvidenceDrawerOpen(false);
+              setDocumentDrawerOpen(true);
+            }}
+            onSwitchMode={() => switchChatMode(
+              chatMode === "knowledge" ? "normal" : "knowledge",
             )}
-          </button>
+          />
 
           {uploadState !==
             "idle" && (
@@ -2010,19 +2159,7 @@ export function RAGWorkspace({
             </span>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              className="flex h-10 items-center gap-2 rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-xs font-semibold text-[var(--aq-text)] transition hover:bg-[var(--aq-control)]"
-            >
-              <Sparkles
-                size={14}
-                className="text-[var(--aq-cyan)]"
-              />
-
-              Upgrade
-            </button>
-
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <VoiceCallButton
               mode={chatMode}
               conversationId={
@@ -2104,7 +2241,7 @@ export function RAGWorkspace({
                 !question.trim() &&
                 !attachedDocument
               }
-              className="flex h-10 items-center gap-2 rounded-xl bg-[var(--aq-blue)] px-5 text-xs font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 items-center gap-2 rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
             >
               {ragLoading ? (
                 <LoaderCircle
@@ -2124,7 +2261,7 @@ export function RAGWorkspace({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden">
+    <div className="relative flex h-full min-h-0 min-w-0 w-full overflow-hidden">
       <input
         ref={fileInputRef}
         type="file"
@@ -2137,13 +2274,13 @@ export function RAGWorkspace({
 
       <section
         className={[
-          "aq-panel flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding] duration-200",
+          "aq-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-[padding] duration-200",
           evidenceDrawerOpen
             ? "lg:pr-[400px]"
             : "",
         ].join(" ")}
       >
-        <div className="flex h-14 shrink-0 items-center border-b border-[var(--aq-border)] px-4">
+        <div className="flex h-14 min-w-0 shrink-0 items-center border-b border-[var(--aq-border)] px-2 sm:px-4">
           <button
             type="button"
             onClick={() => {
@@ -2155,7 +2292,7 @@ export function RAGWorkspace({
                 true,
               );
             }}
-            className="flex h-9 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-3 text-xs font-semibold"
+            className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] px-2 text-xs font-semibold sm:px-3"
           >
             <PanelLeft
               size={15}
@@ -2164,7 +2301,7 @@ export function RAGWorkspace({
             Documents
           </button>
 
-          <div className="ml-4 flex items-center gap-2">
+          <div className="ml-2 hidden items-center gap-2 sm:flex">
             <Sparkles
               size={16}
               className="text-[var(--aq-cyan)]"
@@ -2175,7 +2312,7 @@ export function RAGWorkspace({
             </span>
           </div>
 
-          <div className="ml-auto flex items-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] p-1">
+          <div className="ml-auto flex shrink-0 items-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] p-0.5 sm:p-1">
             <button
               type="button"
               disabled={ragLoading}
@@ -2185,7 +2322,7 @@ export function RAGWorkspace({
                 )
               }
               className={[
-                "rounded-full px-3 py-1 text-[10px] font-semibold transition",
+                "rounded-full px-2 py-1 text-[10px] font-semibold transition sm:px-3",
                 chatMode === "normal"
                   ? "bg-[var(--aq-blue)] text-white"
                   : "text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
@@ -2203,7 +2340,7 @@ export function RAGWorkspace({
                 )
               }
               className={[
-                "rounded-full px-3 py-1 text-[10px] font-semibold transition",
+                "rounded-full px-2 py-1 text-[10px] font-semibold transition sm:px-3",
                 chatMode === "knowledge"
                   ? "bg-[var(--aq-blue)] text-white"
                   : "text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
@@ -2215,7 +2352,7 @@ export function RAGWorkspace({
         </div>
 
         {!hasConversation ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-12">
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-3 pb-4 sm:px-6 sm:pb-12">
             <div className="flex w-full max-w-[760px] flex-col items-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-blue)]">
                 <Sparkles
@@ -2244,7 +2381,7 @@ export function RAGWorkspace({
           </div>
         ) : (
           <>
-            <div className="aq-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-8">
+            <div className="aq-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-8">
               <div className="mx-auto w-full max-w-[820px] space-y-10">
                 {turns.map(
                   (turn) => (
@@ -2305,12 +2442,33 @@ export function RAGWorkspace({
                         )}
 
                         {turn.streamedAnswer &&
-                          !turn.result && (
+                          !turn.result && !turn.artifacts?.length && (
                           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
                             <MarkdownMessage
                               content={turn.streamedAnswer}
-                              isStreaming
+                              isStreaming={turn.loading}
                             />
+                          </div>
+                        )}
+
+                        {turn.artifacts && turn.artifacts.length > 0 && (
+                          <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
+                            <p className="mb-3 text-sm font-semibold">
+                              {turn.streamedAnswer || "Files ready"}
+                            </p>
+                            <div className="space-y-2">
+                              {turn.artifacts.map(file => (
+                                <a
+                                  key={file.id}
+                                  href={"/api/artifacts/" + encodeURIComponent(file.id) + "/download"}
+                                  className="flex items-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3 text-xs hover:border-[var(--aq-blue)]"
+                                >
+                                  <FilePlus2 size={18} className="shrink-0 text-[var(--aq-blue)]" />
+                                  <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+                                  <Download size={17} className="shrink-0" />
+                                </a>
+                              ))}
+                            </div>
                           </div>
                         )}
 
@@ -2321,11 +2479,24 @@ export function RAGWorkspace({
                               className="text-red-400"
                             />
 
-                            <p className="text-xs text-red-300">
-                              {
-                                turn.error
-                              }
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-red-300">
+                                {turn.error}
+                              </p>
+                              {turn.mode === "knowledge" &&
+                                turn.error.toLowerCase().includes("embedding service quota") && (
+                                <button
+                                  type="button"
+                                  className="mt-3 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs font-semibold text-[var(--aq-text)]"
+                                  onClick={() => {
+                                    switchChatMode("normal");
+                                    setQuestion(turn.question);
+                                  }}
+                                >
+                                  Switch to Normal chat (without document search)
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -2410,7 +2581,7 @@ export function RAGWorkspace({
               </div>
             </div>
 
-            <div className="shrink-0 px-5 pb-5 pt-2">
+            <div className="min-w-0 shrink-0 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5">
               <div className="mx-auto max-w-[900px]">
                 {renderComposer(
                   false,
@@ -2434,7 +2605,7 @@ export function RAGWorkspace({
             className="absolute inset-0 z-20 bg-black/50"
           />
 
-          <aside className="absolute inset-y-0 left-0 z-30 flex w-[360px] flex-col border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(100%,360px)] max-w-full flex-col border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] shadow-2xl">
             <div className="flex h-14 items-center justify-between border-b border-[var(--aq-border)] px-4">
               <div>
                 <p className="text-sm font-semibold">
@@ -2473,7 +2644,7 @@ export function RAGWorkspace({
       {evidenceDrawerOpen &&
         selectedCitation &&
         selectedTurn?.result && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[400px] flex-col border-l border-[var(--aq-border)] bg-[var(--aq-bg-deep)] shadow-2xl">
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(100%,400px)] max-w-full flex-col border-l border-[var(--aq-border)] bg-[var(--aq-bg-deep)] shadow-2xl">
             <div className="flex h-14 items-center justify-between border-b border-[var(--aq-border)] px-4">
               <div>
                 <p className="text-sm font-semibold">

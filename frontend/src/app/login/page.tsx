@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  ArrowUpRight,
   FileSearch,
   ShieldCheck,
   type LucideIcon,
@@ -45,13 +44,6 @@ export default function LoginPage() {
                 title="Grounded citations"
               />
             </div>
-
-            <Link
-              href="/demo"
-              className="mt-8 inline-flex items-center gap-2 rounded-xl border border-violet-400/25 bg-violet-400/10 px-4 py-3 text-xs font-semibold text-violet-200 transition hover:border-violet-300/45 hover:bg-violet-400/15"
-            >
-              Explore interactive demo <ArrowUpRight size={15} />
-            </Link>
           </div>
 
           <p className="text-[10px] text-[var(--aq-muted)]">
@@ -81,12 +73,19 @@ export default function LoginPage() {
 
               <LoginForm />
 
-              <Link
-                href="/demo"
-                className="mt-6 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-400/25 bg-violet-400/10 px-4 text-xs font-semibold text-violet-200 transition hover:border-violet-300/50 hover:bg-violet-400/15"
-              >
-                Explore demo without an account <ArrowUpRight size={15} />
-              </Link>
+              {process.env.NEXT_PUBLIC_AQLYRA_GUEST_ENABLED === "true" && (
+                <>
+                  <Link
+                    href="/guest"
+                    className="mt-5 flex w-full items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20"
+                  >
+                    Continue without login · Limited AI chat
+                  </Link>
+                  <p className="mt-2 text-center text-[11px] text-[var(--aq-muted)]">
+                    Guest messages are not saved. File uploads require sign-up.
+                  </p>
+                </>
+              )}
 
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 New to Aqlyra?{" "}

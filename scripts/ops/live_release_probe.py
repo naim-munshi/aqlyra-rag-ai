@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Read-only production readiness diagnostic for the exact Aqlyra Render origin.
+
+Makes no writes, requests no credentials, follows no redirects, does not
+create test users, and never outputs response body. Does not replace real
+authenticated provider E2E, backup/restore, or an agent audio round trip.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+from time import sleep
+
+ORIGIN = "https://aqlyra-api-free-launch.onrender.com"
+MAX_BODY = 32768
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, url):
+        return None
+
+
+def probe(path: str) -> tuple[int, object | None]:
+    request = Request(
+        ORIGIN + path,
+        headers={
+            "User-Agent": "Aqlyra-ReadOnly-CIGate/1.0",
+            "Cache-Control": "no-store",
+        },
+        method="GET",
+    )
+    opener = build_opener(NoRedirect())
+    try:
+        response = opener.open(request, timeout=35)
+    except HTTPError as exc:
+        response = exc
+    with response:
+        status = response.status
+        data = response.read(MAX_BODY + 1)
+        if len(data) > MAX_BODY:
+            raise ValueError("Oversized response")
+        if not data:
+            return status, None
+        try:
+            return status, json.loads(data)
+        except (UnicodeError, ValueError):
+            return status, None
+
+
+
+def probe_health_with_free_tier_cold_start() -> tuple[int, object | None]:
+    """Retry only harmless GET health while Render Free wakes from sleep.
+
+    Other dependency/authorization checks are never retried or weakened;
+    both transport errors and gateway 502/503/504 can occur during a
+    legitimate cold start. Never inspect or log a raw backend response.
+    """
+    for attempt in range(3):
+        try:
+            status, payload = probe("/api/v1/health")
+        except (URLError, TimeoutError, OSError):
+            if attempt == 2:
+                raise
+        else:
+            if status not in (502, 503, 504):
+                return status, payload
+            if attempt == 2:
+                return status, payload
+        sleep(5)
+    raise ValueError("Unreachable health attempt")
+
+
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--expected-phase", choices=("core", "study-core", "full"), default="study-core",
+        help="Explicit phase expected on the fixed live Render origin",
+    )
+    args = parser.parse_args(argv)
+    study_expected, cases_expected = (
+        (404, 404) if args.expected_phase == "core" else (200, 401)
+    )
+    checks = [
+        ("liveness", "/api/v1/health", 200),
+        ("database_storage_redis", "/api/v1/readiness", 200),
+        ("study_abroad_workflow", "/api/v1/study-abroad/workflows", study_expected),
+        ("anonymous_study_cases_denied", "/api/v1/study-abroad/cases", cases_expected),
+        ("anonymous_admin_metrics_denied", "/api/v1/metrics", 401),
+    ]
+    failures = []
+    for name, path, expected in checks:
+        try:
+            status, payload = (
+                probe_health_with_free_tier_cold_start()
+                if name == "liveness" else probe(path)
+            )
+            valid = status == expected
+            if valid and name == "liveness":
+                valid = isinstance(payload, dict) and payload.get("status") == "healthy"
+            if valid and name == "database_storage_redis":
+                checks_payload = payload.get("checks") if isinstance(payload, dict) else None
+                valid = (
+                    isinstance(checks_payload, dict)
+                    and payload.get("status") == "ready"
+                    and checks_payload.get("database") == "ready"
+                    and checks_payload.get("redis") == "ready"
+                    and checks_payload.get("storage") in ("ready", "writes_disabled")
+                )
+            if valid and name == "study_abroad_workflow" and args.expected_phase in ("study-core", "full"):
+                valid = isinstance(payload, list) and any(
+                    isinstance(workflow, dict)
+                    and workflow.get("id") == "student"
+                    and workflow.get("enabled") is True
+                    for workflow in payload
+                )
+            if valid:
+                if name == "database_storage_redis" and payload["checks"]["storage"] == "writes_disabled":
+                    print("PASS database_storage_redis: HTTP 200 (uploads disabled; not durable)", flush=True)
+                else:
+                    print(f"PASS {name}: HTTP {status}", flush=True)
+            else:
+                reason = ""
+                # Whitelist safe generic backend readiness messages only.
+                # Never emit arbitrary server response bodies or exception data.
+                if name == "database_storage_redis" and status == 503:
+                    if isinstance(payload, dict) and payload.get("detail") == (
+                        "Service dependencies are unavailable"
+                    ):
+                        reason = " (Redis rate-limit dependency unavailable)"
+                    elif isinstance(payload, dict) and payload.get("detail") == (
+                        "Service is not ready"
+                    ):
+                        reason = " (database/schema/upload readiness blocked)"
+                print(
+                    f"BLOCKED {name}: HTTP {status}, expected {expected} plus contract{reason}",
+                    flush=True,
+                )
+                failures.append(name)
+        except (URLError, TimeoutError, OSError, ValueError) as exc:
+            print(
+                f"BLOCKED {name}: {type(exc).__name__} (no body disclosed)",
+                flush=True,
+            )
+            failures.append(name)
+    if failures:
+        print(
+            f"LIVE_{args.expected_phase.upper()}_GATE=BLOCKED count={len(failures)}",
+            flush=True,
+        )
+        return 1
+    if args.expected_phase == "core":
+        print("LIVE_CORE_GATE=PASS (read-only)", flush=True)
+        print("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", flush=True)
+    elif args.expected_phase == "study-core":
+        print("LIVE_STUDY_CORE_GATE=PASS (read-only, not real provider E2E)", flush=True)
+        print("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", flush=True)
+    else:
+        print("LIVE_RELEASE_GATE=PASS (read-only, not real provider E2E)", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
