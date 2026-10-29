@@ -108,6 +108,84 @@ def resolve_product_identity_answer(
     )
 
 
+def resolve_founder_followup_answer(
+    message: str,
+    *,
+    last_assistant_content: str | None,
+) -> str | None:
+    """Answer a *contextual* founder follow-up using only verified product facts.
+
+    Never treat an unrelated personal question as referring to Aqlyra's founder:
+    the immediately preceding assistant turn must identify Md Naim as the
+    founder/creator, unless the current question explicitly names Md Naim and
+    Aqlyra together.
+    """
+    import re
+
+    normalized = " ".join(message.casefold().split())
+    named_founder = (
+        "md naim" in normalized and "aqlyra" in normalized
+    )
+    previous = last_assistant_content or ""
+    founder_context = (
+        "md naim" in previous.casefold()
+        and "aqlyra" in previous.casefold()
+        and any(term in previous.casefold() for term in (
+            "প্রতিষ্ঠাতা", "নির্মাতা", "founder", "founded", "created",
+        ))
+    )
+    if not (named_founder or founder_context):
+        return None
+
+    work = any(term in normalized for term in (
+        "কাজ", "কি করে", "কী করেন", "পেশা", "work", "job",
+        "profession", "ki kore", "kaj kore",
+    ))
+    location = any(term in normalized for term in (
+        "কোথায় থাক", "কোথায় থাক", "বাসা", "বাড়ি", "বাড়ি",
+        "where does", "where is he living", "live",
+        "address", "kothay thake",
+    ))
+    if not (work or location):
+        return None
+
+    has_referent = named_founder or bool(re.search(
+        r"(?<![a-z])(he|him|his|naim|md)(?![a-z])", normalized
+    )) or any(term in normalized for term in (
+        "সে", "তিনি", "উনি", "তার", "তাঁর",
+    ))
+    if not has_referent:
+        return None
+
+    bengali = any("\u0980" <= char <= "\u09ff" for char in message)
+    if bengali:
+        details = []
+        if work:
+            details.append(
+                "Md Naim Aqlyra-এর প্রতিষ্ঠাতা ও নির্মাতা। "
+                "তিনি Aqlyra-এর AI ও RAG সফটওয়্যার তৈরির কাজ করেন।"
+            )
+        if location:
+            details.append(
+                "তাঁর ব্যক্তিগত বাসস্থান সম্পর্কে যাচাই করা প্রকাশ্য "
+                "তথ্য নেই, তাই কোনো ঠিকানা অনুমান করে বলব না।"
+            )
+        return " ".join(details)
+
+    details = []
+    if work:
+        details.append(
+            "Md Naim founded and builds Aqlyra, an AI and RAG "
+            "software platform."
+        )
+    if location:
+        details.append(
+            "There is no verified public residential location for "
+            "him in Aqlyra's product information, so I won't guess."
+        )
+    return " ".join(details)
+
+
 class ProductIdentityLLMProvider:
     def __init__(
         self,
