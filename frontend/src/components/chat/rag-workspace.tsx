@@ -1225,6 +1225,21 @@ export function RAGWorkspace({
           uploadData as DocumentResponse;
       }
 
+      // Private upload is durable, but RAG indexing is independently
+      // gated by the embedding provider. Never claim an uploaded file
+      // is already AI-ready when cloud beta is active.
+      if (
+        process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+        document.status === "uploaded"
+      ) {
+        setAttachedDocument(null);
+        setDocumentsVersion((current) => current + 1);
+        setAttachmentError(
+          "File saved in private storage. Open Documents to review it; AI indexing is not yet available."
+        );
+        return;
+      }
+
       const readyDocument =
         await ensureDocumentReady(
           document,
