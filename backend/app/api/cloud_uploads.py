@@ -4,7 +4,7 @@ NO public upload routes are enabled without BOTH private storage and the
 separate CLOUD_UPLOAD_PUBLIC_ENABLED launch gate. Do not enable prior to
 cloud-aware delete, orphan cleanup, backup and live two-tenant acceptance.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,12 @@ from app.services.cloud_document_finalization import (
 )
 from app.services.cloud_upload_intent_service import reserve_upload_intent
 from app.services.private_object_storage import PrivateObjectStorageError
+from app.services.cloud_proxy_upload import persist_small_private_cloud_upload
+from app.services.storage_service import (
+    EmptyFileError, FileTooLargeError, InvalidFileContentError,
+    UnsupportedFileTypeError,
+)
+
 
 router = APIRouter(prefix="/documents/cloud", tags=["Cloud Uploads"])
 
@@ -98,3 +104,37 @@ def finalize_cloud_upload_request(
     if document is None:
         raise HTTPException(status_code=503, detail="Document unavailable")
     return DocumentResponse.model_validate(document)
+
+
+@router.post(
+    "/proxy", status_code=status.HTTP_201_CREATED,
+    response_model=DocumentResponse,
+    dependencies=[Depends(limit_upload_request)],
+)
+async def small_private_cloud_upload(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    # Separate opt-in: no browser signed-URL route or CORS dependency.
+    if not (
+        settings.PRIVATE_OBJECT_STORAGE_ENABLED
+        and settings.CLOUD_UPLOAD_PROXY_ENABLED
+    ):
+        raise HTTPException(status_code=503, detail="Private file upload unavailable")
+    try:
+        document = await persist_small_private_cloud_upload(
+            upload=file, owner=user, db=db,
+        )
+        return DocumentResponse.model_validate(document)
+    except FileTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except UnsupportedFileTypeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except (EmptyFileError, InvalidFileContentError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PrivateObjectStorageError as exc:
+        # Sanitized. Never expose provider endpoints, keys or grant URLs.
+        raise HTTPException(
+            status_code=503, detail="Secure document storage is temporarily unavailable",
+        ) from exc
