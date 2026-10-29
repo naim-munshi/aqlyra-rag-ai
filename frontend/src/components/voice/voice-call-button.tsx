@@ -234,10 +234,16 @@ export function VoiceCallButton({
 
   useEffect(() => {
     const controller = new AbortController();
-    void refreshVoiceAvailability(controller.signal);
-    return () => controller.abort();
-    // Check on mount; the explicit retry button can refresh worker availability.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Defer the availability fetch beyond the synchronous effect phase.
+    // This avoids cascading React renders while preserving abort-on-unmount.
+    const check = window.setTimeout(() => {
+      void refreshVoiceAvailability(controller.signal);
+    }, 0);
+    return () => {
+      window.clearTimeout(check);
+      controller.abort();
+    };
+    // Availability is checked once on mount; manual retry remains separate.
   }, []);
 
 
