@@ -40,6 +40,11 @@ from app.schemas.conversation import (
     ConversationUpdate,
     MessageResponse,
 )
+from app.services.auto_web_research_service import choose_web_mode
+from app.services.web_research_service import (
+    WebResearchUnavailable,
+    WebResearchEvidenceError,
+)
 from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
@@ -228,7 +233,13 @@ def create_message_endpoint(
                 .effective_document_ids
             ),
             top_k=request.top_k,
+            web_mode=request.web_mode,
         )
+
+    except WebResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Web research provider unavailable or unconfigured") from exc
+    except WebResearchEvidenceError as exc:
+        raise HTTPException(status_code=422, detail="Web research could not verify the cited sources") from exc
 
     except (
         RetrievalValidationError,
@@ -450,7 +461,7 @@ def create_message_stream_endpoint(
         try:
             generation = None
 
-            if request.document_ids:
+            if request.document_ids or choose_web_mode(user_content, request.web_mode):
                 result = execute_chat_turn(
                     db=db,
                     conversation=conversation,
@@ -459,6 +470,7 @@ def create_message_stream_endpoint(
                         request.document_ids
                     ),
                     top_k=request.top_k,
+                    web_mode=request.web_mode,
                 )
 
                 if result.content:
@@ -646,6 +658,16 @@ def create_message_stream_endpoint(
                 completed.model_dump(
                     mode="json"
                 ),
+            )
+
+        except (WebResearchUnavailable, WebResearchEvidenceError) as exc:
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 503 if isinstance(exc, WebResearchUnavailable) else 422,
+                    "code": "web_research_unavailable" if isinstance(exc, WebResearchUnavailable) else "web_research_evidence_error",
+                    "detail": "Web research could not be completed with verified sources. Try again or select Web off.",
+                },
             )
 
         except ChatValidationError as exc:
