@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { unauthenticatedLanding } from "../src/lib/deployment/mode.ts";
 
@@ -15,4 +16,14 @@ test("real-software mode routes to login", () => {
 
 test("unexpected values do not accidentally enable demo-only mode", () => {
   assert.equal(unauthenticatedLanding("true "), "/login");
+});
+
+
+test("real production never serves the scripted demo page", () => {
+  const source = readFileSync(
+    new URL("../src/app/demo/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /NEXT_PUBLIC_AQLYRA_DEMO_ONLY !== "true"/);
+  assert.match(source, /redirect\("\/login"\)/);
 });

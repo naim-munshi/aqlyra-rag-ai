@@ -47,3 +47,9 @@ def test_voice_logger_never_receives_raw_user_text() -> None:
                     and isinstance(expression.value, ast.Name)
                     and expression.value.id == "event"
                 ), "Voice logs must not contain user transcripts"
+
+
+def test_voice_provider_errors_do_not_log_sensitive_tracebacks() -> None:
+    source = VOICE_WORKER.read_text(encoding="utf-8")
+    assert "logger.exception(" not in source
+    assert "voice_llm_node_failed exception_type=%s" in source

@@ -6,6 +6,9 @@ import {
   FileText,
   LoaderCircle,
   RefreshCw,
+  Eye,
+  FileSpreadsheet,
+  Presentation,
   Upload,
 } from "lucide-react";
 import {
@@ -15,11 +18,17 @@ import {
   useState,
 } from "react";
 
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
+
 import type {
   DocumentListResponse,
   DocumentResponse,
   DocumentStatus,
 } from "@/types/document";
+import {
+  OfficeDocumentViewer,
+  isOfficeDocument,
+} from "@/components/documents/office-document-viewer";
 
 type ApiError = {
   detail?:
@@ -114,6 +123,9 @@ export function DocumentPanel() {
 
   const [error, setError] =
     useState("");
+
+  const [previewDocument, setPreviewDocument] =
+    useState<DocumentResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,39 +294,27 @@ export function DocumentPanel() {
     setError("");
 
     try {
-      const formData = new FormData();
+      let uploadedDocument: DocumentResponse;
 
-      formData.append(
-        "file",
-        file,
-      );
-
-      const response = await fetch(
-        "/api/documents/upload",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      const data =
-        (await response.json()) as
-          | DocumentResponse
-          | ApiError;
-
-      if (!response.ok) {
-        setError(
-          getErrorMessage(
-            data as ApiError,
-            "Document upload failed.",
-          ),
-        );
-
-        return;
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+        // No File bytes ever cross the Next.js API in cloud mode.
+        uploadedDocument = await uploadViaPrivateCloud(file);
+      } else {
+        // Preserve existing local/staging upload behavior unchanged.
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/documents/upload", {
+          method: "POST", body: formData,
+        });
+        const data = (await response.json()) as DocumentResponse | ApiError;
+        if (!response.ok) {
+          setError(
+            getErrorMessage(data as ApiError, "Document upload failed."),
+          );
+          return;
+        }
+        uploadedDocument = data as DocumentResponse;
       }
-
-      const uploadedDocument =
-        data as DocumentResponse;
 
       setDocuments((current) => [
         uploadedDocument,
@@ -457,9 +457,10 @@ export function DocumentPanel() {
               Upload document
             </button>
 
-            <p className="mt-3 text-[9px] text-[var(--aq-muted)]">
-              PDF, DOCX, XLSX, PPTX,
-              TXT, MD, CSV
+            <p className="mt-3 text-center text-[10px] leading-4 text-[var(--aq-muted)]">
+              Word (.docx), Excel (.xlsx), PowerPoint (.pptx),
+              PDF, TXT, Markdown, CSV and images.
+              Older .doc/.xls/.ppt files should be converted to modern Office formats.
             </p>
           </div>
         ) : (
@@ -477,9 +478,11 @@ export function DocumentPanel() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]">
-                        <FileText
-                          size={16}
-                        />
+                        {document.file_extension === ".xlsx"
+                          ? <FileSpreadsheet size={16} />
+                          : document.file_extension === ".pptx"
+                            ? <Presentation size={16} />
+                            : <FileText size={16} />}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -530,6 +533,18 @@ export function DocumentPanel() {
                       </p>
                     )}
 
+                    {document.status === "ready" &&
+                      isOfficeDocument(document.file_extension) && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDocument(document)}
+                        className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-[10px] font-semibold hover:border-[var(--aq-blue)]"
+                      >
+                        <Eye size={13} />
+                        Preview extracted content
+                      </button>
+                    )}
+
                     {document.status ===
                       "uploaded" && (
                       <button
@@ -567,6 +582,12 @@ export function DocumentPanel() {
           </div>
         )}
       </div>
+      {previewDocument && (
+        <OfficeDocumentViewer
+          document={previewDocument}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
     </section>
   );
 }
