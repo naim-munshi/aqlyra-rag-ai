@@ -10,7 +10,6 @@ def test_readiness_reports_write_disabled_without_probing_ephemeral_disk(
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(health_module, "local_writes_permitted", lambda: False)
-    monkeypatch.setattr(health_module, "artifact_writes_permitted", lambda: False)
 
     def unexpected_disk_probe(**kwargs):
         raise AssertionError("Disabled local uploads must not probe the disk")
