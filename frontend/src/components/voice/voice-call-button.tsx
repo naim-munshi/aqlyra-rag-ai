@@ -15,6 +15,8 @@ import {
   Room,
   RoomEvent,
   Track,
+  createLocalAudioTrack,
+  type LocalAudioTrack,
 } from "livekit-client";
 
 import {
@@ -160,6 +162,8 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
+  const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
+  const callAttemptRef = useRef(0);
   const agentJoinTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -263,6 +267,7 @@ export function VoiceCallButton({
         "The AI voice agent did not join. The call was ended. " +
         "Please retry once the voice service is online.";
       roomRef.current = null;
+      stopMicrophoneTrack();
       void room.disconnect();
       clearAudioElements();
       setActive(false);
@@ -271,6 +276,11 @@ export function VoiceCallButton({
       setError(message);
       onError?.(message);
     }, 20000);
+  }
+
+  function stopMicrophoneTrack() {
+    microphoneTrackRef.current?.stop();
+    microphoneTrackRef.current = null;
   }
 
   function clearAudioElements() {
@@ -290,6 +300,7 @@ export function VoiceCallButton({
 
 
   async function endCall() {
+    callAttemptRef.current += 1;
     clearAgentJoinTimer();
     const room =
       roomRef.current;
@@ -307,6 +318,7 @@ export function VoiceCallButton({
       await room.disconnect();
     }
 
+    stopMicrophoneTrack();
     clearAudioElements();
 
     setActive(false);
@@ -338,6 +350,7 @@ export function VoiceCallButton({
     }
 
     clearAgentJoinTimer();
+    const attempt = ++callAttemptRef.current;
     setStarting(true);
     setError("");
     setLiveUserText("");
@@ -345,17 +358,23 @@ export function VoiceCallButton({
     setAgentState("connecting");
 
     let room: Room | null = null;
+    let microphoneTrack: LocalAudioTrack | null = null;
 
     try {
-      // Request iOS Safari microphone permission from the direct tap
-      // before network requests lose the user-activation context.
+      // Acquire the actual LiveKit track on the direct iOS Safari tap.
+      // Do not stop it and re-request capture after network awaits: Safari
+      // may reject a second getUserMedia outside user activation.
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("This browser does not support microphone calls.");
       }
-      const microphone = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+      microphoneTrack = await createLocalAudioTrack({
+        echoCancellation: true,
+        noiseSuppression: true,
       });
-      microphone.getTracks().forEach(track => track.stop());
+      if (callAttemptRef.current !== attempt) {
+        throw new DOMException("Call ended", "AbortError");
+      }
+      microphoneTrackRef.current = microphoneTrack;
 
       const response =
         await fetch(
@@ -401,6 +420,9 @@ export function VoiceCallButton({
         );
       }
 
+      if (callAttemptRef.current !== attempt) {
+        throw new DOMException("Call ended", "AbortError");
+      }
       const session =
         data as VoiceSessionResponse;
 
@@ -574,9 +596,11 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.Disconnected,
         () => {
+          if (roomRef.current !== room) return;
           clearAgentJoinTimer();
           roomRef.current = null;
 
+          stopMicrophoneTrack();
           clearAudioElements();
 
           setActive(false);
@@ -591,13 +615,21 @@ export function VoiceCallButton({
         session.server_url,
         session.participant_token,
       );
+      if (callAttemptRef.current !== attempt || roomRef.current !== room) {
+        throw new DOMException("Call ended", "AbortError");
+      }
+      // Publish the track acquired on the original user gesture. No
+      // second microphone permission request after the network roundtrip.
+      await room.localParticipant.publishTrack(microphoneTrack, {
+        source: Track.Source.Microphone,
+      });
+      if (callAttemptRef.current !== attempt || roomRef.current !== room) {
+        throw new DOMException("Call ended", "AbortError");
+      }
 
       onConversationStarted?.(
         session.conversation_id,
       );
-
-      await room.localParticipant
-        .setMicrophoneEnabled(true);
 
       setMuted(false);
       setActive(true);
@@ -615,7 +647,14 @@ export function VoiceCallButton({
         }
       }
 
-      roomRef.current = null;
+      if (microphoneTrack) {
+        microphoneTrack.stop();
+        if (microphoneTrackRef.current === microphoneTrack) {
+          microphoneTrackRef.current = null;
+        }
+      }
+      if (roomRef.current === room) roomRef.current = null;
+      if (callAttemptRef.current !== attempt) return;
 
       clearAudioElements();
 
@@ -685,7 +724,9 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
+      callAttemptRef.current += 1;
       clearAgentJoinTimer();
+      stopMicrophoneTrack();
       const room =
         roomRef.current;
 
