@@ -835,7 +835,7 @@ export function VoiceCallButton({
             >
               Enable sound
             </button>
-          )
+          )}
 
           <div className="mt-4 flex items-center justify-center gap-3">
             <button
