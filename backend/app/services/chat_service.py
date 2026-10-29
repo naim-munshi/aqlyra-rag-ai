@@ -28,6 +28,7 @@ from app.product_identity import (
     ProductIdentityLLMProvider,
     resolve_product_identity_answer,
 )
+from app.product_identity.service import resolve_founder_followup_answer
 from app.services.conversation_service import (
     get_recent_messages_for_conversation,
 )
@@ -366,17 +367,32 @@ def _prepare_normal_chat_generation(
             message,
         )
 
-    active_provider = (
-        provider
-        or create_configured_llm_provider()
-    )
-
     history = (
         get_recent_messages_for_conversation(
             db=db,
             conversation_id=conversation.id,
             limit=NORMAL_CHAT_HISTORY_LIMIT,
         )
+    )
+
+    # Only an immediately preceding founder-identifying answer may anchor
+    # pronouns such as "সে" or "he". Never infer a home address or other
+    # private founder details from conversation memory.
+    last_assistant = (
+        history[-1].content
+        if history and history[-1].role == "assistant"
+        else None
+    )
+    founder_followup = resolve_founder_followup_answer(
+        message,
+        last_assistant_content=last_assistant,
+    )
+    if founder_followup is not None:
+        return ProductIdentityLLMProvider(founder_followup), message
+
+    active_provider = (
+        provider
+        or create_configured_llm_provider()
     )
 
     memories = _retrieve_normal_chat_memories(
