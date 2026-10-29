@@ -18,6 +18,7 @@ from redis.exceptions import RedisError
 
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
+from app.services.storage_durability_policy import local_writes_permitted, artifact_writes_permitted
 
 
 router = APIRouter()
@@ -48,9 +49,9 @@ def readiness():
     """
     Deployment readiness check.
 
-    Confirms that PostgreSQL is reachable and the
-    persistent upload storage is available and
-    writable.
+    Confirms PostgreSQL and Redis reachability. Local upload write
+    capability is reported separately, never inferred from an ephemeral
+    writable filesystem.
     """
     db = SessionLocal()
     check_stage = "database_connection"
@@ -85,28 +86,28 @@ def readiness():
             if not core_schema_ready:
                 raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
 
-        check_stage = "upload_storage"
-        upload_dir = (
-            settings
-            .UPLOAD_DIR
-            .expanduser()
-            .resolve()
-        )
-
-        if (
-            not upload_dir.exists()
-            or not upload_dir.is_dir()
-        ):
-            raise RuntimeError(
-                "Upload storage is unavailable"
+        # A writable ephemeral Render disk is NOT proof of file durability.
+        # Do not report private uploads as ready when production refuses them.
+        upload_storage_status = "writes_disabled"
+        if local_writes_permitted():
+            check_stage = "upload_storage"
+            upload_dir = (
+                settings
+                .UPLOAD_DIR
+                .expanduser()
+                .resolve()
             )
 
-        with tempfile.NamedTemporaryFile(
-            dir=upload_dir,
-            prefix=".aqlyra-readiness-",
-            delete=True,
-        ):
-            pass
+            if not upload_dir.exists() or not upload_dir.is_dir():
+                raise RuntimeError("Upload storage is unavailable")
+
+            with tempfile.NamedTemporaryFile(
+                dir=upload_dir,
+                prefix=".aqlyra-readiness-",
+                delete=True,
+            ):
+                pass
+            upload_storage_status = "ready"
 
     except Exception as exc:
         # Only fixed stage labels and exception class are emitted. Never
@@ -156,7 +157,18 @@ def readiness():
         "version": settings.VERSION,
         "checks": {
             "database": "ready",
-            "storage": "ready",
+            "storage": upload_storage_status,
+            # "configured" is not real-provider acceptance or a successful
+            # cloud object write: it only describes the selected code path.
+            "artifact_storage": (
+                "remote_configured" if settings.ARTIFACT_REMOTE_STORAGE_ENABLED
+                else "ready" if artifact_writes_permitted()
+                else "writes_disabled"
+            ),
+            "cloud_uploads": (
+                "configured" if settings.CLOUD_UPLOAD_PUBLIC_ENABLED
+                else "disabled"
+            ),
             **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
