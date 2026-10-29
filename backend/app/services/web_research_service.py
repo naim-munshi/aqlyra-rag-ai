@@ -349,7 +349,7 @@ def research_web(
     # The AI may quote approved sources, but must never introduce unverified
     # external URLs; citations [W#] alone do not validate arbitrary links.
     approved_urls = {source.url for source in sources}
-    for visible_url in re.findall(r"https?://[^\\s<>)\\]]+", text):
+    for visible_url in re.findall(r"https?://[^\s<>)\]]+", text):
         if visible_url.rstrip(".,;!?") not in approved_urls:
             raise WebResearchEvidenceError("Generated answer contains unapproved external links")
 
