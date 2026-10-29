@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.config.settings import settings
+from app.services.storage_durability_policy import local_writes_permitted
 from app.services.cloud_document_access import private_document_read_grant
 from app.services.cloud_process_io import cloud_processing_source
 from app.services.cloud_document_deletion import delete_cloud_document
@@ -93,6 +94,11 @@ async def upload_document(
     ),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
+    if not local_writes_permitted():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Durable document storage is not configured. Upload is temporarily unavailable.",
+        )
     try:
         pending_upload = (
             await save_upload_to_temporary_storage(
