@@ -1208,10 +1208,12 @@ export function RAGWorkspace({
 
         if (!duplicateId) {
           throw new Error(
-            getDocumentErrorMessage(
-              uploadData as DocumentApiError,
-              "Document upload failed.",
-            ),
+            uploadResponse.status === 503
+              ? "Secure file uploads are temporarily unavailable. You can still chat without a file."
+              : getDocumentErrorMessage(
+                  uploadData as DocumentApiError,
+                  "Document upload failed.",
+                ),
           );
         }
 
@@ -2076,12 +2078,17 @@ export function RAGWorkspace({
         )}
 
         {attachmentError && (
-          <div className="mb-3 flex items-center gap-2 text-[10px] text-red-400">
-            <AlertCircle
-              size={13}
-            />
-
-            {attachmentError}
+          <div role="alert" className="mb-3 flex min-w-0 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs text-[var(--aq-muted)]">
+            <AlertCircle size={15} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">{attachmentError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss attachment error"
+              className="shrink-0 rounded-md p-1 hover:text-[var(--aq-text)]"
+              onClick={() => setAttachmentError("")}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
           </div>
         )}
 
@@ -2089,11 +2096,11 @@ export function RAGWorkspace({
           rows={2}
           value={question}
           disabled={ragLoading}
-          onChange={(event) =>
-            setQuestion(
-              event.target.value,
-            )
-          }
+          onChange={(event) => {
+            setQuestion(event.target.value);
+            // An old attachment error must not stay pinned while chatting.
+            if (attachmentError) setAttachmentError("");
+          }}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
