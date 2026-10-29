@@ -10,7 +10,7 @@ from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.llms.types import LLMError
 from app.llms import LLMProviderRequestError, LLMProviderResponseError, LLMValidationError
-from app.embeddings import EmbeddingError
+from app.embeddings import EmbeddingError, EmbeddingProviderQuotaError
 from app.retrieval import RetrievalProviderError, RetrievalValidationError
 from app.rag import CitationValidationError, GroundedAnswerError
 from app.services.rag_answer_service import answer_question
@@ -363,6 +363,13 @@ def ask_study_documents(
         )
     except RetrievalValidationError as exc:
         raise HTTPException(422, "Invalid document retrieval request") from exc
+    except EmbeddingProviderQuotaError as exc:
+        # Preserve the original case and documents; never fabricate visa evidence.
+        raise HTTPException(
+            503,
+            "Study document search is temporarily unavailable because the "
+            "embedding service quota was exhausted. No answer was saved.",
+        ) from exc
     except (RetrievalProviderError, LLMValidationError, EmbeddingError,
             LLMProviderRequestError) as exc:
         raise HTTPException(503, "Document AI provider is unavailable") from exc
