@@ -4,6 +4,12 @@ import { backendUrl, readJson } from "@/lib/api/backend";
 import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import { getAccessToken } from "@/lib/auth/session";
 import type { DocumentResponse } from "@/types/document";
+import { readBoundedBodyBytes, RequestBodyTooLargeError } from "@/lib/security/request-body";
+
+// 25 MiB backend file cap plus at most 1 MiB multipart envelope overhead.
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_PROXY_FILE_BYTES = 3 * 1024 * 1024;
+const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 1024 * 1024;
 
 type ErrorResponse = {
   detail?: unknown;
@@ -20,7 +26,34 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const incomingFormData = await request.formData();
+    // Request.formData() can buffer an unchecked multipart body. First
+    // enforce the byte cap even if Content-Length is absent or forged.
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().startsWith("multipart/form-data;")) {
+      return NextResponse.json(
+        { detail: "Multipart form data is required" }, { status: 415 },
+      );
+    }
+    // Preserve the existing bounded reader contract. Fast-reject
+    // oversized browser-proxy bodies even before multipart parsing.
+    if (
+      process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true" &&
+      Number(request.headers.get("content-length") || 0) >
+        MAX_PROXY_FILE_BYTES + 128 * 1024
+    ) {
+      return NextResponse.json(
+        { detail: "Document file is too large" }, { status: 413 },
+      );
+    }
+    const bytes = await readBoundedBodyBytes(request, MAX_MULTIPART_BYTES);
+    const boundedBytes = new Uint8Array(bytes.byteLength);
+    boundedBytes.set(bytes);
+    const bounded = new Request(request.url, {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body: boundedBytes,
+    });
+    const incomingFormData = await bounded.formData();
     const file = incomingFormData.get("file");
 
     if (!(file instanceof File)) {
@@ -30,11 +63,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const maxBytes = process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+      ? MAX_PROXY_FILE_BYTES : MAX_FILE_BYTES;
+    if (file.size > maxBytes) {
+      return NextResponse.json(
+        { detail: "Document file is too large" }, { status: 413 },
+      );
+    }
+
     const backendFormData = new FormData();
     backendFormData.append("file", file);
 
     const response = await fetch(
-      backendUrl("/documents/upload"),
+      backendUrl(
+        process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+          ? "/documents/cloud/proxy"
+          : "/documents/upload",
+      ),
       {
         method: "POST",
         headers: {
@@ -60,7 +105,12 @@ export async function POST(request: NextRequest) {
           ),
       },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json(
+        { detail: "Document upload is too large" }, { status: 413 },
+      );
+    }
     return NextResponse.json(
       { detail: "Unable to upload document" },
       { status: 502 },

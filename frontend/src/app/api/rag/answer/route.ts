@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import {
   backendUrl,
@@ -30,8 +31,11 @@ export async function POST(request: Request) {
 
   try {
     body =
-      (await request.json()) as RAGAnswerRequest;
-  } catch {
+      (await readBoundedJson(request, 65536)) as RAGAnswerRequest;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json(
       {
         detail: "Invalid request body",

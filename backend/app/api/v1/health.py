@@ -2,12 +2,15 @@ import tempfile
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
 from sqlalchemy import text
 
+from app.api.admin import get_current_admin
 from app.config.settings import settings
+from app.core.logging import app_logger
 from app.database.connection import SessionLocal
 
 from fastapi.responses import Response
@@ -15,9 +18,14 @@ from redis.exceptions import RedisError
 
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
+from app.services.storage_durability_policy import local_writes_permitted, artifact_writes_permitted
 
 
 router = APIRouter()
+
+# The explicitly reviewed full-release Alembic head. Update this constant
+# alongside any future schema migration in the full-release branch.
+_FULL_RELEASE_DB_REVISION = "d4ec2f9b7860"
 
 
 @router.get("/health")
@@ -41,40 +49,74 @@ def readiness():
     """
     Deployment readiness check.
 
-    Confirms that PostgreSQL is reachable and the
-    persistent upload storage is available and
-    writable.
+    Confirms PostgreSQL and Redis reachability. Local upload write
+    capability is reported separately, never inferred from an ephemeral
+    writable filesystem.
     """
     db = SessionLocal()
+    check_stage = "database_connection"
 
     try:
         db.execute(
             text("SELECT 1")
         )
 
-        upload_dir = (
-            settings
-            .UPLOAD_DIR
-            .expanduser()
-            .resolve()
-        )
+        # SELECT 1 succeeds on an empty Neon database. In production,
+        # block RAG and accounts until the exact reviewed schema and
+        # pgvector core dependencies have actually been migrated.
+        if settings.is_production:
+            check_stage = "schema_revision"
+            version = db.execute(
+                text("SELECT version_num FROM public.alembic_version")
+            ).scalar_one_or_none()
+            if version != _FULL_RELEASE_DB_REVISION:
+                raise RuntimeError("Aqlyra database revision is not current")
 
-        if (
-            not upload_dir.exists()
-            or not upload_dir.is_dir()
-        ):
-            raise RuntimeError(
-                "Upload storage is unavailable"
+            check_stage = "schema_core"
+            core_schema_ready = db.execute(
+                text(
+                    "SELECT "
+                    "to_regclass('public.users') IS NOT NULL "
+                    "AND to_regclass('public.documents') IS NOT NULL "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_extension WHERE extname = 'vector'"
+                    ")"
+                )
+            ).scalar_one()
+            if not core_schema_ready:
+                raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
+
+        # A writable ephemeral Render disk is NOT proof of file durability.
+        # Do not report private uploads as ready when production refuses them.
+        upload_storage_status = "writes_disabled"
+        if local_writes_permitted():
+            check_stage = "upload_storage"
+            upload_dir = (
+                settings
+                .UPLOAD_DIR
+                .expanduser()
+                .resolve()
             )
 
-        with tempfile.NamedTemporaryFile(
-            dir=upload_dir,
-            prefix=".aqlyra-readiness-",
-            delete=True,
-        ):
-            pass
+            if not upload_dir.exists() or not upload_dir.is_dir():
+                raise RuntimeError("Upload storage is unavailable")
+
+            with tempfile.NamedTemporaryFile(
+                dir=upload_dir,
+                prefix=".aqlyra-readiness-",
+                delete=True,
+            ):
+                pass
+            upload_storage_status = "ready"
 
     except Exception as exc:
+        # Only fixed stage labels and exception class are emitted. Never
+        # log the database URL, SQL exception text or user data.
+        app_logger.warning(
+            "readiness_backend_not_ready",
+            stage=check_stage,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=(
                 status
@@ -91,7 +133,13 @@ def readiness():
             redis_ready = bool(
                 get_rate_limit_redis().ping()
             )
-        except RedisError:
+        except (RedisError, ValueError) as exc:
+            # Log only the exception CLASS. Exception messages may expose
+            # hostnames, usernames or other connection information.
+            app_logger.warning(
+                "readiness_redis_backend_unavailable",
+                error_type=type(exc).__name__,
+            )
             redis_ready = False
 
         if not redis_ready:
@@ -109,7 +157,18 @@ def readiness():
         "version": settings.VERSION,
         "checks": {
             "database": "ready",
-            "storage": "ready",
+            "storage": upload_storage_status,
+            # "configured" is not real-provider acceptance or a successful
+            # cloud object write: it only describes the selected code path.
+            "artifact_storage": (
+                "remote_configured" if settings.ARTIFACT_REMOTE_STORAGE_ENABLED
+                else "ready" if artifact_writes_permitted()
+                else "writes_disabled"
+            ),
+            "cloud_uploads": (
+                "configured" if settings.CLOUD_UPLOAD_PUBLIC_ENABLED
+                else "disabled"
+            ),
             **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
@@ -118,6 +177,7 @@ def readiness():
 @router.get(
     "/metrics",
     include_in_schema=False,
+    dependencies=[Depends(get_current_admin)],
 )
 def metrics():
     return Response(
@@ -128,6 +188,6 @@ def metrics():
             "charset=utf-8"
         ),
         headers={
-            "Cache-Control": "no-store",
+            "Cache-Control": "private, no-store",
         },
     )
