@@ -17,7 +17,7 @@ from app.core.rate_limit import (
     limit_chat_request,
 )
 from app.database.connection import get_db
-from app.embeddings import EmbeddingError
+from app.embeddings import EmbeddingError, EmbeddingProviderQuotaError
 from app.llms import (
     LLMProviderRequestError,
     LLMProviderResponseError,
@@ -261,6 +261,20 @@ def create_message_endpoint(
             detail=(
                 "Conversation provider "
                 "configuration failed"
+            ),
+        ) from exc
+
+    except EmbeddingProviderQuotaError as exc:
+        app_logger.warning(
+            "knowledge_embedding_quota_exhausted conversation_id=%s",
+            conversation.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Document search is temporarily unavailable because "
+                "the embedding service quota was exhausted. "
+                "Use Normal chat for general questions or try again later."
             ),
         ) from exc
 
@@ -671,6 +685,24 @@ def create_message_stream_endpoint(
                     "detail": (
                         "Conversation provider "
                         "configuration failed"
+                    ),
+                },
+            )
+
+        except EmbeddingProviderQuotaError:
+            app_logger.warning(
+                "conversation_stream_embedding_quota_exhausted conversation_id=%s",
+                conversation.id,
+            )
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 503,
+                    "code": "embedding_quota_exhausted",
+                    "detail": (
+                        "Document search is temporarily unavailable because "
+                        "the embedding service quota was exhausted. "
+                        "Use Normal chat or try again later."
                     ),
                 },
             )
