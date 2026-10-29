@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 import app.api.auth as auth_api
 from app.config.settings import settings
+from app.auth.security import create_access_token
 from app.models.email_verification_code import (
     EmailVerificationCode,
 )
@@ -307,31 +308,57 @@ def test_resend_verification_enforces_cooldown(
     assert len(sent_codes) == 2
 
 
-def test_registration_stays_unverified_when_email_delivery_fails(
-    client: TestClient,
-    monkeypatch,
+def test_email_failure_does_not_reserve_email_and_retry_needs_otp(
+    client: TestClient, db_session: Session, monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        settings,
-        "EMAIL_VERIFICATION_REQUIRED",
-        True,
-    )
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
 
     def fail_delivery(**kwargs) -> None:
         del kwargs
         raise EmailDeliveryError("simulated failure")
 
+    monkeypatch.setattr(auth_api, "send_verification_email", fail_delivery)
+
+    failed = register_user(client)
+    assert failed.status_code == 503
+    assert get_user_by_email(db_session, USER_DATA["email"]) is None
+    assert login_user(client).status_code == 401
+
+    sent_codes = []
     monkeypatch.setattr(
         auth_api,
         "send_verification_email",
-        fail_delivery,
+        lambda *, recipient_email, code: sent_codes.append(code),
     )
-
-    registered = register_user(client)
-
-    assert registered.status_code == 201
-    assert registered.json()["verification_email_sent"] is False
+    pending = register_user(client)
+    assert pending.status_code == 201
+    assert pending.json()["verification_email_sent"] is True
+    assert len(sent_codes) == 1
     assert login_user(client).status_code == 403
+
+    user = get_user_by_email(db_session, USER_DATA["email"])
+    assert user is not None and user.email_verified_at is None
+
+    # A stale or mistakenly issued JWT cannot bypass verification.
+    token = create_access_token(
+        subject=str(user.id), token_version=user.auth_epoch,
+    )
+    protected = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert protected.status_code == 403
+
+    verified = client.post(
+        "/api/v1/auth/verify-email",
+        json={
+            "code": sent_codes[0],
+            "verification_token": pending.json()["verification_token"],
+            "password": USER_DATA["password"],
+        },
+    )
+    assert verified.status_code == 200
+    assert login_user(client).status_code == 200
 
 
 def test_duplicate_pending_registration_cannot_overwrite_credentials(
