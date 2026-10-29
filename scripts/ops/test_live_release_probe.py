@@ -31,6 +31,7 @@ class LivePhaseProbeTest(unittest.TestCase):
     def test_anonymous_prometheus_metrics_must_be_http_401(self):
         for phase, study, cases in [
             ("core", (404, None), (404, None)),
+            ("study-core", WORKFLOWS, (401, None)),
             ("full", WORKFLOWS, (401, None)),
         ]:
             for exposed in ((200, None), (403, None), (503, None)):
@@ -52,6 +53,22 @@ class LivePhaseProbeTest(unittest.TestCase):
         self.assertIn("LIVE_CORE_GATE=PASS", output)
         self.assertIn("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", output)
         self.assertNotIn("LIVE_RELEASE_GATE=PASS", output)
+
+    def test_study_core_phase_accepts_released_study_routes_without_claiming_full(self):
+        status, output = self.run_case(
+            "study-core", [HEALTH, READY, WORKFLOWS, (401, None)]
+        )
+        self.assertEqual(status, 0)
+        self.assertIn("LIVE_STUDY_CORE_GATE=PASS", output)
+        self.assertIn("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", output)
+        self.assertNotIn("LIVE_RELEASE_GATE=PASS", output)
+
+    def test_study_core_fails_when_study_routes_are_missing(self):
+        status, output = self.run_case(
+            "study-core", [HEALTH, READY, (404, None), (404, None)]
+        )
+        self.assertEqual(status, 1)
+        self.assertIn("LIVE_STUDY-CORE_GATE=BLOCKED", output)
 
     def test_full_phase_passes_only_with_full_endpoints(self):
         status, output = self.run_case(
@@ -106,6 +123,7 @@ class LivePhaseProbeTest(unittest.TestCase):
         broken = (503, {"detail": "Service is not ready"})
         for phase, study, cases in [
             ("core", (404, None), (404, None)),
+            ("study-core", WORKFLOWS, (401, None)),
             ("full", WORKFLOWS, (401, None)),
         ]:
             with self.subTest(phase=phase):
