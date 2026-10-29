@@ -51,7 +51,6 @@ export function ForgotPasswordForm() {
       return;
     }
     setLoading(true);
-    setMessage("");
     try {
       const response = await fetch("/api/auth/reset-password", {
         method: "POST",
@@ -102,13 +101,13 @@ export function ForgotPasswordForm() {
     }
   }
 
-  const inputStyle = "mt-2 h-12 w-full rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-base sm:text-sm text-[var(--aq-text)] outline-none focus:border-[var(--aq-blue)]";
+  const inputStyle = "mt-2 h-12 w-full rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm text-[var(--aq-text)] outline-none focus:border-[var(--aq-blue)]";
   const labelStyle = "mt-5 block text-xs font-semibold text-[var(--aq-text)]";
 
   return (
     <div className="mt-8">
       {step === "request" && (
-        <form onSubmit={requestCode} aria-busy={loading}>
+        <form onSubmit={requestCode}>
           <label htmlFor="recovery-email" className={labelStyle}>Account email</label>
           <div className="relative">
             <Mail aria-hidden="true" size={17} className="absolute left-4 top-[26px] text-[var(--aq-muted)]" />
@@ -132,7 +131,7 @@ export function ForgotPasswordForm() {
       )}
 
       {step === "reset" && (
-        <form onSubmit={resetPassword} aria-busy={loading}>
+        <form onSubmit={resetPassword}>
           <p className="text-xs leading-6 text-[var(--aq-muted)]">
             If your email is eligible, a six-digit code was sent to {email}.
             It expires in 10 minutes.
@@ -162,7 +161,6 @@ export function ForgotPasswordForm() {
             {loading ? "Updating..." : "Set new password"}
           </button>
           <button type="button" className="mt-4 w-full text-xs font-semibold text-[var(--aq-blue)]"
-            disabled={loading}
             onClick={() => { setStep("request"); setCode(""); setError(""); setMessage(""); }}>
             Request another code
           </button>
