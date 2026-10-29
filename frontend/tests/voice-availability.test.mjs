@@ -20,6 +20,8 @@ test("Safari microphone and sound need direct user actions", () => {
   assert.doesNotMatch(source, /getTracks\(\)\.forEach\(track => track\.stop\(\)\)/);
   assert.match(source, /stopMicrophoneTrack\(\)/);
   assert.match(source, /callAttemptRef\.current !== attempt/);
+  assert.match(source, /case "connecting":\s*return "Connecting";/);
+  assert.doesNotMatch(source, /case "connecting":\s*return "Connecting";\s*case "connecting":/);
   assert.match(source, /RoomEvent\.AudioPlaybackStatusChanged/);
   assert.match(source, /await room\.startAudio\(\)/);
   assert.match(source, /Enable sound/);
