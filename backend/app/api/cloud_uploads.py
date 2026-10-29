@@ -122,6 +122,8 @@ async def small_private_cloud_upload(
         and settings.CLOUD_UPLOAD_PROXY_ENABLED
     ):
         raise HTTPException(status_code=503, detail="Private file upload unavailable")
+    if not user.is_active or user.email_verified_at is None:
+        raise HTTPException(status_code=403, detail="Verified account required for uploads")
     try:
         document = await persist_small_private_cloud_upload(
             upload=file, owner=user, db=db,
@@ -133,6 +135,10 @@ async def small_private_cloud_upload(
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except (EmptyFileError, InvalidFileContentError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except CloudFinalizationConflict as exc:
+        raise HTTPException(
+            status_code=409, detail="Document already uploaded or cannot be finalized",
+        ) from exc
     except PrivateObjectStorageError as exc:
         # Sanitized. Never expose provider endpoints, keys or grant URLs.
         raise HTTPException(
