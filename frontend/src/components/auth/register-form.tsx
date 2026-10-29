@@ -114,7 +114,7 @@ export function RegisterForm() {
           setPendingVerificationDelivery(true);
           setPassword("");
           setConfirmPassword("");
-          setError("Email delivery failed. Your registration is not yet verified or usable. Please open email verification and retry sending a code.");
+          setError("Aqlyra could not send the verification email. Your registration is not verified or usable. Please open email verification and retry sending a code.");
           return;
         }
         router.push("/verify-email");
