@@ -23,6 +23,10 @@ The code already exists in:
 
 The installed Render **web service is not the LiveKit agent worker**.
 Changing `LIVEKIT_URL` alone cannot make AI speech responses work.
+Recent source changes require a public secure `wss://` LiveKit URL in
+production, and reauthorize every LiveKit dispatch and voice RAG turn against
+current account/conversation/document ownership before using providers.
+Do not flip `VOICE_AGENT_READY` until real agent/audio acceptance succeeds.
 
 ## Safe, $0-tier-aware deployment of the existing worker
 
@@ -63,12 +67,16 @@ place of Aqlyra's existing RAG-backed worker.
    Neon database, verified email and inference accounts. Required
    backend settings include `SECRET_KEY`, `DATABASE_URL`,
    `REDIS_URL`, `GROQ_API_KEY`, `HF_TOKEN`,
-   `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `SMTP_FROM_EMAIL`,
-   `EMAIL_DELIVERY_PROVIDER=resend`, `LLM_PROVIDER=groq`,
-   `EMBEDDING_PROVIDER=huggingface`,
+   `GOOGLE_CLIENT_ID`, `SMTP_FROM_EMAIL`,
+   a **single configured and working** email transport
+   (`EMAIL_DELIVERY_PROVIDER=gmail_api` with private
+   `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`,
+   `GMAIL_OAUTH_REFRESH_TOKEN` **or** the existing verified
+   `resend` provider and its key),
+   `LLM_PROVIDER=groq`, `EMBEDDING_PROVIDER=huggingface`,
    `RAG_GROUNDING_VERIFIER_ENABLED=true`,
    `RATE_LIMIT_ENABLED=true`,
-   `CORS_ORIGINS=https://aqlyra-navy.vercel.app`,
+   `CORS_ORIGINS=https://aqlyra-ai.vercel.app`,
    `APP_ENV=production`, `DEBUG=false`, and
    `VOICE_AGENT_NAME=aqlyra-voice`.
    **No placeholder values.** Do not assume a local Docker
@@ -115,7 +123,10 @@ place of Aqlyra's existing RAG-backed worker.
    `VOICE_AGENT_NAME=aqlyra-voice`; no values in chat.
    Render must have a healthy real database, Redis, email provider,
    non-deterministic RAG provider and applied schema first.
-   On missing credentials the backend appropriately refuses to start.
+   On missing credentials the authenticated voice endpoint fails closed
+   with 503 and issues **no** participant tokens. Keep `VOICE_AGENT_READY=false`
+   until the named worker is healthy and a real two-way browser call passes.
+   A true readiness flag alone cannot prove that LiveKit is healthy.
 
 ## Acceptance (record redacted PASS/FAIL, never values or user audio)
 
@@ -135,4 +146,7 @@ place of Aqlyra's existing RAG-backed worker.
   if quota/abuse occurs. Do not expose public calling until these PASS.
 
 **Current status:** no deployed LiveKit agent verified; real two-way call
-acceptance is BLOCKED even though offline GitHub voice tests passed.
+acceptance is BLOCKED even though offline GitHub voice tests passed. Do not
+copy a production database URL or OAuth refresh token into GitHub or a chat.
+The isolated voice worker needs its own provisioned, private secrets and
+quotas; never infer their availability from the Render web service.
