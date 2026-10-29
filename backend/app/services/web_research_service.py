@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from app.config.settings import settings
+from app.services.research_query_planner import plan_second_query
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
 from app.schemas.web_research import (
@@ -187,6 +188,12 @@ def research_web(
     if not 3 <= len(question) <= 600:
         raise ValueError("question out of bounds")
 
+    # Additional planning is opt-in for Deep chat. The provider sees only
+    # the current public question, never private history or RAG chunks.
+    planning_provider = provider
+    if iterative and mode == "deep" and planning_provider is None:
+        planning_provider = create_configured_llm_provider()
+
     managed = client is None
     active_client = client or httpx.Client(
         timeout=httpx.Timeout(15.0),
@@ -209,9 +216,7 @@ def research_web(
             # existing HTTPS/domain checks and the same five-source cap.
             queries = [question]
             if iterative and mode == "deep":
-                queries.append(
-                    ("original primary-source evidence documentation " + question)[:600]
-                )
+                queries.append(plan_second_query(question, planning_provider))
             seen: set[str] = set()
             limit = min(10, max_sources + 5) if mode in ("compare", "deep") else max_sources
             per_search = min(6, max_sources + 1) if len(queries) > 1 else min(10, max_sources + 5)
@@ -333,7 +338,7 @@ def research_web(
         ],
     }
     # Each source is bounded; no HTML/scripts are run or directly fetched.
-    llm = provider or create_configured_llm_provider()
+    llm = planning_provider or create_configured_llm_provider()
     generation = llm.generate(
         instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode],
         input_text=json.dumps(body, ensure_ascii=False),
