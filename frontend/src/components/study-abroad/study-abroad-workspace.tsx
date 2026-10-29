@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { DocumentResponse } from "@/types/document";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
+import { studyUploadErrorMessage } from "@/lib/study-upload-errors";
 
 type ChecklistItem = {
   title: string;
@@ -294,17 +295,20 @@ export function StudyAbroadWorkspace() {
       const result = await fetch("/api/documents/upload", {
         method: "POST", body: payload,
       });
-      const raw = await result.json() as DocumentResponse | {
-        detail?: { document_id?: string; message?: string } | string;
-      };
+      const raw = await result.json().catch(() => null) as
+        | DocumentResponse
+        | { detail?: { document_id?: string; message?: string } | string }
+        | null;
       let documentId = "";
-      if (result.ok && "id" in raw) {
+      if (result.ok && raw && "id" in raw && typeof raw.id === "string") {
         documentId = raw.id;
-      } else if ("detail" in raw && raw.detail &&
-        typeof raw.detail === "object" && raw.detail.document_id) {
+      } else if (result.status === 409 && raw && "detail" in raw &&
+        raw.detail && typeof raw.detail === "object" &&
+        typeof raw.detail.document_id === "string") {
+        // Only a verified duplicate (409) may reuse a previously uploaded file.
         documentId = raw.detail.document_id;
       } else {
-        throw new Error("Upload failed. Use a supported file under 25 MiB.");
+        throw new Error(studyUploadErrorMessage(result.status));
       }
       const process = await fetch(
         "/api/documents/" + encodeURIComponent(documentId) + "/process",
