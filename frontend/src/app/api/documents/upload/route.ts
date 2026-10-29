@@ -34,10 +34,18 @@ export async function POST(request: NextRequest) {
         { detail: "Multipart form data is required" }, { status: 415 },
       );
     }
-    const maxBodyBytes = process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
-      ? MAX_PROXY_FILE_BYTES + 128 * 1024
-      : MAX_MULTIPART_BYTES;
-    const bytes = await readBoundedBodyBytes(request, maxBodyBytes);
+    // Preserve the existing bounded reader contract. Fast-reject
+    // oversized browser-proxy bodies even before multipart parsing.
+    if (
+      process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true" &&
+      Number(request.headers.get("content-length") || 0) >
+        MAX_PROXY_FILE_BYTES + 128 * 1024
+    ) {
+      return NextResponse.json(
+        { detail: "Document file is too large" }, { status: 413 },
+      );
+    }
+    const bytes = await readBoundedBodyBytes(request, MAX_MULTIPART_BYTES);
     const boundedBytes = new Uint8Array(bytes.byteLength);
     boundedBytes.set(bytes);
     const bounded = new Request(request.url, {
