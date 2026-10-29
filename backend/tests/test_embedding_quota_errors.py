@@ -141,3 +141,41 @@ def test_grounded_ai_file_embedding_failure_is_sanitized_and_no_artifact_saved(
     assert expected_text in response.json()["detail"].lower()
     assert "private Hugging Face" not in response.text
     assert "file" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (EmbeddingProviderQuotaError("private billing error"), "quota"),
+        (EmbeddingProviderRequestError("private transport details"), "provider is unavailable"),
+    ],
+)
+def test_study_case_document_rag_unavailable_never_invents_visa_evidence(
+    monkeypatch, error, expected,
+):
+    import app.api.study_abroad as study_api
+    from fastapi import HTTPException
+    from app.schemas.study_abroad import StudyDocumentQuestion
+
+    class ReadOnlyCaseDb:
+        def scalars(self, _statement):
+            return SimpleNamespace(all=lambda: [str(uuid4())])
+
+    def fail_embedding(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(study_api, "owned_case", lambda *args: object())
+    monkeypatch.setattr(study_api, "answer_question", fail_embedding)
+    with pytest.raises(HTTPException) as raised:
+        study_api.ask_study_documents(
+            case_id=str(uuid4()),
+            body=StudyDocumentQuestion(
+                question="What does the supporting document prove?",
+                confirm_share_documents=True,
+            ),
+            user=SimpleNamespace(id=uuid4()),
+            db=ReadOnlyCaseDb(),
+        )
+    assert raised.value.status_code == 503
+    assert expected in raised.value.detail.lower()
+    assert "private" not in raised.value.detail.lower()
