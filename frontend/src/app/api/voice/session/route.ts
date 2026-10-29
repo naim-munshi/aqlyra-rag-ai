@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import {
   backendUrl,
@@ -39,6 +40,15 @@ type ApiError = {
 export async function POST(
   request: Request,
 ) {
+  // An authenticated voice-room token cannot be minted from a cross-site
+  // POST using the user's session cookie.
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const accessToken =
     await getAccessToken();
 
