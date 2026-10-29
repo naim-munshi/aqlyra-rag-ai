@@ -34,7 +34,10 @@ export async function POST(request: NextRequest) {
         { detail: "Multipart form data is required" }, { status: 415 },
       );
     }
-    const bytes = await readBoundedBodyBytes(request, MAX_MULTIPART_BYTES);
+    const maxBodyBytes = process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+      ? MAX_PROXY_FILE_BYTES + 128 * 1024
+      : MAX_MULTIPART_BYTES;
+    const bytes = await readBoundedBodyBytes(request, maxBodyBytes);
     const boundedBytes = new Uint8Array(bytes.byteLength);
     boundedBytes.set(bytes);
     const bounded = new Request(request.url, {
