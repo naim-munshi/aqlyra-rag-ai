@@ -291,7 +291,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="aq-scrollbar flex h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] px-4 py-5">
+      <aside className="aq-scrollbar flex h-full w-full min-w-0 flex-col overflow-y-auto overscroll-contain border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] px-4 py-5 md:w-[244px]">
         <div className="px-2">
           <AqlyraLogo size={46} />
         </div>
