@@ -27,3 +27,12 @@ test("canonical navigation routes and recovery links exist", () => {
   assert.ok(existsSync(path.join(root, "src/app/api/auth/reset-password/route.ts")));
   assert.match(source, /href="\/login"/);
 });
+
+
+test("quota errors offer explicit choice to switch from document RAG to normal chat", () => {
+  const chat = readFileSync(path.join(root, "src/components/chat/rag-workspace.tsx"), "utf8");
+  assert.ok(chat.includes('turn.error.toLowerCase().includes("embedding service quota")'));
+  assert.ok(chat.includes('switchChatMode("normal")'));
+  assert.ok(chat.includes("without document search"));
+  assert.ok(chat.includes("setQuestion(turn.question)"));
+});
