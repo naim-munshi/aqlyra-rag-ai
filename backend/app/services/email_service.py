@@ -1,5 +1,6 @@
 from email.message import EmailMessage
 import base64
+import logging
 from email.utils import formataddr
 import smtplib
 import ssl
@@ -8,6 +9,39 @@ import httpx
 from email_validator import EmailNotValidError, validate_email
 
 from app.config.settings import settings
+
+
+_logger = logging.getLogger(__name__)
+
+# Never print arbitrary Gmail API errors: response bodies can contain
+# account metadata. Only these documented/reviewed error classes may
+# enter operator logs; every other reason is reduced to "unspecified".
+_SAFE_GMAIL_FAILURE_REASONS = frozenset({
+    "insufficientPermissions", "accessNotConfigured", "forbidden",
+    "rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded",
+    "quotaExceeded", "failedPrecondition",
+    "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "UNAUTHENTICATED",
+    "FAILED_PRECONDITION",
+})
+
+
+def _safe_gmail_failure_reason(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except (AttributeError, TypeError, ValueError):
+        return "unspecified"
+    if not isinstance(payload, dict):
+        return "unspecified"
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return "unspecified"
+    reasons = error.get("errors")
+    candidate = None
+    if isinstance(reasons, list) and reasons and isinstance(reasons[0], dict):
+        candidate = reasons[0].get("reason")
+    if candidate not in _SAFE_GMAIL_FAILURE_REASONS:
+        candidate = error.get("status")
+    return candidate if candidate in _SAFE_GMAIL_FAILURE_REASONS else "unspecified"
 
 
 class EmailDeliveryError(Exception):
@@ -180,6 +214,11 @@ def _send_via_gmail_api(message: EmailMessage) -> None:
             follow_redirects=False,
         )
         if send_response.status_code != 200:
+            _logger.warning(
+                "gmail_send_rejected status=%s reason=%s",
+                send_response.status_code,
+                _safe_gmail_failure_reason(send_response),
+            )
             raise EmailDeliveryError("Authentication email delivery failed")
         result = send_response.json()
         if not isinstance(result, dict) or not result.get("id"):
