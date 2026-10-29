@@ -8,6 +8,7 @@ import { readBoundedBodyBytes, RequestBodyTooLargeError } from "@/lib/security/r
 
 // 25 MiB backend file cap plus at most 1 MiB multipart envelope overhead.
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_PROXY_FILE_BYTES = 3 * 1024 * 1024;
 const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 1024 * 1024;
 
 type ErrorResponse = {
@@ -51,7 +52,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (file.size > MAX_FILE_BYTES) {
+    const maxBytes = process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+      ? MAX_PROXY_FILE_BYTES : MAX_FILE_BYTES;
+    if (file.size > maxBytes) {
       return NextResponse.json(
         { detail: "Document file is too large" }, { status: 413 },
       );
@@ -61,7 +64,11 @@ export async function POST(request: NextRequest) {
     backendFormData.append("file", file);
 
     const response = await fetch(
-      backendUrl("/documents/upload"),
+      backendUrl(
+        process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+          ? "/documents/cloud/proxy"
+          : "/documents/upload",
+      ),
       {
         method: "POST",
         headers: {
