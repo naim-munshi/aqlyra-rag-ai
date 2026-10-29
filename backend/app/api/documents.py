@@ -94,7 +94,14 @@ async def upload_document(
     ),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
-    # Prevent silent loss of new documents on an ephemeral production disk.\n    if not local_writes_permitted():\n        raise HTTPException(\n            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,\n            detail="Durable document storage is not configured. Upload is temporarily unavailable.",\n        )\n    try:\n        pending_upload = (
+    # Prevent silent loss of new documents on an ephemeral production disk.
+    if not local_writes_permitted():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Durable document storage is not configured. Upload is temporarily unavailable.",
+        )
+    try:
+        pending_upload = (
             await save_upload_to_temporary_storage(
                 upload=file,
                 user_id=str(current_user.id),
