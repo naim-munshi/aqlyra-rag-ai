@@ -46,6 +46,13 @@ _QUESTION = re.compile(
     r"とは|ですか|調べ|教えて|比較",
     re.IGNORECASE,
 )
+_PUBLIC_LOOKUP_REQUEST = re.compile(
+    r"\b(?:i|we)\s+(?:want|need)\s+(?:(?:to\s+know)\s+)?"
+    r"(?:(?:the|some)\s+)?(?:latest|current|recent|newest)\b"
+    r"|(?:show|give)\s+me\s+(?:(?:the|some)\s+)?"
+    r"(?:latest|current|recent|newest)\b",
+    re.IGNORECASE,
+)
 _PRIVATE_ONLY = re.compile(
     r"\b(?:my uploaded|my private document|my file|our internal file|"
     r"my password|my api key|my otp|my conversation|our chat history)\b"
@@ -69,7 +76,9 @@ def choose_web_mode(question: str, mode: WebMode = "auto") -> str | None:
         if (_PRIVATE_ONLY.search(question) or _PERSONAL_CONTEXT.search(question)) and not _EXPLICIT_SEARCH.search(question):
             return None
         if not _EXPLICIT_SEARCH.search(question) and not (
-            _CURRENT.search(question) and _QUESTION.search(question)
+            _CURRENT.search(question) and (
+                _QUESTION.search(question) or _PUBLIC_LOOKUP_REQUEST.search(question)
+            )
         ):
             return None
     if mode == "deep" or _DEEP.search(question):
