@@ -152,9 +152,12 @@ def run(client: Client) -> None:
         "POST", "/api/v1/rag/answer",
         data={"question": "private question"},
     ), 401, "anonymous RAG")
-    expect(client.request(
-        "GET", "/api/v1/study-abroad/workflows",
-    ), 200, "Study Abroad workflow metadata")
+    workflows = client.request("GET", "/api/v1/study-abroad/workflows")
+    if workflows.status != 200 or not isinstance(workflows.payload, list):
+        raise SmokeFailure("Study Abroad workflow metadata unavailable")
+    if not any(isinstance(item, dict) and item.get("id") == "student"
+               and item.get("enabled") for item in workflows.payload):
+        raise SmokeFailure("Student workflow missing or disabled")
     expect(client.request(
         "GET", "/api/v1/study-abroad/cases",
     ), 401, "anonymous private Study Abroad cases")
