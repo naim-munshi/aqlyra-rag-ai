@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.config.settings import settings
+from app.services.storage_durability_policy import artifact_writes_permitted
 from app.core.rate_limit import limit_process_request, limit_rag_request
 from app.database.connection import get_db
 from app.llms import LLMError, create_configured_llm_provider
@@ -45,11 +46,20 @@ class RenderArtifactRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
 
 
+def _require_durable_artifact_storage() -> None:
+    if not artifact_writes_permitted():
+        raise HTTPException(
+            status_code=503,
+            detail="Durable artifact storage is not configured. File creation is temporarily unavailable.",
+        )
+
+
 def _persist(
     *, user_id: str, title: str, format: ArtifactFormat,
     content: str, provider: str, sources: list[str],
     citations: int,
 ) -> dict:
+    _require_durable_artifact_storage()
     try:
         return create_artifact(
             user_id=user_id, title=title.strip(), kind=format,
@@ -69,6 +79,7 @@ def generate(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
+    _require_durable_artifact_storage()
     user_id = str(current_user.id)
     prompt = request.prompt.strip()
     if len(prompt) < 5:
@@ -177,6 +188,7 @@ def render(
     request: RenderArtifactRequest,
     current_user: User = Depends(get_current_user),
 ) -> dict:
+    _require_durable_artifact_storage()
     try:
         return _persist(
             user_id=str(current_user.id), title=request.title,
