@@ -81,6 +81,37 @@ def choose_web_mode(question: str, mode: WebMode = "auto") -> str | None:
     return "search"
 
 
+def detect_time_range(question: str) -> str | None:
+    """Tavily freshness filter is a hint; never infer actual publication dates."""
+    if re.search(
+        r"\b(?:today|tonight|yesterday|right now)\b|"
+        r"今日|本日|আজকের|আজকে|আজ",
+        question, re.IGNORECASE,
+    ):
+        return "day"
+    if re.search(
+        r"\b(?:this week|past week|last week)\b|"
+        r"今週|এই সপ্তাহ",
+        question, re.IGNORECASE,
+    ):
+        return "week"
+    if re.search(
+        r"\b(?:this month|past month|last month)\b|"
+        r"今月|এই মাস",
+        question, re.IGNORECASE,
+    ):
+        return "month"
+    if re.search(
+        r"\b(?:this year|past year|last year)\b|"
+        r"今年|এই বছর",
+        question, re.IGNORECASE,
+    ):
+        return "year"
+    if _CURRENT.search(question):
+        return "month"
+    return None
+
+
 def cited_web_answer(answer: str, sources: list) -> str:
     """Append clickable, checked-source links without trusting source titles as Markdown."""
     entries = []
