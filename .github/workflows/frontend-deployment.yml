@@ -2,7 +2,7 @@ name: Frontend and Deployment Checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/password-reset-chat-provider-20261029]
     paths:
       - "frontend/**"
       - "backend/**"
