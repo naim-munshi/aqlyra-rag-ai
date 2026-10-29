@@ -162,6 +162,8 @@ export function VoiceCallButton({
     useRef<Room | null>(null);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
+  const startingRef = useRef(false);
+  const sessionRequestControllerRef = useRef<AbortController | null>(null);
   const agentJoinTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -205,27 +207,37 @@ export function VoiceCallButton({
   const [needsAudioUnlock, setNeedsAudioUnlock] =
     useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/voice/status", {
-      cache: "no-store",
-      signal: controller.signal,
-    }).then(async response => {
+  async function refreshVoiceAvailability(signal?: AbortSignal) {
+    try {
+      const response = await fetch("/api/voice/status", {
+        cache: "no-store",
+        signal,
+      });
       if (!response.ok) throw new Error("Voice status unavailable");
       const data = (await response.json()) as VoiceAvailability;
       if (typeof data.available !== "boolean") {
         throw new Error("Invalid voice status");
       }
-      setAvailability(data);
-    }).catch(() => {
-      if (!controller.signal.aborted) {
+      if (!signal?.aborted) {
+        setAvailability(data);
+        if (data.available) setError("");
+      }
+    } catch {
+      if (!signal?.aborted) {
         setAvailability({
           available: false,
           detail: "Voice calling is temporarily unavailable. Please use text chat.",
         });
       }
-    });
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshVoiceAvailability(controller.signal);
     return () => controller.abort();
+    // Check on mount; the explicit retry button can refresh worker availability.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -299,6 +311,9 @@ export function VoiceCallButton({
 
   async function endCall() {
     callAttemptRef.current += 1;
+    sessionRequestControllerRef.current?.abort();
+    sessionRequestControllerRef.current = null;
+    startingRef.current = false;
     clearAgentJoinTimer();
     const room =
       roomRef.current;
@@ -334,7 +349,8 @@ export function VoiceCallButton({
     if (
       disabled ||
       active ||
-      starting
+      starting ||
+      startingRef.current
     ) {
       return;
     }
@@ -348,6 +364,7 @@ export function VoiceCallButton({
     }
 
     clearAgentJoinTimer();
+    startingRef.current = true;
     const attempt = ++callAttemptRef.current;
     setStarting(true);
     setError("");
@@ -374,30 +391,30 @@ export function VoiceCallButton({
       }
       microphoneTrackRef.current = microphoneTrack;
 
-      const response =
-        await fetch(
-          "/api/voice/session",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              mode,
-              ...(conversationId
-                ? {
-                    conversation_id:
-                      conversationId,
-                  }
-                : {}),
-              title:
-                "Voice conversation",
-              document_ids:
-                documentIds,
-            }),
-          },
-        );
+      // Bound backend waiting time so a stalled network cannot hold the
+      // microphone indefinitely. End Call and unmount abort the request.
+      const requestController = new AbortController();
+      sessionRequestControllerRef.current = requestController;
+      const timeoutId = setTimeout(() => requestController.abort(), 15000);
+      let response: Response;
+      try {
+        response = await fetch("/api/voice/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            ...(conversationId ? { conversation_id: conversationId } : {}),
+            title: "Voice conversation",
+            document_ids: documentIds,
+          }),
+          signal: requestController.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+        if (sessionRequestControllerRef.current === requestController) {
+          sessionRequestControllerRef.current = null;
+        }
+      }
 
       const data =
         (await response.json()) as
@@ -631,6 +648,7 @@ export function VoiceCallButton({
 
       setMuted(false);
       setActive(true);
+      startingRef.current = false;
       setStarting(false);
       setNeedsAudioUnlock(!room.canPlaybackAudio);
 
@@ -654,6 +672,7 @@ export function VoiceCallButton({
       if (roomRef.current === room) roomRef.current = null;
       if (callAttemptRef.current !== attempt) return;
 
+      startingRef.current = false;
       clearAudioElements();
 
       const message =
@@ -661,9 +680,12 @@ export function VoiceCallButton({
         (startError.name === "NotAllowedError" ||
          startError.name === "PermissionDeniedError")
           ? "Microphone access was denied. Allow the microphone in Safari or browser settings and retry."
-          : startError instanceof Error
-            ? startError.message
-            : "Unable to start voice conversation.";
+          : startError instanceof DOMException &&
+            startError.name === "AbortError"
+            ? "The voice connection timed out or was cancelled. Please retry."
+            : startError instanceof Error
+              ? startError.message
+              : "Unable to start voice conversation.";
 
       setError(message);
       setAgentState("error");
@@ -723,6 +745,9 @@ export function VoiceCallButton({
   useEffect(() => {
     return () => {
       callAttemptRef.current += 1;
+      sessionRequestControllerRef.current?.abort();
+      sessionRequestControllerRef.current = null;
+      startingRef.current = false;
       clearAgentJoinTimer();
       stopMicrophoneTrack();
       const room =
@@ -764,6 +789,15 @@ export function VoiceCallButton({
             className="absolute bottom-[calc(100%+8px)] right-0 z-40 w-[min(300px,calc(100vw-24px))] rounded-xl border border-red-500/30 bg-[var(--aq-panel)] p-3 text-xs leading-5 text-[var(--aq-text)] shadow-xl"
           >
             {error}
+            {availability?.available === false && (
+              <button
+                type="button"
+                onClick={() => { void refreshVoiceAvailability(); }}
+                className="ml-2 font-semibold text-[var(--aq-cyan)] underline"
+              >
+                Check voice availability again
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setError("")}
