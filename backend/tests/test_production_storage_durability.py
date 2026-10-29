@@ -20,7 +20,6 @@ from app.services.storage_durability_policy import (
 def ephemeral_production(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED", False)
-    monkeypatch.setattr(settings, "ARTIFACT_REMOTE_STORAGE_ENABLED", False)
 
 
 def test_ephemeral_production_disallows_new_local_writes(ephemeral_production):
