@@ -68,18 +68,25 @@ export function ForgotPasswordForm() {
       }
       // Only after a successful single-use recovery code: sign in through
       // the existing secure login endpoint, which sets an HttpOnly cookie.
-      const login = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
-      });
+      let signedIn = false;
+      try {
+        const login = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password,
+          }),
+        });
+        signedIn = login.ok;
+      } catch {
+        // The recovery code was already consumed and password updated.
+        // Fallback to manual sign-in; never ask to reuse a single-use code.
+      }
       setPassword("");
       setConfirmPassword("");
       setCode("");
-      if (login.ok) {
+      if (signedIn) {
         router.replace("/");
         router.refresh();
         return;
