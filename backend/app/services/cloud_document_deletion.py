@@ -14,6 +14,7 @@ from app.core.datetime_utils import utc_now_naive
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
 from app.services.cloud_document_access import verified_cloud_document_key
+from app.services.study_document_integrity import reconcile_document_before_delete
 from app.services.private_object_storage import (
     PrivateObjectStorageError, _client, assert_owned_key,
 )
@@ -47,6 +48,9 @@ def delete_cloud_document(*, db: Session, owner_id: str, document_id: str):
             raise PrivateObjectStorageError("Private document deletion binding unavailable")
         # The staging key comes from owner-verified SQL, never from the client.
         assert_owned_key(owner_id=owner_id, key=intent.object_key)
+        # Fail closed on corrupted cross-tenant case associations BEFORE
+        # deleting any remote bytes. A later S3 failure rolls this back.
+        reconcile_document_before_delete(db=db, document=locked)
         store = _client(settings)
         bucket = settings.OBJECT_STORAGE_BUCKET
         if intent.stage_deleted_at is None:
