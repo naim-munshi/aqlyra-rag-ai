@@ -59,6 +59,11 @@ class WebResearchEvidenceError(Exception):
 def safe_public_url(value: object) -> str | None:
     if not isinstance(value, str) or len(value) > 2048:
         return None
+    # urlsplit can silently strip newlines: never reflect such a raw URL into
+    # chat Markdown or send it to an extraction provider.
+    if any(character.isspace() or ord(character) < 32 or ord(character) == 127
+           for character in value):
+        return None
     try:
         parsed = urlsplit(value)
         host = (parsed.hostname or "").rstrip(".").lower()
@@ -341,6 +346,12 @@ def research_web(
         set(range(1, len(sources) + 1))
     ):
         raise WebResearchEvidenceError("Generated answer has no valid source citations")
+    # The AI may quote approved sources, but must never introduce unverified
+    # external URLs; citations [W#] alone do not validate arbitrary links.
+    approved_urls = {source.url for source in sources}
+    for visible_url in re.findall(r"https?://[^\\s<>)\\]]+", text):
+        if visible_url.rstrip(".,;!?") not in approved_urls:
+            raise WebResearchEvidenceError("Generated answer contains unapproved external links")
 
     return WebResearchResponse(
         question=question,
