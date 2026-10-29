@@ -20,6 +20,7 @@ def _configure(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "voice-test-key")
     monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", "voice-test-secret-do-not-use")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
+    monkeypatch.setattr(settings, "VOICE_AGENT_READY", True)
 
 
 def _jwt_claims(token: str) -> dict:
@@ -38,6 +39,21 @@ def test_missing_voice_provider_credentials_fail_closed(monkeypatch, missing):
 
     with pytest.raises(voice.VoiceConfigurationError, match="not configured"):
         voice._require_voice_configuration()
+
+
+def test_explicit_worker_acceptance_required_before_tokens(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "VOICE_AGENT_READY", False)
+    assert voice.voice_is_ready() is False
+    with pytest.raises(voice.VoiceConfigurationError, match="not configured"):
+        voice._require_voice_configuration()
+
+
+def test_authenticated_voice_status_never_exposes_secrets(client, monkeypatch):
+    monkeypatch.setattr(settings, "VOICE_AGENT_READY", False)
+    response = client.get("/api/v1/voice/status")
+    assert response.status_code == 401
+    assert "participant_token" not in response.text
 
 
 def test_missing_worker_agent_name_fails_closed(monkeypatch):
