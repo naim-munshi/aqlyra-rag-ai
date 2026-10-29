@@ -44,8 +44,8 @@ def test_explicit_control_respects_fail_closed_configuration(monkeypatch):
 def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
     monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
     calls = []
-    def mock_research(question, *, max_sources, mode, provider, iterative):
-        calls.append((question, max_sources, mode, iterative))
+    def mock_research(question, *, max_sources, mode, time_range, provider, iterative):
+        calls.append((question, max_sources, mode, time_range, iterative))
         return SimpleNamespace(
             answer="The public result is verified [W1].",
             sources=[SimpleNamespace(
@@ -64,7 +64,7 @@ def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
         db=Mock(), conversation=private_conversation,
         message="What are the latest AI developments?", web_mode="auto",
     )
-    assert calls == [("What are the latest AI developments?", 5, "search", False)]
+    assert calls == [("What are the latest AI developments?", 5, "search", "month", False)]
     assert "[W1]" in result.content
     assert "[Source  untrusted  markdown](https://example.org/report)" in result.content
     assert "[S1]" not in result.content
@@ -104,3 +104,25 @@ def test_web_mode_schema_rejects_untrusted_values():
     assert ConversationMessageCreate(content="hello", web_mode="off").web_mode == "off"
     with pytest.raises(ValidationError):
         ConversationMessageCreate(content="hello", web_mode="arbitrary_url")
+
+@pytest.mark.parametrize("question,window", [
+    ("Find today's AI news", "day"),
+    ("What happened this week?", "week"),
+    ("Review this month news", "month"),
+    ("This year's market changes", "year"),
+    ("Latest scientific discoveries", "month"),
+    ("Explain Python closures", None),
+])
+def test_freshness_window(question, window):
+    assert planner.detect_time_range(question) == window
+
+
+def test_overlong_explicit_web_message_fails_before_external_provider(monkeypatch):
+    monkeypatch.setattr(chat_service, "research_web",
+                        lambda *args, **kwargs: pytest.fail("Oversized prompt leaked to provider"))
+    question = "latest news " + ("x" * 610)
+    with pytest.raises(chat_service.ChatValidationError, match="600 characters"):
+        chat_service.execute_chat_turn(
+            db=Mock(), conversation=SimpleNamespace(mode="normal"),
+            message=question, web_mode="on",
+        )
