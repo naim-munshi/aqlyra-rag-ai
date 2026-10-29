@@ -12,6 +12,7 @@ from app.services import chat_service
     ("question", "expected"),
     [
         ("What are the latest AI research developments this month?", "search"),
+        ("I want the latest verified AI news", "search"),
         ("Compare the latest GPU inference prices", "compare"),
         ("Fact-check whether today's headline is correct", "fact_check"),
         ("Do a deep research on current AI agents", "deep"),
@@ -112,6 +113,7 @@ def test_web_mode_schema_rejects_untrusted_values():
     ("This year's market changes", "year"),
     ("Latest scientific discoveries", "month"),
     ("Explain Python closures", None),
+    ("Explain the 2028 admission process", None),
 ])
 def test_freshness_window(question, window):
     assert planner.detect_time_range(question) == window
