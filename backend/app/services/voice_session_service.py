@@ -180,18 +180,20 @@ def create_voice_session(
 ) -> VoiceSessionResult:
     _require_voice_configuration()
 
+    # Reject foreign or unprocessed documents before creating a
+    # persistent conversation (no abandoned conversations on 422).
+    _validate_documents(
+        db=db,
+        user=user,
+        document_ids=document_ids,
+    )
+
     conversation = _resolve_conversation(
         db=db,
         user=user,
         mode=mode,
         conversation_id=conversation_id,
         title=title,
-    )
-
-    _validate_documents(
-        db=db,
-        user=user,
-        document_ids=document_ids,
     )
 
     room_name = (
