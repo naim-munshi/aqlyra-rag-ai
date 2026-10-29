@@ -126,3 +126,92 @@ def test_overlong_explicit_web_message_fails_before_external_provider(monkeypatc
             db=Mock(), conversation=SimpleNamespace(mode="normal"),
             message=question, web_mode="on",
         )
+
+
+def test_authenticated_auto_web_chat_persists_cited_reply(client, monkeypatch):
+    """Real authenticated conversation API: web response is saved and readable."""
+    from app.schemas.web_research import WebResearchSource
+
+    monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
+    searched = []
+    def mock_research(question, **options):
+        searched.append((question, options["mode"], options["time_range"]))
+        return SimpleNamespace(
+            answer="The verified finding [W1].",
+            sources=[WebResearchSource(
+                citation="[W1]", title="Official evidence",
+                url="https://example.org/official", excerpt="Evidence",
+                published_date=None,
+            )],
+            provider_name="mock-live", model_name="mock-source",
+        )
+    monkeypatch.setattr(chat_service, "research_web", mock_research)
+    registered = client.post("/api/v1/auth/register", json={
+        "username": "auto_web_user",
+        "email": "auto_web_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert registered.status_code == 201
+    login = client.post("/api/v1/auth/login", json={
+        "email": "auto_web_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    create = client.post("/api/v1/conversations", json={
+        "title": "AI news", "mode": "normal",
+    }, headers=headers)
+    assert create.status_code == 201
+    conv_id = create.json()["id"]
+    question = "What is the latest AI news this week?"
+    response = client.post(
+        f"/api/v1/conversations/{conv_id}/messages",
+        json={"content": question, "web_mode": "auto"}, headers=headers,
+    )
+    assert response.status_code == 200, response.text[:500]
+    answer = response.json()["assistant_message"]
+    assert answer["content"].startswith("The verified finding [W1].")
+    assert "https://example.org/official" in answer["content"]
+    assert searched == [(question, "search", "week")]
+    restored = client.get(
+        f"/api/v1/conversations/{conv_id}/messages", headers=headers,
+    )
+    assert restored.status_code == 200
+    assert any("https://example.org/official" in m["content"]
+               for m in restored.json() if m["role"] == "assistant")
+
+
+def test_authenticated_streamed_forced_web_keeps_sse_contract(client, monkeypatch):
+    monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(chat_service, "research_web", lambda question, **kwargs: SimpleNamespace(
+        answer="Sourced [W1].",
+        sources=[SimpleNamespace(citation="[W1]", title="Official",
+                                 url="https://example.org/source")],
+        provider_name="stub", model_name="stub",
+    ))
+    client.post("/api/v1/auth/register", json={
+        "username": "auto_web_stream_user",
+        "email": "auto_web_stream_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    login = client.post("/api/v1/auth/login", json={
+        "email": "auto_web_stream_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    create = client.post("/api/v1/conversations", json={
+        "title": "Web SSE", "mode": "normal",
+    }, headers=headers)
+    assert create.status_code == 201
+    conv_id = create.json()["id"]
+    result = client.post(
+        f"/api/v1/conversations/{conv_id}/messages/stream",
+        json={"content": "Find official evidence", "web_mode": "on"},
+        headers=headers,
+    )
+    assert result.status_code == 200
+    assert "event: start" in result.text
+    assert "event: delta" in result.text
+    assert "event: complete" in result.text
+    assert "https://example.org/source" in result.text
