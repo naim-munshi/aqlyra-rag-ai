@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.embeddings import EmbeddingProviderQuotaError, EmbeddingProviderRequestError
 from app.config.settings import settings
 from app.services.storage_durability_policy import artifact_writes_permitted
 from app.core.rate_limit import limit_process_request, limit_rag_request
@@ -114,6 +115,21 @@ def generate(
                 document_ids=tuple(ids),
                 top_k=8, max_context_tokens=3000,
             )
+        except EmbeddingProviderQuotaError as exc:
+            # Do not create an uncited artifact or reveal provider billing data.
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Document search is temporarily unavailable because "
+                    "the embedding service quota was exhausted. "
+                    "The requested file was not created; try again later."
+                ),
+            ) from exc
+        except EmbeddingProviderRequestError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Document search is temporarily unavailable. No file created.",
+            ) from exc
         except LLMError as exc:
             raise HTTPException(
                 status_code=503, detail="RAG provider unavailable",
