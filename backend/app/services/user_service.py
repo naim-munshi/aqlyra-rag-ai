@@ -12,6 +12,7 @@ from app.auth.security import (
 )
 from app.core.datetime_utils import utc_now_naive
 from app.models.user import User
+from app.models.email_verification_code import EmailVerificationCode
 from app.schemas.user import UserCreate
 
 
@@ -117,6 +118,44 @@ def create_user(
         ) from exc
 
     return user
+
+
+
+def discard_new_registration_after_email_failure(
+    db: Session, *, user_id: str
+) -> bool:
+    """Remove only a never-verified, unclaimed registration with no OTPs.
+
+    A failed email must not leave a permanently reserved email/username.
+    Never remove a verified, Google-linked, or separately challenged record.
+    """
+    pending = db.scalar(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    if (
+        pending is None
+        or pending.email_verified_at is not None
+        or pending.google_subject is not None
+    ):
+        db.rollback()
+        return False
+
+    another_code = db.scalar(
+        select(EmailVerificationCode.id)
+        .where(EmailVerificationCode.user_id == user_id)
+        .limit(1)
+    )
+    if another_code is not None:
+        db.rollback()
+        return False
+
+    db.delete(pending)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return False
+    return True
 
 
 def _google_username(
