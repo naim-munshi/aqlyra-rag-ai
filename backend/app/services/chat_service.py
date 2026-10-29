@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.services.auto_web_research_service import (
     choose_web_mode,
+    detect_time_range,
     cited_web_answer,
 )
 from app.services.web_research_service import research_web
@@ -607,6 +608,7 @@ def generate_web_chat_reply(
         message,
         max_sources=5,
         mode=research_mode,
+        time_range=detect_time_range(message),
         provider=provider,
         iterative=(research_mode == "deep"),
     )
@@ -951,6 +953,10 @@ def execute_chat_turn(
 
         research_mode = choose_web_mode(cleaned, web_mode)
         if research_mode is not None:
+            if len(cleaned) > 600:
+                raise ChatValidationError(
+                    "Web research questions must be at most 600 characters"
+                )
             return generate_web_chat_reply(
                 message=cleaned,
                 research_mode=research_mode,
