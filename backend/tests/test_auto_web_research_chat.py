@@ -21,6 +21,9 @@ from app.services import chat_service
         ("Write a poem about today", None),
         ("Please summarize my uploaded document today", None),
         ("What are the latest jobs? Do not use web.", None),
+        ("Don't use the web. What is current today?", None),
+        ("What happened to my account today?", None),
+        ("What are the latest updates about my uploaded private document?", None),
     ],
 )
 def test_auto_web_intent(monkeypatch, question, expected):
