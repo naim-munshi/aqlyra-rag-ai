@@ -91,3 +91,53 @@ def test_document_processing_quota_is_retriable_and_not_generic_500(
     assert result.status_code == 503
     assert "quota" in result.json()["detail"].lower()
     assert "billing error" not in result.text
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_text"),
+    [
+        (EmbeddingProviderQuotaError("private Hugging Face billing URL"), "quota"),
+        (EmbeddingProviderRequestError("private Hugging Face connection URL"), "temporarily unavailable"),
+    ],
+)
+def test_grounded_ai_file_embedding_failure_is_sanitized_and_no_artifact_saved(
+    client: TestClient, db_session, monkeypatch, failure, expected_text,
+):
+    import app.api.artifacts as artifact_api
+    from app.config.settings import settings
+
+    owner = User(
+        email="quota-artifact@example.com",
+        username="quotaartifact",
+        hashed_password="test",
+    )
+    db_session.add(owner)
+    db_session.commit()
+    db_session.refresh(owner)
+    app.dependency_overrides[get_current_user] = lambda: owner
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(
+        artifact_api, "get_user_document",
+        lambda **_: SimpleNamespace(status="ready"),
+    )
+    def fail_retrieval(**kwargs):
+        raise failure
+    def no_file_written(**kwargs):
+        raise AssertionError("No artifact must be saved on embedding failure")
+    monkeypatch.setattr(artifact_api, "answer_question", fail_retrieval)
+    monkeypatch.setattr(artifact_api, "create_artifact", no_file_written)
+
+    response = client.post(
+        "/api/v1/artifacts/generate",
+        json={
+            "title": "Grounded evidence",
+            "format": "pdf",
+            "prompt": "Generate a grounded report about the source.",
+            "document_ids": [str(uuid4())],
+            "confirm_share_documents": True,
+        },
+    )
+    assert response.status_code == 503
+    assert expected_text in response.json()["detail"].lower()
+    assert "private Hugging Face" not in response.text
+    assert "file" in response.json()["detail"].lower()
