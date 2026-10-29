@@ -329,9 +329,11 @@ export function VoiceCallButton({
       return;
     }
 
-    if (availability?.available === false) {
-      setError(availability.detail);
-      onError?.(availability.detail);
+    if (!availability?.available) {
+      const message = availability?.detail ??
+        "Checking voice availability. Please try again shortly.";
+      setError(message);
+      onError?.(message);
       return;
     }
 
