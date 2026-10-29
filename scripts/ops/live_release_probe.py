@@ -103,14 +103,16 @@ def main(argv: list[str] | None = None) -> int:
             if valid and name == "liveness":
                 valid = isinstance(payload, dict) and payload.get("status") == "healthy"
             if valid and name == "database_storage_redis":
+                # Readiness is for the process, database and Redis. Deliberate
+                # production upload denial on ephemeral disk is a safe,
+                # observable state, NOT proof that private files are durable.
+                checks_payload = payload.get("checks") if isinstance(payload, dict) else None
                 valid = (
-                    isinstance(payload, dict)
+                    isinstance(checks_payload, dict)
                     and payload.get("status") == "ready"
-                    and isinstance(payload.get("checks"), dict)
-                    and all(
-                        payload["checks"].get(k) == "ready"
-                        for k in ("database", "storage", "redis")
-                    )
+                    and checks_payload.get("database") == "ready"
+                    and checks_payload.get("redis") == "ready"
+                    and checks_payload.get("storage") in ("ready", "writes_disabled")
                 )
             if valid and name == "study_abroad_workflow" and args.expected_phase in ("study-core", "full"):
                 valid = isinstance(payload, list) and any(
@@ -120,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
                     for workflow in payload
                 )
             if valid:
-                print(f"PASS {name}: HTTP {status}", flush=True)
+                if name == "database_storage_redis" and payload["checks"]["storage"] == "writes_disabled":
+                    print("PASS database_storage_redis: HTTP 200 (document uploads disabled; not durable)", flush=True)
+                else:
+                    print(f"PASS {name}: HTTP {status}", flush=True)
             else:
                 reason = ""
                 # Whitelist safe generic backend readiness messages only.
