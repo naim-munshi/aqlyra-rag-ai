@@ -64,11 +64,11 @@ export default function RegisterPage() {
               </p>
 
               <h2 className="mt-3 text-[32px] font-bold tracking-tight">
-                Create your account
+                Verify your email to join
               </h2>
 
               <p className="mt-3 text-[15px] leading-6 text-[var(--aq-muted)]">
-                Set up your private Aqlyra workspace.
+                Your account activates only after you confirm the verification code sent to your email.
               </p>
 
               <RegisterForm />
