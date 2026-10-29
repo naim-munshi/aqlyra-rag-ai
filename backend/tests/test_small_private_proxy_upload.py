@@ -77,6 +77,24 @@ def test_proxy_upload_returns_owner_bound_document(client, monkeypatch):
     assert received == [(owner.id, expected)]
 
 
+
+def test_proxy_requires_verified_active_account_before_storage(client, monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: _user(False)
+    monkeypatch.setattr(settings, "CLOUD_UPLOAD_PROXY_ENABLED", True)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+
+    async def impossible(**kwargs):
+        raise AssertionError("Unverified users must never reach storage")
+
+    monkeypatch.setattr(api, "persist_small_private_cloud_upload", impossible)
+    response = client.post(
+        "/api/v1/documents/cloud/proxy",
+        files={"file": ("hello.txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 403
+    assert "Verified account" in response.text
+
+
 def test_proxy_rejects_provider_failures_without_secret_leak(client, monkeypatch):
     from app.services.private_object_storage import PrivateObjectStorageError
     app.dependency_overrides[get_current_user] = lambda: _user()
