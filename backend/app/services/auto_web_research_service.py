@@ -26,7 +26,7 @@ _NO_WEB = re.compile(
     re.IGNORECASE,
 )
 _PERSONAL_CONTEXT = re.compile(
-    r"\b(?:my|mine|our|ours|I|me|we|us)\b"
+    r"\b(?:my|mine|our|ours)\b"
     r"|আমার|আমাদের|私の|私が|私たちの",
     re.IGNORECASE,
 )
@@ -107,8 +107,13 @@ def detect_time_range(question: str) -> str | None:
         question, re.IGNORECASE,
     ):
         return "year"
-    if _CURRENT.search(question):
+    if re.search(
+        r"\b(?:latest|current|recent|recently|newest|breaking|updated)\b|"
+        r"最新|現在|速報|সর্বশেষ|এখনকার|বর্তমান",
+        question, re.IGNORECASE,
+    ):
         return "month"
+    # A calendar year alone is not a "past month" search hint.
     return None
 
 
