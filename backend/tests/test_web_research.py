@@ -420,8 +420,8 @@ def test_iterative_deep_research_uses_two_searches_and_shared_source_budget(monk
     assert [source.citation for source in result.sources] == ["[W1]", "[W2]"]
 
 def test_untrusted_web_urls_and_model_invented_links_are_rejected(monkeypatch):
-    assert safe_public_url("https://example.com/path\\nmalicious") is None
-    assert safe_public_url("https://example.com/path\\tmalicious") is None
+    assert safe_public_url("https://example.com/path" + chr(10) + "malicious") is None
+    assert safe_public_url("https://example.com/path" + chr(9) + "malicious") is None
     monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
     monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
     with httpx.Client(transport=httpx.MockTransport(fake_tavily)) as client:
