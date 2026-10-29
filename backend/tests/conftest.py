@@ -49,6 +49,10 @@ from app.models import (
     Message,
     PasswordResetCode,
     User,
+    StudyCase,
+    StudyCaseDocument,
+    StudyResearchReport,
+    StudyUniversity,
 )
 
 _REGISTERED_MODELS = (
