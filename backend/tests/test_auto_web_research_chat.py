@@ -41,8 +41,8 @@ def test_explicit_control_respects_fail_closed_configuration(monkeypatch):
 def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
     monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
     calls = []
-    def mock_research(question, *, max_sources, mode, provider):
-        calls.append((question, max_sources, mode))
+    def mock_research(question, *, max_sources, mode, provider, iterative):
+        calls.append((question, max_sources, mode, iterative))
         return SimpleNamespace(
             answer="The public result is verified [W1].",
             sources=[SimpleNamespace(
@@ -61,9 +61,9 @@ def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
         db=Mock(), conversation=private_conversation,
         message="What are the latest AI developments?", web_mode="auto",
     )
-    assert calls == [("What are the latest AI developments?", 5, "search")]
+    assert calls == [("What are the latest AI developments?", 5, "search", False)]
     assert "[W1]" in result.content
-    assert "[Source  untrusted  markdown ](https://example.org/report)" in result.content
+    assert "[Source  untrusted  markdown](https://example.org/report)" in result.content
     assert "[S1]" not in result.content
     assert result.citations == ()
     assert result.mode == "normal"
