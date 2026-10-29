@@ -425,6 +425,8 @@ export function RAGWorkspace({
 
   const [question, setQuestion] =
     useState("");
+  const [webMode, setWebMode] =
+    useState<"auto" | "off" | "on" | "deep">("auto");
 
   const [
     workspaceHydrated,
@@ -1509,6 +1511,7 @@ export function RAGWorkspace({
               body: JSON.stringify({
                 content:
                   effectiveQuestion,
+                web_mode: chatMode === "normal" && !attachedDocument ? webMode : "off",
                 display_content:
                   displayQuestion,
                 ...(normalConversationId
@@ -2149,6 +2152,22 @@ export function RAGWorkspace({
               chatMode === "knowledge" ? "normal" : "knowledge",
             )}
           />
+
+          {chatMode === "normal" && (
+            <select
+              aria-label="Web search mode"
+              title="Choose how Aqlyra searches public websites"
+              value={webMode}
+              onChange={(event) => setWebMode(event.target.value as typeof webMode)}
+              disabled={ragLoading || uploadState !== "idle"}
+              className="min-w-0 max-w-[104px] rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-1.5 py-2 text-[10px] font-semibold text-[var(--aq-text)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
+            >
+              <option value="auto">Web: Auto</option>
+              <option value="on">Web: On</option>
+              <option value="deep">Deep web</option>
+              <option value="off">Web: Off</option>
+            </select>
+          )}
 
           {uploadState !==
             "idle" && (
