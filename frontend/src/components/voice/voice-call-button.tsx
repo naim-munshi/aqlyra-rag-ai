@@ -116,8 +116,6 @@ function stateLabel(
   switch (state) {
     case "connecting":
       return "Connecting";
-    case "connecting":
-      return "Connecting";
     case "thinking":
       return "Thinking";
     case "speaking":
