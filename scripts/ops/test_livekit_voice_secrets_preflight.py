@@ -29,7 +29,7 @@ FAKE = {
     "EMBEDDING_PROVIDER": "huggingface",
     "RAG_GROUNDING_VERIFIER_ENABLED": "true",
     "RATE_LIMIT_ENABLED": "true",
-    "CORS_ORIGINS": "https://aqlyra-navy.vercel.app",
+    "CORS_ORIGINS": "https://aqlyra-ai.vercel.app",
     "APP_ENV": "production",
     "DEBUG": "false",
     "VOICE_AGENT_NAME": "aqlyra-voice",
@@ -85,6 +85,33 @@ class VoiceSecretsPreflightTest(unittest.TestCase):
             module.validate({k: v for k, v in FAKE.items() if k != "HF_TOKEN"})
         with self.assertRaises(module.VoicePreflightBlocked):
             module.validate({**FAKE, "LIVEKIT_API_KEY": "test-only-dont-upload"})
+
+    def test_gmail_api_sender_configuration_uses_owner_secrets(self):
+        gmail = {
+            **{k: v for k, v in FAKE.items() if k != "RESEND_API_KEY"},
+            "EMAIL_DELIVERY_PROVIDER": "gmail_api",
+            "GMAIL_OAUTH_CLIENT_ID": "offline-client.apps.googleusercontent.com",
+            "GMAIL_OAUTH_CLIENT_SECRET": "offline-synthetic-secret",
+            "GMAIL_OAUTH_REFRESH_TOKEN": "offline-synthetic-refresh",
+        }
+        module.validate(gmail)
+        for key in (
+            "GMAIL_OAUTH_CLIENT_ID",
+            "GMAIL_OAUTH_CLIENT_SECRET",
+            "GMAIL_OAUTH_REFRESH_TOKEN",
+        ):
+            with self.subTest(missing=key):
+                incomplete = {k: v for k, v in gmail.items() if k != key}
+                with self.assertRaises(module.VoicePreflightBlocked):
+                    module.validate(incomplete)
+
+    def test_provider_switch_without_valid_credentials_is_blocked(self):
+        with self.assertRaises(module.VoicePreflightBlocked):
+            module.validate({**FAKE, "EMAIL_DELIVERY_PROVIDER": "gmail_api"})
+        with self.assertRaises(module.VoicePreflightBlocked):
+            module.validate({**FAKE, "EMAIL_DELIVERY_PROVIDER": "disabled"})
+        with self.assertRaises(module.VoicePreflightBlocked):
+            module.validate({k: v for k, v in FAKE.items() if k != "RESEND_API_KEY"})
 
     def test_url_never_accepts_connection_redirection(self):
         for bad in (
