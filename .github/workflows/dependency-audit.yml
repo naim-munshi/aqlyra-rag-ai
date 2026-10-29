@@ -2,7 +2,7 @@ name: Dependency Security Audit
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/password-reset-chat-provider-20261029]
     paths:
       - "backend/requirements*.txt"
       - "frontend/package.json"

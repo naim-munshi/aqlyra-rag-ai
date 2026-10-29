@@ -26,6 +26,7 @@ from app.core.rate_limit import (
 )
 from app.database.connection import get_db
 from app.models.user import User
+from app.embeddings import EmbeddingProviderQuotaError, EmbeddingProviderRequestError
 from app.parsers import DocumentParsingError
 from app.schemas.document import (
     DocumentListResponse,
@@ -293,6 +294,30 @@ def process_uploaded_document(
     except PrivateObjectStorageError as exc:
         raise HTTPException(
             status_code=409, detail="Private cloud document is unavailable",
+        ) from exc
+
+    except EmbeddingProviderQuotaError as exc:
+        app_logger.warning(
+            "document_processing_embedding_quota_exhausted document_id=%s",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Document indexing is unavailable because the embedding "
+                "service quota was exhausted. Your upload is saved; "
+                "retry processing after the embedding service is restored."
+            ),
+        ) from exc
+
+    except EmbeddingProviderRequestError as exc:
+        app_logger.warning(
+            "document_processing_embedding_provider_unavailable document_id=%s",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Document indexing service is temporarily unavailable.",
         ) from exc
 
     except DocumentParsingError as exc:

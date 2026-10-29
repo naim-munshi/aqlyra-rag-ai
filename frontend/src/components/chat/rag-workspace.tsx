@@ -2458,11 +2458,24 @@ export function RAGWorkspace({
                               className="text-red-400"
                             />
 
-                            <p className="text-xs text-red-300">
-                              {
-                                turn.error
-                              }
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-red-300">
+                                {turn.error}
+                              </p>
+                              {turn.mode === "knowledge" &&
+                                turn.error.toLowerCase().includes("embedding service quota") && (
+                                <button
+                                  type="button"
+                                  className="mt-3 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs font-semibold text-[var(--aq-text)]"
+                                  onClick={() => {
+                                    switchChatMode("normal");
+                                    setQuestion(turn.question);
+                                  }}
+                                >
+                                  Switch to Normal chat (without document search)
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
 
