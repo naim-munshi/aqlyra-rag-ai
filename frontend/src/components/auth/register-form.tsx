@@ -50,6 +50,7 @@ export function RegisterForm() {
 
   const [loading, setLoading] = useState(false);
   const [pendingVerificationDelivery, setPendingVerificationDelivery] = useState(false);
+  const [existingPendingRegistration, setExistingPendingRegistration] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(
@@ -58,6 +59,7 @@ export function RegisterForm() {
     event.preventDefault();
 
     setError("");
+    setExistingPendingRegistration(false);
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
@@ -88,7 +90,12 @@ export function RegisterForm() {
           | ApiError;
 
       if (!registerResponse.ok) {
-        setError(getErrorMessage(registerData as ApiError));
+        const detail = getErrorMessage(registerData as ApiError);
+        setError(detail);
+        setExistingPendingRegistration(
+          registerResponse.status === 409 &&
+          detail.toLowerCase().includes("unfinished registration"),
+        );
         return;
       }
 
@@ -107,7 +114,7 @@ export function RegisterForm() {
           setPendingVerificationDelivery(true);
           setPassword("");
           setConfirmPassword("");
-          setError("Your account was saved, but Aqlyra could not send the verification email. Please open email verification and retry sending a code.");
+          setError("Email delivery failed. Your registration is not yet verified or usable. Please open email verification and retry sending a code.");
           return;
         }
         router.push("/verify-email");
@@ -306,6 +313,11 @@ export function RegisterForm() {
               Open email verification and resend a code
             </Link>
           )}
+          {existingPendingRegistration && (
+            <Link href="/claim-pending-email" className="mt-3 block font-semibold underline underline-offset-2">
+              Verify your mailbox and finish this registration
+            </Link>
+          )}
         </div>
       )}
 
@@ -322,8 +334,8 @@ export function RegisterForm() {
         )}
 
         {loading
-          ? "Creating account..."
-          : "Create account"}
+          ? "Requesting verification..."
+          : "Continue to email verification"}
       </button>
       </form>
     </>
