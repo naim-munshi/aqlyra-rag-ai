@@ -53,7 +53,7 @@ def discard_password_reset(db: Session, email: str) -> None:
             db.delete(current)
             db.commit()
 
-def reset_password(db: Session, email: str, code: str, new_password: str) -> tuple[str, int]:
+def reset_password(db: Session, email: str, code: str, new_password: str) -> None:
     user = db.scalar(select(User).where(User.email == email).with_for_update())
     if user is None or not user.is_active or user.email_verified_at is None:
         raise PasswordResetError("Invalid or expired reset code")
@@ -74,5 +74,3 @@ def reset_password(db: Session, email: str, code: str, new_password: str) -> tup
     user.auth_epoch += 1
     db.delete(current)
     db.commit()
-    # Session minted only after single-use code succeeds and auth epoch rotates.
-    return str(user.id), int(user.auth_epoch)
