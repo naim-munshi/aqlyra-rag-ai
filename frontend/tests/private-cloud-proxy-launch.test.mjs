@@ -30,6 +30,6 @@ test("production frontend limits proxy mode to 3MB before forwarding", () => {
   if (route.includes("readBoundedBodyBytes")) {
     assert.match(route, /MAX_PROXY_FILE_BYTES = 3 \* 1024 \* 1024/);
     assert.match(route, /MAX_PROXY_FILE_BYTES \+ 128 \* 1024/);
-    assert.match(route, /readBoundedBodyBytes\(request, maxBodyBytes\)/);
+    assert.match(route, /readBoundedBodyBytes\(request, MAX_MULTIPART_BYTES\)/);
   }
 });
