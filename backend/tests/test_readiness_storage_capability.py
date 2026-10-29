@@ -8,8 +8,6 @@ def test_readiness_reports_write_disabled_without_probing_ephemeral_disk(
 ):
     monkeypatch.setattr(settings, "APP_ENV", "development")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
-    monkeypatch.setattr(settings, "ARTIFACT_REMOTE_STORAGE_ENABLED", False)
-    monkeypatch.setattr(settings, "CLOUD_UPLOAD_PUBLIC_ENABLED", False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(health_module, "local_writes_permitted", lambda: False)
     monkeypatch.setattr(health_module, "artifact_writes_permitted", lambda: False)
@@ -30,8 +28,6 @@ def test_readiness_reports_verified_local_write_capability(
 ):
     monkeypatch.setattr(settings, "APP_ENV", "development")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
-    monkeypatch.setattr(settings, "ARTIFACT_REMOTE_STORAGE_ENABLED", False)
-    monkeypatch.setattr(settings, "CLOUD_UPLOAD_PUBLIC_ENABLED", False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
     response = client.get("/api/v1/readiness")
     assert response.status_code == 200
