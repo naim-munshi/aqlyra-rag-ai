@@ -18,15 +18,15 @@ _EXPLICIT_SEARCH = re.compile(
     re.IGNORECASE,
 )
 _NO_WEB = re.compile(
-    r"\\b(?:don't|do not|without|no)\\s+(?:(?:use|using|do|search|browse)\\s+)?"
-    r"(?:the\\s+)?(?:web|internet|browsing|search)\\b"
-    r"|\\b(?:do not|don't)\\s+(?:search|browse)\\b"
+    r"\b(?:don't|do not|without|no)\s+(?:(?:use|using|do|search|browse)\s+)?"
+    r"(?:the\s+)?(?:web|internet|browsing|search)\b"
+    r"|\b(?:do not|don't)\s+(?:search|browse)\b"
     r"|ওয়েব (?:ব্যবহার|সার্চ) করো না|ওয়েব (?:ব্যবহার|সার্চ) করো না"
     r"|検索しないで|ウェブを使わないで",
     re.IGNORECASE,
 )
 _PERSONAL_CONTEXT = re.compile(
-    r"\\b(?:my|mine|our|ours|I|me|we|us)\\b"
+    r"\b(?:my|mine|our|ours|I|me|we|us)\b"
     r"|আমার|আমাদের|私の|私が|私たちの",
     re.IGNORECASE,
 )
