@@ -54,6 +54,34 @@ class LivePhaseProbeTest(unittest.TestCase):
         self.assertIn("FULL_RELEASE_PRODUCTION=NOT_DEPLOYED", output)
         self.assertNotIn("LIVE_RELEASE_GATE=PASS", output)
 
+    def test_healthy_server_with_uploads_disabled_does_not_claim_files_ready(self):
+        safe = (200, {
+            "status": "ready",
+            "checks": {
+                "database": "ready",
+                "storage": "writes_disabled",
+                "artifact_storage": "writes_disabled",
+                "cloud_uploads": "disabled",
+                "redis": "ready",
+            },
+        })
+        status, output = self.run_case(
+            "study-core", [HEALTH, safe, WORKFLOWS, (401, None)]
+        )
+        self.assertEqual(status, 0)
+        self.assertIn("document uploads disabled; not durable", output)
+        self.assertIn("LIVE_STUDY_CORE_GATE=PASS", output)
+
+    def test_bogus_storage_capability_never_passes_readiness(self):
+        invalid = (200, {"status": "ready", "checks": {
+            "database": "ready", "storage": "unverified", "redis": "ready"
+        }})
+        status, output = self.run_case(
+            "study-core", [HEALTH, invalid, WORKFLOWS, (401, None)]
+        )
+        self.assertEqual(status, 1)
+        self.assertIn("BLOCKED database_storage_redis", output)
+
     def test_study_core_phase_accepts_released_study_routes_without_claiming_full(self):
         status, output = self.run_case(
             "study-core", [HEALTH, READY, WORKFLOWS, (401, None)]
