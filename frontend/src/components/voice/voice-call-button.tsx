@@ -300,7 +300,7 @@ export function VoiceCallButton({
       setAgentState("error");
       setError(message);
       onError?.(message);
-    }, 20000);
+    }, 45000); // Free LiveKit Cloud agents can cold-start before joining.
   }
 
   function stopMicrophoneTrack() {
