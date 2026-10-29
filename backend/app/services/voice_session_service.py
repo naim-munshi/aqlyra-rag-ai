@@ -1,4 +1,6 @@
 import json
+import ipaddress
+from urllib.parse import urlsplit
 from datetime import timedelta
 from dataclasses import dataclass
 from uuid import uuid4
@@ -58,6 +60,41 @@ class VoiceSessionResult:
     mode: ConversationMode
 
 
+def _valid_livekit_url(url: str, *, production: bool) -> bool:
+    """Keep room tokens off plaintext, loopback and misleading endpoints."""
+    try:
+        parsed = urlsplit(url.strip())
+        host = parsed.hostname
+        if (
+            not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in ("", "/")
+            or parsed.scheme not in (("wss",) if production else ("ws", "wss"))
+        ):
+            return False
+        if production:
+            normalized = host.lower().rstrip(".")
+            if normalized != host.lower() or normalized in ("localhost",) or normalized.endswith(
+                (".localhost", ".local", ".internal")
+            ):
+                return False
+            try:
+                if not ipaddress.ip_address(normalized).is_global:
+                    return False
+            except ValueError:
+                if "." not in normalized:
+                    return False
+        # Verify even an explicit port has valid syntax/range.
+        if parsed.port is not None and parsed.port <= 0:
+            return False
+        return True
+    except ValueError:
+        return False
+
+
 def _require_voice_configuration() -> None:
     missing = [
         name
@@ -82,6 +119,11 @@ def _require_voice_configuration() -> None:
         raise VoiceConfigurationError(
             "Voice service is not configured"
         )
+
+    if not _valid_livekit_url(
+        settings.LIVEKIT_URL, production=settings.APP_ENV == "production",
+    ):
+        raise VoiceConfigurationError("Voice transport is not safely configured")
 
     if not settings.VOICE_AGENT_NAME.strip():
         raise VoiceConfigurationError(
