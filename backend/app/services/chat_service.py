@@ -19,6 +19,7 @@ from app.services.smart_web_router import route_web_request
 from app.services.public_office_guard import (
     PublicFactGuardProvider,
     officeholder_search_query,
+    is_ambiguous_public_officeholder_question,
     unverified_officeholder_reply,
 )
 from app.llms import (
@@ -65,6 +66,45 @@ class ChatValidationError(Exception):
 NORMAL_CHAT_HISTORY_LIMIT = 20
 KNOWLEDGE_CHAT_HISTORY_LIMIT = 12
 KNOWLEDGE_RETRIEVAL_QUESTION_MAX_CHARS = 1_000
+
+_PUBLIC_COUNTRY_FOLLOWUP = re.compile(
+    r"(?:[A-Za-z][A-Za-z .'-]{1,55}"
+    r"|[\u0980-\u09ff][\u0980-\u09ff\s]{1,55}"
+    r"|[\u3040-\u30ff\u3400-\u9fff][\u3040-\u30ff\u3400-\u9fff\s]{1,55})"
+)
+
+
+def resolve_public_office_followup(
+    *, db: Session, conversation: Conversation, message: str,
+) -> str:
+    """Rebind a one-line country reply to only a verified public question.
+
+    The preceding assistant must be the exact local country clarification
+    and the preceding user must have asked the ambiguous office question.
+    This never forwards arbitrary history or private memories to the web.
+    """
+    country = message.strip(" \t\r\n?!？।。")
+    if (not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
+        or len(country.split()) > 4):
+        return message
+    recent = get_recent_messages_for_conversation(
+        db=db, conversation_id=conversation.id, limit=2,
+    )
+    if (len(recent) != 2
+        or recent[0].role != "user"
+        or recent[1].role != "assistant"):
+        return message
+    previous = recent[0].content.strip()
+    if not is_ambiguous_public_officeholder_question(previous):
+        return message
+    if recent[1].content != unverified_officeholder_reply(previous):
+        return message
+    president = bool(re.search(
+        r"\bpresident\b|রাষ্ট্রপতি|大統領", previous, re.IGNORECASE,
+    ))
+    office = "president" if president else "prime minister"
+    return f"Who is the {office} of {country}?"
+
 
 _SOURCE_CITATION_PATTERN = re.compile(
     r"\[S\d+\]",
@@ -980,20 +1020,26 @@ def execute_chat_turn(
                 )
             )
 
+        # Resolve a one-word jurisdiction reply only when the immediately
+        # preceding exchange was the explicit country-clarification guard.
+        # No private history is ever given to the public web provider.
+        public_question = resolve_public_office_followup(
+            db=db, conversation=conversation, message=cleaned,
+        )
         # The streaming endpoint passes a pre-computed decision ("" means
         # no search). This prevents duplicate LLM selector calls and costs.
         research_mode = (
-            route_web_request(cleaned, web_mode, provider=provider)
+            route_web_request(public_question, web_mode, provider=provider)
             if routed_web_mode is None
             else routed_web_mode or None
         )
         if research_mode is not None:
-            if len(cleaned) > 600:
+            if len(public_question) > 600:
                 raise ChatValidationError(
                     "Web research questions must be at most 600 characters"
                 )
             return generate_web_chat_reply(
-                message=cleaned,
+                message=public_question,
                 research_mode=research_mode,
                 provider=provider,
             )
@@ -1001,7 +1047,7 @@ def execute_chat_turn(
         return generate_normal_chat_reply(
             db=db,
             conversation=conversation,
-            message=cleaned,
+            message=public_question,
             provider=provider,
         )
 
