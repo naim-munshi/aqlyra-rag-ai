@@ -5,6 +5,21 @@ x-default-logging: &default-logging
     max-file: "5"
 
 services:
+  # Internal Compose-only keyless search, never exposed on the host.
+  searxng:
+    profiles: [web-search]
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set a private SearXNG secret to run this profile}
+    volumes:
+      - ./ops/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    expose:
+      - "8080"
+    logging: *default-logging
+
   redis:
     logging: *default-logging
     image: redis:8-alpine
@@ -115,6 +130,12 @@ services:
         .pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp
 
       LOG_LEVEL: INFO
+      # Opt-in keyless SearXNG search on the same internal Compose network.
+      WEB_RESEARCH_ENABLED: ${WEB_RESEARCH_ENABLED:-false}
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-auto}
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-}
+      SEARXNG_SERVICE_TOKEN: ${SEARXNG_SERVICE_TOKEN:-}
+      SEARXNG_READ_PAGES_ENABLED: ${SEARXNG_READ_PAGES_ENABLED:-false}
 
     ports:
       - "127.0.0.1:8000:8000"
