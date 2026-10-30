@@ -76,7 +76,8 @@ def is_public_officeholder_question(question: str) -> bool:
     # Don't enforce a current-data guard on an explicit historical request.
     if _HISTORICAL.search(text):
         return False
-    if _ROMANIZED_PUBLIC_NAME.fullmatch(text) or _ROMANIZED_COUNTRY_FIRST.fullmatch(text):
+    romanized = _TERMINAL_PUNCTUATION.sub("", text)
+    if _ROMANIZED_PUBLIC_NAME.fullmatch(romanized) or _ROMANIZED_COUNTRY_FIRST.fullmatch(romanized):
         return True
     if not _ROLE.search(text):
         return False
