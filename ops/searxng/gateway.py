@@ -135,7 +135,7 @@ def startup_search_probe() -> None:
     connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=12)
     try:
         connection.request(
-            "GET", "/search?q=official+government+website&format=json",
+            "GET", "/search?q=Bangladesh&format=json",
             headers={
                 "Accept": "application/json",
                 "X-Forwarded-For": "127.0.0.1",
