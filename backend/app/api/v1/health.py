@@ -186,6 +186,19 @@ def readiness():
                 and settings.CLOUD_UPLOAD_PROXY_ENABLED
                 else "disabled"
             ),
+            "knowledge_indexing": (
+                "automatic_queue_configured"
+                if settings.KNOWLEDGE_AUTO_INDEX_ENABLED
+                else "manual"
+            ),
+            "knowledge_retrieval": (
+                "lexical_only"
+                if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED
+                and settings.EMBEDDING_PROVIDER == "deterministic"
+                else "hybrid_with_lexical_fallback"
+                if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED
+                else "hybrid"
+            ),
             **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
