@@ -11,6 +11,8 @@ import http.client
 import json
 import os
 import socket
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -120,7 +122,36 @@ class Handler(BaseHTTPRequestHandler):
             connection.close()
 
 
+def startup_search_probe() -> None:
+    """One fixed public query per boot; never collect users' search content."""
+    time.sleep(6)
+    connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=9)
+    try:
+        connection.request(
+            "GET", "/search?q=official+government+website&format=json",
+            headers={"Accept": "application/json"},
+        )
+        reply = connection.getresponse()
+        raw = reply.read(MAX_BYTES + 1)
+        if reply.status != 200 or len(raw) > MAX_BYTES:
+            print("SEARXNG_SEARCH_PROBE=DEGRADED", flush=True)
+            return
+        data = json.loads(raw)
+        results = data.get("results") if isinstance(data, dict) else None
+        count = len(results) if isinstance(results, list) else 0
+        print(
+            f"SEARXNG_SEARCH_PROBE={'PASS' if count else 'DEGRADED'} "
+            f"result_count={min(count, 999)}",
+            flush=True,
+        )
+    except (OSError, ValueError, TimeoutError):
+        print("SEARXNG_SEARCH_PROBE=DEGRADED", flush=True)
+    finally:
+        connection.close()
+
+
 if __name__ == "__main__":
+    threading.Thread(target=startup_search_probe, daemon=True).start()
     port = int(os.environ.get("PORT", "10000"))
     if not 1 <= port <= 65535:
         raise SystemExit("invalid PORT")
