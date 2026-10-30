@@ -81,6 +81,7 @@ type ChatTurn = {
     previewUrl: string | null;
   } | null;
   loading: boolean;
+  webStatus?: "searching" | null;
   streamedAnswer: string;
   result: RAGAnswerResponse | null;
   error: string;
@@ -425,6 +426,8 @@ export function RAGWorkspace({
 
   const [question, setQuestion] =
     useState("");
+  const [webMode, setWebMode] =
+    useState<"auto" | "off" | "on" | "deep">("auto");
 
   const [
     workspaceHydrated,
@@ -1393,6 +1396,7 @@ export function RAGWorkspace({
               }
             : null,
         loading: true,
+        webStatus: null,
         streamedAnswer: "",
         result: null,
         error: "",
@@ -1509,6 +1513,7 @@ export function RAGWorkspace({
               body: JSON.stringify({
                 content:
                   effectiveQuestion,
+                web_mode: chatMode === "normal" && !attachedDocument ? webMode : "off",
                 display_content:
                   displayQuestion,
                 ...(normalConversationId
@@ -1593,6 +1598,18 @@ export function RAGWorkspace({
             return;
           }
 
+          if (parsed.event === "tool_status") {
+            const data = parsed.data as { tool?: string; status?: string };
+            if (data.tool === "web" && data.status === "searching") {
+              setTurns((current) => current.map((turn) =>
+                turn.id === turnId
+                  ? { ...turn, webStatus: "searching" }
+                  : turn,
+              ));
+            }
+            return;
+          }
+
           if (
             parsed.event === "delta"
           ) {
@@ -1669,6 +1686,7 @@ export function RAGWorkspace({
                   ? {
                       ...turn,
                       loading: false,
+                      webStatus: null,
                       streamedAnswer:
                         result.answer,
                       result,
@@ -2147,7 +2165,22 @@ export function RAGWorkspace({
             onSwitchMode={() => switchChatMode(
               chatMode === "knowledge" ? "normal" : "knowledge",
             )}
+            webMode={webMode}
+            onSetWebMode={setWebMode}
           />
+          {chatMode === "normal" && webMode !== "auto" && (
+            <button
+              type="button"
+              aria-label={webMode === "off" ? "Web search disabled. Restore auto mode" : "Stop manual web search and restore auto mode"}
+              title="Return to automatic web search"
+              onClick={() => setWebMode("auto")}
+              disabled={ragLoading}
+              className="inline-flex min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 py-2 text-[10px] font-semibold text-[var(--aq-blue)] disabled:opacity-50"
+            >
+              <span>{webMode === "on" ? "Web search" : webMode === "deep" ? "Deep research" : "Web off"}</span>
+              <X size={12} aria-hidden="true" />
+            </button>
+          )}
 
           {uploadState !==
             "idle" && (
@@ -2434,9 +2467,11 @@ export function RAGWorkspace({
                             />
 
                             <span className="text-xs text-[var(--aq-muted)]">
-                              {turn.mode === "normal"
-                                ? "Aqlyra is thinking..."
-                                : "Retrieving evidence..."}
+                              {turn.webStatus === "searching"
+                                ? "Searching public sources..."
+                                : turn.mode === "normal"
+                                  ? "Aqlyra is thinking..."
+                                  : "Retrieving evidence..."}
                             </span>
                           </div>
                         )}
