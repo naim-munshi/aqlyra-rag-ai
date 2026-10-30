@@ -40,7 +40,7 @@ _CONTENT_TYPE = {
     ".webp": "image/webp",
 }
 _HASH = re.compile(r"^[0-9a-f]{64}$")
-_SECONDS = 120
+_SECONDS = 600
 
 
 class PrivateObjectStorageError(Exception):
