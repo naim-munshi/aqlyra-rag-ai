@@ -85,14 +85,23 @@ def verify_browser_preflight(*, storage=None, cfg=settings) -> None:
             timeout=9,
             allow_redirects=False,
         )
+        # Status and header PRESENCE are safe for operator diagnostics.
+        # Never emit URL, signature, bucket, credentials or provider body.
         if (
             response.status_code not in (200, 204)
             or response.headers.get("Access-Control-Allow-Origin") != _ORIGIN
             or "PUT" not in response.headers.get("Access-Control-Allow-Methods", "")
         ):
+            print(
+                f"PRIVATE_S3_PREFLIGHT_DIAG=status_{response.status_code}"
+                f";origin_{int(response.headers.get('Access-Control-Allow-Origin') == _ORIGIN)}"
+                f";put_{int('PUT' in response.headers.get('Access-Control-Allow-Methods', ''))}",
+                flush=True,
+            )
             raise RuntimeError("Browser private upload preflight failed")
     except Exception as exc:
-        # Never leak signed URL or raw provider responses to app logs.
+        if not isinstance(exc, RuntimeError):
+            print(f"PRIVATE_S3_PREFLIGHT_DIAG=exception_{type(exc).__name__}", flush=True)
         raise RuntimeError("Private upload CORS preflight unavailable") from None
 
 
@@ -103,5 +112,5 @@ if __name__ == "__main__":
         verify_browser_preflight()
         print("PRIVATE_S3_CORS_PREFLIGHT=PASS", flush=True)
     except Exception:
-        print("PRIVATE_S3_CORS=FAIL", flush=True)
+        print("PRIVATE_S3_CORS_OR_PREFLIGHT=FAIL", flush=True)
         raise SystemExit(1)
