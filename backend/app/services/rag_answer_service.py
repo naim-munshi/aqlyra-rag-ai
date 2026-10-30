@@ -326,6 +326,7 @@ def answer_question(
                 max_source_tokens
             ),
             max_sources=max_sources,
+            balance_source_budget=True,
             min_similarity=(
                 min_similarity
                 if min_similarity is not None
