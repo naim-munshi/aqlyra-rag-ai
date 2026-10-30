@@ -89,7 +89,11 @@ def resolve_public_office_followup(
     if is_public_officeholder_question(message):
         return message
     if (not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
-        or len(country.split()) > 4):
+        or len(country.split()) > 4
+        or re.search(
+            r"\\b(?:password|passcode|api.?key|secret|token|otp|bearer|private)\\b",
+            country, re.IGNORECASE,
+        )):
         return message
     recent = get_recent_messages_for_conversation(
         db=db, conversation_id=conversation.id, limit=2,
