@@ -142,3 +142,31 @@ def test_explicit_dense_score_cannot_be_bypassed_by_lexical_fallback(
             user_id=str(uuid4()), text="query", min_similarity=0.7,
         ),
     ) == []
+
+
+def test_index_worker_can_restart_after_lifespan_shutdown(monkeypatch):
+    """No dead worker when a lifespan is reinitialized in the same process."""
+    monkeypatch.setattr(settings, "KNOWLEDGE_AUTO_INDEX_ENABLED", True)
+    worker = queue.KnowledgeIndexWorker()
+    runs = []
+
+    def idle_loop():
+        runs.append(True)
+        worker._stop.wait(timeout=2)
+
+    monkeypatch.setattr(worker, "_loop", idle_loop)
+    worker.start()
+    first = worker._thread
+    assert first is not None and first.is_alive()
+    worker.start()  # Idempotent while already running.
+    assert worker._thread is first
+    worker.stop()
+    assert not first.is_alive()
+    assert worker._thread is None
+
+    worker.start()
+    second = worker._thread
+    assert second is not None and second is not first and second.is_alive()
+    worker.stop()
+    assert not second.is_alive()
+    assert len(runs) == 2
