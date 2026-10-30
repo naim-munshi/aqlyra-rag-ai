@@ -768,7 +768,7 @@ class Settings(BaseSettings):
         if self.ARTIFACT_REMOTE_STORAGE_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Remote artifacts require private object storage")
         if self.ARTIFACT_REMOTE_STORAGE_ENABLED and len(self.ARTIFACT_METADATA_HMAC_KEY.strip()) < 32:
-            raise ValueError("Remote artifacts require an independent stable HMAC key")
+            raise ValueError("Remote artifacts require a stable metadata signing key")
         if (self.CLOUD_UPLOAD_PUBLIC_ENABLED or self.CLOUD_UPLOAD_PROXY_ENABLED) and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Cloud upload requires private object storage")
         return self
