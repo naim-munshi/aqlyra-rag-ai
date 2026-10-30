@@ -22,7 +22,7 @@ export async function POST(_request: Request, context: Context) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(150000),
       },
     );
     const data = await readJson<unknown>(response);
