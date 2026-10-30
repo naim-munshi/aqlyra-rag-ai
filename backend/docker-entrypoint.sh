@@ -2,6 +2,22 @@
 
 set -eu
 
+# Free external staging uses a separate, explicitly reviewed schema migration
+# step. Never perform CREATE EXTENSION or Alembic writes on container boot.
+# Default remains 'auto' for existing local/Docker-compose workflows.
+case "${DATABASE_MIGRATION_MODE:-auto}" in
+  manual)
+    echo "Database migrations intentionally disabled at startup."
+    exec "$@"
+    ;;
+  auto)
+    ;;
+  *)
+    echo "Invalid DATABASE_MIGRATION_MODE; expected auto or manual" >&2
+    exit 1
+    ;;
+esac
+
 echo "Waiting for PostgreSQL and preparing pgvector..."
 
 python - <<'PY'

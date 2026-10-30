@@ -150,3 +150,29 @@ def test_registry_creates_huggingface_provider(
         HuggingFaceEmbeddingProvider,
     )
     assert provider.info.dimension == 4
+
+
+@pytest.mark.parametrize("status_code", [402, 403, 429, 503])
+def test_provider_http_failure_classification_and_sanitization(status_code):
+    from types import SimpleNamespace
+    from app.embeddings.types import EmbeddingProviderQuotaError
+
+    class ProviderFailure(Exception):
+        response = SimpleNamespace(status_code=status_code)
+
+    class Client:
+        def feature_extraction(self, *args, **kwargs):
+            raise ProviderFailure("private-provider-token-and-response")
+
+    provider = HuggingFaceEmbeddingProvider(
+        token="private-token", model_name="test-model", dimension=4,
+        client=Client(),
+    )
+    expected = (
+        EmbeddingProviderQuotaError if status_code == 402
+        else EmbeddingProviderRequestError
+    )
+    with pytest.raises(expected) as caught:
+        provider.embed_query("query")
+    assert "private" not in str(caught.value)
+    assert (type(caught.value) is EmbeddingProviderQuotaError) == (status_code == 402)
