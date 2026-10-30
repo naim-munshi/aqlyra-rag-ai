@@ -2166,22 +2166,22 @@ export function RAGWorkspace({
             onSwitchMode={() => switchChatMode(
               chatMode === "knowledge" ? "normal" : "knowledge",
             )}
+            webMode={webMode}
+            onSetWebMode={setWebMode}
           />
 
-          {chatMode === "normal" && (
-            <select
-              aria-label="Web search mode"
-              title="Choose how Aqlyra searches public websites"
-              value={webMode}
-              onChange={(event) => setWebMode(event.target.value as typeof webMode)}
-              disabled={ragLoading || uploadState !== "idle"}
-              className="min-w-0 max-w-[104px] rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-1.5 py-2 text-[10px] font-semibold text-[var(--aq-text)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
+          {chatMode === "normal" && webMode !== "auto" && (
+            <button
+              type="button"
+              aria-label={webMode === "off" ? "Web search disabled. Restore auto mode" : "Stop manual web search and restore auto mode"}
+              title="Return to automatic web search"
+              onClick={() => setWebMode("auto")}
+              disabled={ragLoading}
+              className="inline-flex min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 py-2 text-[10px] font-semibold text-[var(--aq-blue)] disabled:opacity-50"
             >
-              <option value="auto">Web: Auto</option>
-              <option value="on">Web: On</option>
-              <option value="deep">Deep web</option>
-              <option value="off">Web: Off</option>
-            </select>
+              <span>{webMode === "on" ? "Web search" : webMode === "deep" ? "Deep research" : "Web off"}</span>
+              <X size={12} aria-hidden="true" />
+            </button>
           )}
 
           {uploadState !==
