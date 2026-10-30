@@ -112,23 +112,36 @@ def unverified_officeholder_reply(question: str) -> str | None:
         return None
     lang = _language(question)
     ambiguous = is_ambiguous_public_officeholder_question(question)
+    capability = public_web_research_status()
     if lang == "bn":
+        if ambiguous:
+            return "কোন দেশের প্রধানমন্ত্রী বা রাষ্ট্রপতির কথা বলছেন?"
         return (
-            "কোন দেশের প্রধানমন্ত্রী বা রাষ্ট্রপতির কথা বলছেন?"
-            if ambiguous else
             "এই পদে বর্তমানে কে আছেন, তা লাইভ সূত্র দিয়ে যাচাই করতে পারছি না। "
-            "Web Search চালু করে আবার জিজ্ঞেস করুন।"
+            + (
+                "Aqlyra-তে Tavily Web Search provider সংযুক্ত করা হয়নি। "
+                "Administrator-কে এটি configure করতে হবে।"
+                if capability == "missing_tavily_api_key"
+                else "Aqlyra administrator Web Search বন্ধ রেখেছেন।"
+                if capability == "disabled"
+                else "Web Search Auto বা On করে আবার চেষ্টা করুন।"
+            )
         )
     if lang == "ja":
+        if ambiguous:
+            return "どの国の首相・大統領についてですか？"
         return (
-            "どの国の首相・大統領についてですか？"
-            if ambiguous else
             "現在の在職者をライブ情報で確認できません。"
-            "ウェブ検索を有効にして再度お試しください。"
+            + (
+                "Aqlyraの管理者によるTavily連携が必要です。"
+                if capability == "missing_tavily_api_key"
+                else "Aqlyraの管理者がウェブ検索を無効にしています。"
+                if capability == "disabled"
+                else "Web SearchをAutoまたはOnにして再度お試しください。"
+            )
         )
     if ambiguous:
         return "Which country do you mean?"
-    capability = public_web_research_status()
     if capability == "missing_tavily_api_key":
         return (
             "I can't verify the current officeholder because Aqlyra's live "
