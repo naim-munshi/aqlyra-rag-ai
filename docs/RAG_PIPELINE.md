@@ -128,6 +128,10 @@ RAG_RERANKER_ENABLED=false
 ```
 
 They can be tested independently without changing the default retrieval path.
+The query rewriter rejects unsupported changes to identifiers, numbers,
+negation/exclusion intent and exact quoted phrases (including Bangla and
+Japanese negation) instead of quietly retrieving evidence for a reversed
+question. Such rejections fall back to the original query.
 
 ## 8. Evidence building
 
