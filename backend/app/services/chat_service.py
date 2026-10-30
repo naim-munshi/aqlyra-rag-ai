@@ -167,7 +167,17 @@ def resolve_public_office_followup(
             return f"Who is the {office} of {country}?"
         if _public_country_name(prior_question) is None:
             return message
-        if not _OFFICE_RESPONSE.search(assistant.content):
+        # A prior country response can be the exact local no-web fallback,
+        # which intentionally contains no officeholder name or office type.
+        # Carry the public-office topic across another country switch
+        # without trusting arbitrary model-generated assistant content.
+        safe_no_web_reply = unverified_officeholder_reply(
+            "Who is the prime minister of Japan?"
+        )
+        if (
+            not _OFFICE_RESPONSE.search(assistant.content)
+            and assistant.content.strip() != safe_no_web_reply
+        ):
             return message
     return message
 
