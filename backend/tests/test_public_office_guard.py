@@ -255,3 +255,145 @@ def test_sensitive_text_not_misinterpreted_as_public_country(monkeypatch, unsafe
         db=Mock(), conversation=SimpleNamespace(id="c"),
         message=unsafe_reply,
     ) == unsafe_reply
+
+
+@pytest.mark.parametrize("question", [
+    "prime minister nam",
+    "Prime Minister Name",
+    "pm nam",
+    "prime minister",
+    "president nam",
+])
+def test_romanized_bangla_officeholder_asks_for_country_without_groq(monkeypatch, question):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", False)
+    monkeypatch.setattr(chat_service, "create_configured_llm_provider",
+                        lambda: pytest.fail("Never guess current public office"))
+    assert is_public_officeholder_question(question)
+    assert is_ambiguous_public_officeholder_question(question)
+    assert smart_web_router.route_web_request(question) is None
+    reply = chat_service.execute_chat_turn(
+        db=Mock(), conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+        message=question, web_mode="auto",
+    )
+    assert reply.content == "Which country do you mean?"
+    assert reply.provider_name == "aqlyra-public-fact-guard"
+
+
+@pytest.mark.parametrize("question", [
+    "prime minister name of Japan",
+    "prime minister of Japan",
+    "japan prime minister nam",
+    "president of Bangladesh",
+])
+def test_country_named_romanized_query_requires_sources(monkeypatch, question):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "fake-test-only")
+    assert is_public_officeholder_question(question)
+    assert not is_ambiguous_public_officeholder_question(question)
+    assert smart_web_router.route_web_request(question) == "search"
+
+
+def test_actual_incident_romanized_prompt_followed_by_japan_then_bd(monkeypatch):
+    """Post-release user scenario, without revealing private chat to search."""
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", False)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    first = [
+        SimpleNamespace(role="user", content="prime minister nam"),
+        SimpleNamespace(
+            role="assistant",
+            content="I’m not sure which country you’re referring to. "
+                    "Could you let me know which country’s prime minister "
+                    "you’re asking about?",
+        ),
+    ]
+    second = first + [
+        SimpleNamespace(role="user", content="japan"),
+        SimpleNamespace(
+            role="assistant",
+            content="The current Prime Minister of Japan is Fumio Kishida.",
+        ),
+    ]
+    turns = [("japan", first, "Japan"), ("bd", second, "Bangladesh")]
+    for message, preceding, country in turns:
+        monkeypatch.setattr(
+            chat_service, "get_recent_messages_for_conversation",
+            lambda **kwargs: preceding,
+        )
+        query = chat_service.resolve_public_office_followup(
+            db=Mock(), conversation=SimpleNamespace(id="c"), message=message,
+        )
+        assert query == f"Who is the prime minister of {country}?"
+        result = chat_service.execute_chat_turn(
+            db=Mock(), conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+            message=message, web_mode="auto",
+        )
+        assert result.provider_name == "aqlyra-public-fact-guard"
+        assert "can't verify" in result.content
+        assert "Sheikh Hasina" not in result.content
+        assert "Fumio Kishida" not in result.content
+
+
+def test_romanized_followup_source_query_does_not_contain_chat_history(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "fake-test-only")
+    previous = [
+        SimpleNamespace(role="user", content="prime minister nam"),
+        SimpleNamespace(role="assistant", content="Which country do you mean?"),
+    ]
+    monkeypatch.setattr(chat_service, "get_recent_messages_for_conversation",
+                        lambda **kwargs: previous)
+    queries = []
+
+    def fake_research(query, **kwargs):
+        queries.append(query)
+        return SimpleNamespace(
+            answer="Current leader confirmed [W1].",
+            sources=[SimpleNamespace(citation="[W1]", title="Government",
+                                     url="https://example.org/current")],
+            provider_name="fake-web", model_name="fake",
+        )
+
+    monkeypatch.setattr(chat_service, "research_web", fake_research)
+    response = chat_service.execute_chat_turn(
+        db=Mock(), conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+        message="bd", web_mode="auto",
+    )
+    assert len(queries) == 1
+    assert queries[0].startswith("Who is the prime minister of Bangladesh?")
+    assert "prime minister nam" not in queries[0]
+    assert "[W1]" in response.content
+
+
+def test_romanized_converse_stream_never_calls_groq_for_unspecified_country(monkeypatch):
+    monkeypatch.setattr(chat_service, "create_configured_llm_provider",
+                        lambda: pytest.fail("No Groq call for current officeholder"))
+    events = list(chat_service.stream_normal_chat_reply(
+        db=Mock(), conversation=SimpleNamespace(id="c", user_id="u"),
+        message="prime minister nam",
+    ))
+    assert [event.event_type for event in events] == ["delta", "complete"]
+    assert events[0].delta_text == "Which country do you mean?"
+
+
+def test_unrelated_followup_not_reinterpreted_as_country_without_office_context(monkeypatch):
+    monkeypatch.setattr(chat_service, "get_recent_messages_for_conversation",
+                        lambda **kwargs: [
+                            SimpleNamespace(role="user", content="How is weather?"),
+                            SimpleNamespace(role="assistant", content="Which city?"),
+                        ])
+    assert chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"), message="bd",
+    ) == "bd"
+
+
+def test_switch_does_not_leak_credentials_from_prior_topic(monkeypatch):
+    monkeypatch.setattr(chat_service, "get_recent_messages_for_conversation",
+                        lambda **kwargs: [
+                            SimpleNamespace(role="user", content="prime minister nam"),
+                            SimpleNamespace(role="assistant", content="Which country do you mean?"),
+                            SimpleNamespace(role="user", content="my password"),
+                            SimpleNamespace(role="assistant", content="prime minister?"),
+                        ])
+    assert chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"), message="bd",
+    ) == "bd"
