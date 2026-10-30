@@ -16,6 +16,11 @@ from app.services.auto_web_research_service import (
 )
 from app.services.web_research_service import research_web
 from app.services.smart_web_router import route_web_request
+from app.services.public_office_guard import (
+    PublicFactGuardProvider,
+    officeholder_search_query,
+    unverified_officeholder_reply,
+)
 from app.llms import (
     LLMError,
     LLMProvider,
@@ -106,6 +111,9 @@ Rules:
   as an Aqlyra document citation.
 - Do not claim to have searched live websites unless web evidence was actually supplied.
 - If the user needs current information but no web tool was used, say that it was not verified.
+- Current officeholders and other changing facts require verified live
+  sources. Never substitute old model knowledge for current officeholder
+  facts. If a country or jurisdiction is unclear, ask which one.
 - Do not claim that an answer is grounded in private documents.
 - Do not invent Aqlyra document citations such as [S1], [S2], or similar.
 - Respond in the language of the current user message unless the user
@@ -364,6 +372,12 @@ def _prepare_normal_chat_generation(
     message: str,
     provider: LLMProvider | None = None,
 ) -> tuple[LLMProvider, str]:
+    # No verified web tool was selected. Never guess a current leader, or
+    # infer a country from private memory/history.
+    public_fact_reply = unverified_officeholder_reply(message)
+    if public_fact_reply is not None:
+        return PublicFactGuardProvider(public_fact_reply), message
+
     identity_answer = (
         resolve_product_identity_answer(
             message
@@ -610,7 +624,7 @@ def generate_web_chat_reply(
     # Only the current user message is sent externally: NEVER history,
     # user memories, uploaded document content or knowledge retrieval text.
     research = research_web(
-        message,
+        officeholder_search_query(message),
         max_sources=5,
         mode=research_mode,
         time_range=detect_time_range(message),
