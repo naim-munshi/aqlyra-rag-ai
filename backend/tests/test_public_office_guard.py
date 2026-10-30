@@ -241,3 +241,17 @@ def test_followup_with_live_web_disabled_returns_uncertainty(monkeypatch):
     )
     assert "can't verify" in result.content
     assert result.provider_name == "aqlyra-public-fact-guard"
+
+
+@pytest.mark.parametrize("unsafe_reply", [
+    "my API key", "private token", "secret", "password",
+])
+def test_sensitive_text_not_misinterpreted_as_public_country(monkeypatch, unsafe_reply):
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kw: pytest.fail("Sensitive text must not inspect/publicly rebind"),
+    )
+    assert chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"),
+        message=unsafe_reply,
+    ) == unsafe_reply
