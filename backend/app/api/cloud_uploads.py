@@ -25,6 +25,7 @@ from app.services.cloud_document_finalization import (
     recover_promoted_cloud_document,
 )
 from app.services.cloud_upload_intent_service import reserve_upload_intent
+from app.services.knowledge_index_queue import enqueue_document
 from app.services.private_object_storage import PrivateObjectStorageError
 from app.services.cloud_proxy_upload import persist_small_private_cloud_upload
 from app.services.storage_service import (
@@ -135,7 +136,10 @@ async def small_private_cloud_upload(
         document = await persist_small_private_cloud_upload(
             upload=file, owner=user, db=db,
         )
-        return DocumentResponse.model_validate(document)
+        queued = enqueue_document(
+            db=db, owner_id=str(user.id), document_id=document.id,
+        )
+        return DocumentResponse.model_validate(queued or document)
     except FileTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except UnsupportedFileTypeError as exc:
