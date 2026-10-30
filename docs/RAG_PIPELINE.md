@@ -133,6 +133,20 @@ They can be tested independently without changing the default retrieval path.
 
 Retrieved chunks are filtered, deduplicated, and limited before they are given to the model.
 
+For Knowledge answers, the evidence packer also uses a bounded
+**balanced-source budget**. When the context can afford at least 32
+content tokens per planned source, it reserves space for later source
+headers and divides the available text budget across the selected
+ranked chunks. Otherwise it keeps the existing relevance-first greedy
+allocation. This improves multi-document coverage under tight token
+budgets without changing tenant filters, retrieval scores, source order
+or citation IDs. The standalone context builder retains legacy
+allocation unless `balance_source_budget=True` is requested.
+
+This is a token-budget heuristic, not a claim that every additional
+source is relevant or that model accuracy is proven. Compare grounded
+answer quality and citation accuracy before a production rollout.
+
 Each evidence block gets a stable label:
 
 ```text
