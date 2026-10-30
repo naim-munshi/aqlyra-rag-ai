@@ -42,6 +42,7 @@ RUN apt-get update \
         tesseract-ocr-eng \
         tesseract-ocr-jpn \
         tesseract-ocr-ben \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 ARG UID=10001
