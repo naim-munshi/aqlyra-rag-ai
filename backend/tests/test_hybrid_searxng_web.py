@@ -213,3 +213,42 @@ def test_normal_converse_uses_searxng_without_private_history(monkeypatch):
     )
     assert "official government source" in observed[0]
     assert "[W1]" in result.content
+
+
+def test_safe_reader_evidence_used_when_enabled(monkeypatch):
+    prepare(monkeypatch)
+    monkeypatch.setattr(settings, "SEARXNG_READ_PAGES_ENABLED", True)
+    from app.services import safe_web_reader
+    requested = []
+
+    def fake_reader(url):
+        requested.append(url)
+        return "Official independently fetched HTTPS article text with important public facts." * 3
+
+    monkeypatch.setattr(safe_web_reader, "fetch_public_page", fake_reader)
+    model = FakeGroundingModel()
+    with httpx.Client(transport=httpx.MockTransport(fake_search)) as client:
+        result = research_web(
+            "Explain the newest official report", client=client, provider=model,
+        )
+    assert len(result.sources) == 2
+    assert len(requested) == 2
+    assert "Official independently fetched" in model.received[
+        "retrieved_public_evidence"
+    ][0]["excerpt"]
+    assert "Search result excerpt only" not in model.received[
+        "retrieved_public_evidence"
+    ][0]["excerpt"]
+
+
+def test_optional_gateway_token_is_only_sent_to_search_service(monkeypatch):
+    prepare(monkeypatch)
+    monkeypatch.setattr(settings, "SEARXNG_SERVICE_TOKEN", "secret-test-only")
+    seen = []
+    def handler(request):
+        seen.append((request.url.host, request.headers.get("X-Aqlyra-Search-Token")))
+        return fake_search(request)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        research_web("Show current official reports", client=client,
+                     provider=FakeGroundingModel())
+    assert seen == [("searxng.example.org", "secret-test-only")]
