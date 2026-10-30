@@ -20,6 +20,7 @@ from app.services.public_office_guard import (
     PublicFactGuardProvider,
     officeholder_search_query,
     is_ambiguous_public_officeholder_question,
+    is_public_officeholder_question,
     unverified_officeholder_reply,
 )
 from app.llms import (
