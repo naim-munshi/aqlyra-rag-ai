@@ -13,6 +13,17 @@ if [ "${AQLYRA_PRIVATE_STORAGE_PROBE_ON_BOOT:-false}" = "true" ]; then
   fi
 fi
 
+# Explicit, one-time CORS setup for authenticated, presigned browser PUT.
+# Preserves all pre-existing bucket CORS rules; no document object touched.
+# A failure is reported but cannot overwrite or delete existing user data.
+if [ "${AQLYRA_PRIVATE_STORAGE_CORS_SETUP_ON_BOOT:-false}" = "true" ]; then
+  if python -m app.services.private_cors_setup; then
+    :
+  else
+    echo "Private S3 CORS setup failed; keep direct browser upload disabled." >&2
+  fi
+fi
+
 # Free external staging uses a separate, explicitly reviewed schema migration
 # step. Never perform CREATE EXTENSION or Alembic writes on container boot.
 # Default remains 'auto' for existing local/Docker-compose workflows.
