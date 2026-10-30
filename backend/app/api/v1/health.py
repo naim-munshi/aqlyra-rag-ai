@@ -177,7 +177,15 @@ def readiness():
             "artifact_storage": (
                 "ready" if local_writes_permitted() else "writes_disabled"
             ),
-            "cloud_uploads": "disabled",
+            # A configured private-proxy route is not a verified live
+            # upload. The provider's probe and two-account E2E remain
+            # independent release evidence.
+            "cloud_uploads": (
+                "private_proxy_configured"
+                if settings.PRIVATE_OBJECT_STORAGE_ENABLED
+                and settings.CLOUD_UPLOAD_PROXY_ENABLED
+                else "disabled"
+            ),
             **({"redis": "ready"} if settings.RATE_LIMIT_ENABLED else {}),
         },
     }
