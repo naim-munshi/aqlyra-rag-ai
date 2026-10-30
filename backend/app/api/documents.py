@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.services.storage_durability_policy import local_writes_permitted
+from app.services.knowledge_index_queue import enqueue_document, should_index
 from app.services.cloud_document_access import private_document_read_grant
 from app.services.cloud_process_io import cloud_processing_source
 from app.services.cloud_document_deletion import delete_cloud_document
@@ -346,6 +347,37 @@ def process_uploaded_document(
             ),
             detail="Document processing failed",
         ) from exc
+
+
+@router.post(
+    "/{document_id}/retry-index",
+    response_model=DocumentResponse,
+    dependencies=[Depends(limit_process_request)],
+)
+def retry_knowledge_index(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DocumentResponse:
+    if not settings.KNOWLEDGE_AUTO_INDEX_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge indexing is unavailable")
+    document = get_user_document(
+        db=db, user_id=str(current_user.id), document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not should_index(document.file_extension):
+        raise HTTPException(status_code=415, detail="This file is not a knowledge document")
+    if document.status in ("processing", "queued"):
+        return DocumentResponse.model_validate(document)
+    if document.status == "ready":
+        return DocumentResponse.model_validate(document)
+    queued = enqueue_document(
+        db=db, owner_id=str(current_user.id), document_id=document_id,
+    )
+    if queued is None:
+        raise HTTPException(status_code=503, detail="Knowledge indexing unavailable")
+    return DocumentResponse.model_validate(queued)
 
 
 @router.get(
