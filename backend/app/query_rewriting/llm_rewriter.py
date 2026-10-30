@@ -30,6 +30,18 @@ _PROTECTED_TOKEN_PATTERN = re.compile(
 )
 
 
+_NEGATION_PATTERN = re.compile(
+    r"\b(?:not|never|no|without|except|excluding|exclude|"
+    r"cannot|can't|don't|doesn't|isn't|aren't|won't)\b"
+    r"|\b(?:না|নয়|নয়|নেই|ছাড়া|ছাড়া|বাদে)\b"
+    r"|ない|ません|除く|以外",
+    re.IGNORECASE,
+)
+_QUOTED_SPAN_PATTERN = re.compile(
+    r'"([^"\n]{1,160})"|“([^”\n]{1,160})”|「([^」\n]{1,160})」'
+)
+
+
 _REWRITE_INSTRUCTIONS = """
 You optimize user questions for document retrieval.
 
@@ -98,6 +110,24 @@ def _validate_rewrite(
         raise QueryRewriteValidationError(
             "Rewritten query exceeds maximum length"
         )
+
+    # Negation flips and dropped exact quotations can silently invert
+    # answers, even when numbers and identifiers are preserved.
+    if bool(_NEGATION_PATTERN.search(original)) != bool(
+        _NEGATION_PATTERN.search(normalized)
+    ):
+        raise QueryRewriteValidationError(
+            "Rewritten query changed exclusion or negation intent"
+        )
+
+    for match in _QUOTED_SPAN_PATTERN.finditer(original):
+        phrase = _normalize_query(
+            next(part for part in match.groups() if part is not None)
+        )
+        if phrase and phrase.casefold() not in normalized.casefold():
+            raise QueryRewriteValidationError(
+                "Rewritten query removed an exact quoted phrase"
+            )
 
     original_tokens = {
         token.casefold(): token
