@@ -76,17 +76,20 @@ def route_web_request(
     high-confidence rules first, then a structured AI classification for
     selected PUBLIC questions only. Any planner fault falls back to chat.
     """
+    # Guard BEFORE high-confidence keyword routing. A public-current marker
+    # must never override a private/credential-looking question.
+    if mode == "auto" and (
+        _PRIVATE_ONLY.search(question)
+        or _PERSONAL_CONTEXT.search(question)
+        or _SENSITIVE.search(question)
+    ):
+        return None
     primary = choose_web_mode(question, mode)
     if mode != "auto" or primary is not None:
         return primary
     if not settings.WEB_RESEARCH_ENABLED or len(question) > 600:
         return None
-    if (
-        _NO_WEB.search(question)
-        or _PRIVATE_ONLY.search(question)
-        or _PERSONAL_CONTEXT.search(question)
-        or _SENSITIVE.search(question)
-    ):
+    if _NO_WEB.search(question):
         return None
     if not _CANDIDATE.search(question):
         return None
