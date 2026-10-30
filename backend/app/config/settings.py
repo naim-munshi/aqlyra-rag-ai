@@ -257,7 +257,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = Path(
         "uploads"
     )
-    MAX_UPLOAD_SIZE_MB: int = 50
+    MAX_UPLOAD_SIZE_MB: int = 25
     UPLOAD_CHUNK_SIZE_BYTES: int = (
         1_048_576
     )
