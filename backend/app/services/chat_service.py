@@ -73,47 +73,103 @@ _PUBLIC_COUNTRY_FOLLOWUP = re.compile(
     r"|[\u0980-\u09ff][\u0980-\u09ff\s]{1,55}"
     r"|[\u3040-\u30ff\u3400-\u9fff][\u3040-\u30ff\u3400-\u9fff\s]{1,55})"
 )
+_COUNTRY_ALIASES = {
+    "bd": "Bangladesh", "বাংলাদেশ": "Bangladesh",
+    "jp": "Japan", "日本": "Japan",
+    "uk": "United Kingdom", "us": "United States", "usa": "United States",
+}
+_OFFICE_CLARIFICATION = re.compile(
+    r"(?=.*\b(?:country|nation)\b)(?=.*\b(?:prime minister|president)\b)"
+    r"|(?=.*দেশ)(?=.*(?:প্রধানমন্ত্রী|রাষ্ট্রপতি))"
+    r"|(?=.*国)(?=.*(?:首相|総理大臣|大統領))",
+    re.IGNORECASE,
+)
+_OFFICE_RESPONSE = re.compile(
+    r"\b(?:prime minister|president)\b|প্রধানমন্ত্রী|রাষ্ট্রপতি|首相|総理大臣|大統領",
+    re.IGNORECASE,
+)
+_SECRET_LIKE_COUNTRY = re.compile(
+    r"\b(?:password|passcode|api.?key|secret|token|otp|bearer|private)\b",
+    re.IGNORECASE,
+)
+
+
+def _public_country_name(message: str) -> str | None:
+    """Accept a bare country, never an arbitrary private follow-up."""
+    country = message.strip(" \t\r\n?!？।。")
+    if is_public_officeholder_question(message):
+        return None
+    if (
+        not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
+        or len(country.split()) > 4
+        or _SECRET_LIKE_COUNTRY.search(country)
+    ):
+        return None
+    lower = country.casefold()
+    if len(lower) <= 3 and lower not in _COUNTRY_ALIASES:
+        return None
+    return _COUNTRY_ALIASES.get(lower, country)
+
+
+def _is_valid_office_assistant_reply(question: str, answer: str) -> bool:
+    """Only an office-specific answer or a country clarification continues topic."""
+    if answer.strip() == unverified_officeholder_reply(question):
+        return True
+    return bool(
+        _OFFICE_RESPONSE.search(answer)
+        and (
+            _OFFICE_CLARIFICATION.search(answer)
+            or _OFFICE_RESPONSE.search(answer)
+        )
+    )
 
 
 def resolve_public_office_followup(
     *, db: Session, conversation: Conversation, message: str,
 ) -> str:
-    """Rebind a one-line country reply to only a verified public question.
+    """Resolve country-only replies across a short *public office* topic.
 
-    The preceding assistant must be the exact local country clarification
-    and the preceding user must have asked the ambiguous office question.
-    This never forwards arbitrary history or private memories to the web.
+    Never forwards conversation history, model replies, private memories or
+    attachments to web research. Only synthesize the public office role and
+    the user's current country after a tightly validated office-specific
+    exchange. Supports a second country switch ("japan" -> "bd").
     """
-    country = message.strip(" \t\r\n?!？।。")
-    # A complete BN/JA officeholder question can be all letters,
-    # but is not a country-only reply.
-    if is_public_officeholder_question(message):
-        return message
-    if (not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
-        or len(country.split()) > 4
-        or re.search(
-            r"\b(?:password|passcode|api.?key|secret|token|otp|bearer|private)\b",
-            country, re.IGNORECASE,
-        )):
+    country = _public_country_name(message)
+    if country is None:
         return message
     recent = get_recent_messages_for_conversation(
-        db=db, conversation_id=conversation.id, limit=2,
+        db=db, conversation_id=conversation.id, limit=6,
     )
-    if (not isinstance(recent, (list, tuple))
-        or len(recent) != 2
-        or recent[0].role != "user"
-        or recent[1].role != "assistant"):
+    if not isinstance(recent, (list, tuple)) or len(recent) < 2:
         return message
-    previous = recent[0].content.strip()
-    if not is_ambiguous_public_officeholder_question(previous):
+    # Require complete user+assistant pairs in chronological order.
+    if len(recent) % 2:
         return message
-    if recent[1].content != unverified_officeholder_reply(previous):
+    pairs = [(recent[i], recent[i + 1]) for i in range(0, len(recent), 2)]
+    if any(user.role != "user" or assistant.role != "assistant"
+           for user, assistant in pairs):
         return message
-    president = bool(re.search(
-        r"\bpresident\b|রাষ্ট্রপতি|大統領", previous, re.IGNORECASE,
-    ))
-    office = "president" if president else "prime minister"
-    return f"Who is the {office} of {country}?"
+    # Read backwards at most three turns. Every intervening user turn
+    # must be a country-only answer; arbitrary new topics terminate scope.
+    for user, assistant in reversed(pairs):
+        prior_question = user.content.strip()
+        if is_public_officeholder_question(prior_question):
+            if not _is_valid_office_assistant_reply(
+                prior_question, assistant.content.strip(),
+            ):
+                return message
+            office = (
+                "president"
+                if re.search(r"\bpresident\b|রাষ্ট্রপতি|大統領",
+                             prior_question, re.IGNORECASE)
+                else "prime minister"
+            )
+            return f"Who is the {office} of {country}?"
+        if _public_country_name(prior_question) is None:
+            return message
+        if not _OFFICE_RESPONSE.search(assistant.content):
+            return message
+    return message
 
 
 _SOURCE_CITATION_PATTERN = re.compile(
