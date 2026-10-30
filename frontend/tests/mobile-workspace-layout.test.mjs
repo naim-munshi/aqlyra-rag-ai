@@ -23,6 +23,9 @@ test("phone chat fills viewport and composer remains usable", () => {
   const chat = read("components/chat/rag-workspace.tsx");
   const viewport = read("app/layout.tsx");
   assert.match(pane, /Open navigation/);
+  // The title must not claim Knowledge when Converse is selected.
+  assert.match(pane, /Aqlyra Chat/);
+  assert.doesNotMatch(pane, /Knowledge Chat/);
   assert.match(pane, /md:hidden/);
   assert.match(pane, /min-h-0 min-w-0 flex-1/);
   assert.match(chat, /min-h-0 min-w-0 w-full overflow-hidden/);
