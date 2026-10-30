@@ -1265,7 +1265,7 @@ export function RAGWorkspace({
         }
         setAttachedDocument(null);
         setAttachmentError(
-          "File saved privately. Open Documents to process or download it. AI indexing is separate."
+          "File saved privately. AI indexing is not yet available. Open Documents to process or download it."
         );
         return;
       }
