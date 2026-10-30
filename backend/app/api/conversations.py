@@ -48,6 +48,7 @@ from app.services.web_research_service import (
 from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
+    resolve_public_office_followup,
     stream_normal_chat_reply,
 )
 from app.services.memory_extraction_service import (
@@ -471,10 +472,17 @@ def create_message_stream_endpoint(
                 requested_document_ids=tuple(request.document_ids),
             )
 
-            # Select once per turn so ambiguous public queries do not
-            # incur a second model classifier call during execution.
+            # Reconstruct only a public country follow-up after our exact
+            # country clarification; never include private chat history
+            # or personal memories in outgoing web research.
+            public_question = (
+                resolve_public_office_followup(
+                    db=db, conversation=conversation, message=user_content,
+                )
+                if not request.document_ids else user_content
+            )
             selected_web = (
-                route_web_request(user_content, request.web_mode)
+                route_web_request(public_question, request.web_mode)
                 if not request.document_ids
                 else None
             )
@@ -487,7 +495,7 @@ def create_message_stream_endpoint(
                 result = execute_chat_turn(
                     db=db,
                     conversation=conversation,
-                    message=user_content,
+                    message=public_question,
                     document_ids=document_scope.effective_document_ids,
                     top_k=request.top_k,
                     web_mode=request.web_mode,
@@ -582,7 +590,7 @@ def create_message_stream_endpoint(
             for event in stream_normal_chat_reply(
                 db=db,
                 conversation=conversation,
-                message=user_content,
+                message=public_question,
             ):
                 if (
                     event.event_type
