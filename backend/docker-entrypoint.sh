@@ -24,6 +24,16 @@ if [ "${AQLYRA_PRIVATE_STORAGE_CORS_SETUP_ON_BOOT:-false}" = "true" ]; then
   fi
 fi
 
+# Optional synthetic 2x2 image -> REAL Groq vision model check.
+# Do not pass user images or persist generated output.
+if [ "${AQLYRA_VISION_PROBE_ON_BOOT:-false}" = "true" ]; then
+  if python -m app.services.vision_provider_probe; then
+    :
+  else
+    echo "Vision model provider check failed; investigate model access." >&2
+  fi
+fi
+
 # Free external staging uses a separate, explicitly reviewed schema migration
 # step. Never perform CREATE EXTENSION or Alembic writes on container boot.
 # Default remains 'auto' for existing local/Docker-compose workflows.
