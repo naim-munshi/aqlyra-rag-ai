@@ -100,7 +100,12 @@ Dense search is useful when the question and the source mean the same thing but 
 ## 5. Lexical retrieval
 
 PostgreSQL full-text search runs alongside dense retrieval and uses the same
-validated document scope.
+validated document scope. Where standard FTS cannot segment a Japanese or
+Bangla query and returns no hits, a bounded Unicode substring fallback uses
+the same user, ready-document, document-ID and chunk-role constraints.
+Fallback results are ranked by the number of matched bounded query n-grams
+instead of arbitrary chunk order; the score is lexical match coverage, not
+fabricated cosine similarity.
 
 Lexical search is useful for exact terms such as:
 
