@@ -11,7 +11,7 @@ from app.services.converse_vision_service import generate_converse_image_reply
 def verify_vision_provider() -> None:
     with TemporaryDirectory(prefix="aqlyra-vision-probe-") as directory:
         image_path = Path(directory) / "synthetic.png"
-        Image.new("RGB", (2, 2), (255, 255, 255)).save(image_path)
+        Image.new("RGB", (512, 512), (255, 255, 255)).save(image_path)
         document = SimpleNamespace(
             content_type="image/png",
             storage_path="synthetic://probe-do-not-read",
@@ -39,8 +39,19 @@ if __name__ == "__main__":
             root = root.__cause__
         status = getattr(root, "status_code", None)
         status_label = str(status) if isinstance(status, int) else "none"
+        reason = str(root).lower()
+        category = next(
+            (key for key, markers in (
+                ("resolution", ("resolution", "dimension", "too small", "min_width")),
+                ("reasoning_format", ("reasoning_format", "reasoning format")),
+                ("parameter", ("parameter", "temperature")),
+                ("image", ("image", "vision")),
+                ("model", ("model",)),
+            ) if any(marker in reason for marker in markers)),
+            "unknown",
+        )
         print(
-            f"VISION_MODEL_DIAG={type(root).__name__};http_{status_label}",
+            f"VISION_MODEL_DIAG={type(root).__name__};http_{status_label};category_{category}",
             flush=True,
         )
         print("VISION_MODEL_PROBE=FAIL", flush=True)
