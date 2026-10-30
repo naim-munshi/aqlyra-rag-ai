@@ -29,6 +29,19 @@ if __name__ == "__main__":
     try:
         verify_vision_provider()
         print("VISION_MODEL_PROBE=PASS", flush=True)
-    except Exception:
+    except Exception as exc:
+        # Only error class and HTTP code; never raw response, request,
+        # token, image bytes or user information.
+        root = exc
+        for _ in range(3):
+            if root.__cause__ is None:
+                break
+            root = root.__cause__
+        status = getattr(root, "status_code", None)
+        status_label = str(status) if isinstance(status, int) else "none"
+        print(
+            f"VISION_MODEL_DIAG={type(root).__name__};http_{status_label}",
+            flush=True,
+        )
         print("VISION_MODEL_PROBE=FAIL", flush=True)
         raise SystemExit(1)
