@@ -40,7 +40,7 @@ from app.schemas.conversation import (
     ConversationUpdate,
     MessageResponse,
 )
-from app.services.auto_web_research_service import choose_web_mode
+from app.services.smart_web_router import route_web_request
 from app.services.web_research_service import (
     WebResearchUnavailable,
     WebResearchEvidenceError,
@@ -461,7 +461,14 @@ def create_message_stream_endpoint(
         try:
             generation = None
 
-            if request.document_ids or choose_web_mode(user_content, request.web_mode):
+            # Select once per turn so ambiguous public queries do not
+            # incur a second model classifier call during execution.
+            selected_web = (
+                route_web_request(user_content, request.web_mode)
+                if not request.document_ids
+                else None
+            )
+            if request.document_ids or selected_web is not None:
                 result = execute_chat_turn(
                     db=db,
                     conversation=conversation,
@@ -471,6 +478,7 @@ def create_message_stream_endpoint(
                     ),
                     top_k=request.top_k,
                     web_mode=request.web_mode,
+                    routed_web_mode=selected_web or "",
                 )
 
                 if result.content:
