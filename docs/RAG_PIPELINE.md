@@ -206,6 +206,13 @@ If the answer is not supported, Aqlyra can try to repair it.
 
 If the repaired answer still is not supported, Knowledge mode refuses instead of returning an unsupported result.
 
+Readiness deliberately reports `knowledge_embedding_provider_check=not_performed`:
+a healthy DB/Redis is not evidence that the configured Hugging Face
+embedding API has credits. The separately executed real provider probe,
+real document indexing, and grounded-answer benchmark remain required
+before declaring semantic retrieval production-ready. Never treat a
+lexical fallback response as a verified cross-language vector result.
+
 ## 12. Provider failures
 
 Provider failures are handled separately from grounding failures.
