@@ -38,7 +38,7 @@ router = APIRouter(prefix="/documents/cloud", tags=["Cloud Uploads"])
 
 class UploadIntentRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    size_bytes: int = Field(ge=1, le=26214400)
+    size_bytes: int = Field(ge=1, le=52428800)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -60,6 +60,8 @@ def prepare_cloud_upload(
     db: Session = Depends(get_db),
 ) -> dict:
     _require_cloud_enabled()
+    if not user.is_active or user.email_verified_at is None:
+        raise HTTPException(status_code=403, detail="Verified account required for uploads")
     try:
         reserved = reserve_upload_intent(
             db=db, owner=user,
