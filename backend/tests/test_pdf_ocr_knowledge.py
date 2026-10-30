@@ -47,7 +47,7 @@ def test_pdf_with_no_text_is_not_falsely_ready_without_ocr(tmp_path, monkeypatch
     path = tmp_path / "scan.pdf"
     _blank_pdf(path, 1)
     monkeypatch.setattr(settings, "KNOWLEDGE_PDF_OCR_ENABLED", False)
-    with pytest.raises(DocumentParsingError, match="requires OCR"):
+    with pytest.raises(DocumentParsingError, match="require OCR"):
         PDFParser().parse(path)
 
 
@@ -95,7 +95,7 @@ def test_ocr_page_invokes_bounded_renderer_and_tesseract(tmp_path, monkeypatch):
 def test_ocr_command_cannot_be_swapped_by_user_filename(tmp_path, monkeypatch):
     from app.parsers import pdf_page_ocr
     import subprocess
-    pdf = tmp_path / "bad;$(rm -rf /).pdf"
+    pdf = tmp_path / "bad;$(echo bad).pdf"
     pdf.write_bytes(b"safe")
     monkeypatch.setattr(
         pdf_page_ocr.subprocess, "run",
