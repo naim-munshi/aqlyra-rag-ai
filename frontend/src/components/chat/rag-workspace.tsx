@@ -5,7 +5,6 @@ import {
   Copy,
   Download,
   FilePlus2,
-  Globe2,
   LoaderCircle,
   PanelLeft,
   Send,
