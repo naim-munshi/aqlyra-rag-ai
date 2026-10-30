@@ -10,6 +10,7 @@ import re
 from app.config.settings import settings
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
+from app.services.searxng_provider import configured_searxng_url
 from app.services.public_office_guard import (
     is_ambiguous_public_officeholder_question,
     is_public_officeholder_question,
