@@ -1,4 +1,4 @@
-export type ChatToolId = "upload" | "web" | "browser" | "knowledge" | "documents";
+export type ChatToolId = "upload" | "web" | "web-deep" | "web-off" | "browser" | "knowledge" | "documents";
 
 export type ChatTool = {
   id: ChatToolId;
@@ -16,9 +16,18 @@ export function getChatTools(mode: "normal" | "knowledge"): ChatTool[] {
     },
     {
       id: "web",
-      label: "Web Research",
-      description: "Search live sources with citations",
-      href: "/web",
+      label: "Search the web",
+      description: "Search public sources in this chat without opening another page",
+    },
+    {
+      id: "web-deep",
+      label: "Deep research",
+      description: "Investigate multiple public sources in this chat",
+    },
+    {
+      id: "web-off",
+      label: "Don't search web",
+      description: "Answer from the AI without searching the public web",
     },
     {
       id: "browser",
