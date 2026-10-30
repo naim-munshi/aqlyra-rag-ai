@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   FilePlus2,
+  Globe2,
   LoaderCircle,
   PanelLeft,
   Send,
@@ -81,6 +82,7 @@ type ChatTurn = {
     previewUrl: string | null;
   } | null;
   loading: boolean;
+  webStatus?: "searching" | null;
   streamedAnswer: string;
   result: RAGAnswerResponse | null;
   error: string;
@@ -1395,6 +1397,7 @@ export function RAGWorkspace({
               }
             : null,
         loading: true,
+        webStatus: null,
         streamedAnswer: "",
         result: null,
         error: "",
@@ -1596,6 +1599,18 @@ export function RAGWorkspace({
             return;
           }
 
+          if (parsed.event === "tool_status") {
+            const data = parsed.data as { tool?: string; status?: string };
+            if (data.tool === "web" && data.status === "searching") {
+              setTurns((current) => current.map((turn) =>
+                turn.id === turnId
+                  ? { ...turn, webStatus: "searching" }
+                  : turn,
+              ));
+            }
+            return;
+          }
+
           if (
             parsed.event === "delta"
           ) {
@@ -1672,6 +1687,7 @@ export function RAGWorkspace({
                   ? {
                       ...turn,
                       loading: false,
+                      webStatus: null,
                       streamedAnswer:
                         result.answer,
                       result,
@@ -2454,9 +2470,11 @@ export function RAGWorkspace({
                             />
 
                             <span className="text-xs text-[var(--aq-muted)]">
-                              {turn.mode === "normal"
-                                ? "Aqlyra is thinking..."
-                                : "Retrieving evidence..."}
+                              {turn.webStatus === "searching"
+                                ? "Searching public sources..."
+                                : turn.mode === "normal"
+                                  ? "Aqlyra is thinking..."
+                                  : "Retrieving evidence..."}
                             </span>
                           </div>
                         )}
