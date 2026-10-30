@@ -397,3 +397,30 @@ def test_switch_does_not_leak_credentials_from_prior_topic(monkeypatch):
     assert chat_service.resolve_public_office_followup(
         db=Mock(), conversation=SimpleNamespace(id="c"), message="bd",
     ) == "bd"
+
+
+def test_country_switch_after_guarded_no_web_fallback(monkeypatch):
+    """bd must remain public-office scoped after Japan's honest no-web reply."""
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", False)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    safe_reply = unverified_officeholder_reply(
+        "Who is the prime minister of Japan?"
+    )
+    prior = [
+        SimpleNamespace(role="user", content="prime minister nam"),
+        SimpleNamespace(role="assistant", content="Which country do you mean?"),
+        SimpleNamespace(role="user", content="japan"),
+        SimpleNamespace(role="assistant", content=safe_reply),
+    ]
+    monkeypatch.setattr(chat_service, "get_recent_messages_for_conversation",
+                        lambda **kw: prior)
+    q = chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"), message="bd",
+    )
+    assert q == "Who is the prime minister of Bangladesh?"
+    result = chat_service.execute_chat_turn(
+        db=Mock(), conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+        message="bd", web_mode="auto",
+    )
+    assert result.provider_name == "aqlyra-public-fact-guard"
+    assert "can't verify" in result.content
