@@ -161,3 +161,83 @@ def test_bangla_and_japanese_no_web_are_honest(monkeypatch):
             message=prompt, web_mode="auto",
         )
         assert fragment in result.content
+
+
+def test_country_only_followup_routes_to_sources_and_excludes_history(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-only-key")
+    previous = [
+        SimpleNamespace(role="user", content="Who's the prime minister?"),
+        SimpleNamespace(role="assistant", content="Which country do you mean?"),
+    ]
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kw: previous,
+    )
+    observed = []
+    def fake_web(question, **kwargs):
+        observed.append(question)
+        return SimpleNamespace(
+            answer="The incumbent was verified [W1].",
+            sources=[SimpleNamespace(
+                citation="[W1]", title="Official government",
+                url="https://example.org/official",
+            )],
+            provider_name="test", model_name="stub",
+        )
+    monkeypatch.setattr(chat_service, "research_web", fake_web)
+    result = chat_service.execute_chat_turn(
+        db=Mock(),
+        conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+        message="Bangladesh",
+    )
+    assert len(observed) == 1
+    assert observed[0].startswith("Who is the prime minister of Bangladesh?")
+    assert "Who's the prime minister?" not in observed[0]
+    assert "https://example.org/official" in result.content
+
+
+def test_unrelated_country_word_never_rebinds_private_conversation(monkeypatch):
+    previous = [
+        SimpleNamespace(role="user", content="Explain the Bangladesh flag."),
+        SimpleNamespace(role="assistant", content="A flag description."),
+    ]
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kw: previous,
+    )
+    question = chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"), message="Japan",
+    )
+    assert question == "Japan"
+
+
+def test_country_followup_requires_exact_assistant_guard(monkeypatch):
+    previous = [
+        SimpleNamespace(role="user", content="Who's the prime minister?"),
+        SimpleNamespace(role="assistant", content="I guessed a country."),
+    ]
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kw: previous,
+    )
+    assert chat_service.resolve_public_office_followup(
+        db=Mock(), conversation=SimpleNamespace(id="c"),
+        message="United Kingdom",
+    ) == "United Kingdom"
+
+
+def test_followup_with_live_web_disabled_returns_uncertainty(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", False)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(chat_service, "get_recent_messages_for_conversation",
+                        lambda **kw: [
+                            SimpleNamespace(role="user", content="Who's the prime minister?"),
+                            SimpleNamespace(role="assistant", content="Which country do you mean?"),
+                        ])
+    result = chat_service.execute_chat_turn(
+        db=Mock(), conversation=SimpleNamespace(mode="normal", id="c", user_id="u"),
+        message="Bangladesh",
+    )
+    assert "can't verify" in result.content
+    assert result.provider_name == "aqlyra-public-fact-guard"
