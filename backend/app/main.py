@@ -1,8 +1,10 @@
+import logging
 from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
 from app.services.knowledge_index_queue import KnowledgeIndexWorker
+from app.services.web_research_capability import public_web_research_status
 
 _knowledge_worker = KnowledgeIndexWorker()
 from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
@@ -56,6 +58,10 @@ async def root():
 def start_knowledge_index_worker() -> None:
     # Existing FastAPI service can process the durable queue without
     # adding a new deployment or requiring a user to hold an HTTP request.
+    # Non-secret operator evidence: a configured API key is NOT a live provider PASS.
+    logging.getLogger(__name__).info(
+        "public_web_research_configuration=%s", public_web_research_status(),
+    )
     _knowledge_worker.start()
 
 
