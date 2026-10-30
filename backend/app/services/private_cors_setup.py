@@ -87,17 +87,23 @@ def verify_browser_preflight(*, storage=None, cfg=settings) -> None:
         )
         # Status and header PRESENCE are safe for operator diagnostics.
         # Never emit URL, signature, bucket, credentials or provider body.
-        if (
-            response.status_code not in (200, 204)
-            or response.headers.get("Access-Control-Allow-Origin") != _ORIGIN
-            or "PUT" not in response.headers.get("Access-Control-Allow-Methods", "")
-        ):
-            print(
-                f"PRIVATE_S3_PREFLIGHT_DIAG=status_{response.status_code}"
-                f";origin_{int(response.headers.get('Access-Control-Allow-Origin') == _ORIGIN)}"
-                f";put_{int('PUT' in response.headers.get('Access-Control-Allow-Methods', ''))}",
-                flush=True,
-            )
+        allowed_origin = response.headers.get("Access-Control-Allow-Origin")
+        # A wildcard ACAO is permitted for this browser request because
+        # signed PUT explicitly sets credentials:"omit" and transmits no
+        # cookies or Authorization header. Final objects remain private.
+        origin_ok = allowed_origin in (_ORIGIN, "*")
+        origin_kind = (
+            "exact" if allowed_origin == _ORIGIN
+            else "wildcard" if allowed_origin == "*"
+            else "missing" if not allowed_origin else "unexpected"
+        )
+        methods_ok = "PUT" in response.headers.get("Access-Control-Allow-Methods", "")
+        print(
+            f"PRIVATE_S3_PREFLIGHT_DIAG=status_{response.status_code}"
+            f";origin_{origin_kind};put_{int(methods_ok)}",
+            flush=True,
+        )
+        if response.status_code not in (200, 204) or not origin_ok or not methods_ok:
             raise RuntimeError("Browser private upload preflight failed")
     except Exception as exc:
         if not isinstance(exc, RuntimeError):
