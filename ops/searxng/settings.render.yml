@@ -1,6 +1,14 @@
 # Isolated Render SearXNG. Bound to loopback only: all public traffic
 # must pass through the token-verified Aqlyra gateway on $PORT.
-use_default_settings: true
+# Prefer keyless public data indexes that are less likely to require
+# CAPTCHA than commercial search portals from free cloud egress addresses.
+use_default_settings:
+  engines:
+    keep_only:
+      - wikipedia
+      - wikidata
+      - mwmbl
+      - mojeek
 general:
   debug: false
   instance_name: "Aqlyra Protected Search"
