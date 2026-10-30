@@ -83,13 +83,13 @@ def test_signed_upload_grant_uses_isolated_random_key():
     assert first.key != second.key
     assert first.key.startswith("documents/" + owner + "/")
     assert first.key.endswith(".txt")
-    assert first.expires_in_seconds == 120
+    assert first.expires_in_seconds == 600
     assert first.headers == {"Content-Type": "text/plain"}
     assert "X-Amz-Signature=" in first.put_url
     method, kwargs = client.signed[0]
     assert method == "put_object"
     assert kwargs["HttpMethod"] == "PUT"
-    assert kwargs["ExpiresIn"] == 120
+    assert kwargs["ExpiresIn"] == 600
     assert kwargs["Params"] == {
         "Bucket": "private-documents",
         "Key": first.key,
