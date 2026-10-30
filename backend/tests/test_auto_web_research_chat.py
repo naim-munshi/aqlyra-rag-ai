@@ -46,6 +46,7 @@ def test_explicit_control_respects_fail_closed_configuration(monkeypatch):
 
 def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
     monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(planner.settings, "TAVILY_API_KEY", "test-only-key")
     calls = []
     def mock_research(question, *, max_sources, mode, time_range, provider, iterative):
         calls.append((question, max_sources, mode, time_range, iterative))
@@ -137,6 +138,7 @@ def test_authenticated_auto_web_chat_persists_cited_reply(client, monkeypatch):
     from app.schemas.web_research import WebResearchSource
 
     monkeypatch.setattr(planner.settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(planner.settings, "TAVILY_API_KEY", "test-only-key")
     searched = []
     def mock_research(question, **options):
         searched.append((question, options["mode"], options["time_range"]))
