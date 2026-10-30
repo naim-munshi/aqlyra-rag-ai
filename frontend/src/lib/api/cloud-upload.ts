@@ -1,6 +1,6 @@
 import type { DocumentResponse } from "@/types/document";
 
-const MAX_CLOUD_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_CLOUD_UPLOAD_BYTES = 50 * 1024 * 1024;
 type PrepareResponse = {
   intent_id: string;
   upload_url: string;
@@ -21,7 +21,7 @@ async function detailMessage(response: Response, fallback: string): Promise<stri
 
 export async function uploadViaPrivateCloud(file: File): Promise<DocumentResponse> {
   if (!file.size || file.size > MAX_CLOUD_UPLOAD_BYTES) {
-    throw new Error("Choose a document between 1 byte and 25 MB");
+    throw new Error("Choose a file from 1 byte to 50 MB");
   }
   if (!globalThis.crypto?.subtle) {
     throw new Error("Secure HTTPS connection required for cloud upload");
@@ -54,7 +54,7 @@ export async function uploadViaPrivateCloud(file: File): Promise<DocumentRespons
     !destination.hostname.endsWith(".aws.neon.tech") ||
     destination.username || destination.password || destination.port ||
     !/^[a-f0-9-]{36}$/.test(grant.intent_id) ||
-    grant.expires_in_seconds > 120 || grant.expires_in_seconds < 1
+    grant.expires_in_seconds > 600 || grant.expires_in_seconds < 1
   ) {
     throw new Error("Invalid private upload grant");
   }
