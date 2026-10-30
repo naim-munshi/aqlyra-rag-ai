@@ -14,6 +14,7 @@ from app.services.auto_web_research_service import (
     cited_web_answer,
 )
 from app.services.web_research_service import research_web
+from app.services.smart_web_router import route_web_request
 from app.llms import (
     LLMError,
     LLMProvider,
@@ -101,6 +102,8 @@ Rules:
   mechanics unless the user explicitly asks about memory behavior.
 - Personal memory is not document evidence and must never be represented
   as an Aqlyra document citation.
+- Do not claim to have searched live websites unless web evidence was actually supplied.
+- If the user needs current information but no web tool was used, say that it was not verified.
 - Do not claim that an answer is grounded in private documents.
 - Do not invent Aqlyra document citations such as [S1], [S2], or similar.
 - Respond in the language of the current user message unless the user
@@ -930,6 +933,7 @@ def execute_chat_turn(
     top_k: int = 8,
     provider: LLMProvider | None = None,
     web_mode: str = "auto",
+    routed_web_mode: str | None = None,
 ) -> ChatExecutionResult:
     cleaned = message.strip()
 
@@ -951,7 +955,13 @@ def execute_chat_turn(
                 )
             )
 
-        research_mode = choose_web_mode(cleaned, web_mode)
+        # The streaming endpoint passes a pre-computed decision ("" means
+        # no search). This prevents duplicate LLM selector calls and costs.
+        research_mode = (
+            route_web_request(cleaned, web_mode, provider=provider)
+            if routed_web_mode is None
+            else routed_web_mode or None
+        )
         if research_mode is not None:
             if len(cleaned) > 600:
                 raise ChatValidationError(
