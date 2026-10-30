@@ -223,7 +223,11 @@ def process_document(
         if not use_lexical_only:
             try:
                 create_chunk_embeddings(db=db, chunks=chunks)
-            except (EmbeddingProviderRequestError, EmbeddingProviderQuotaError):
+            except (
+                EmbeddingProviderRequestError, EmbeddingProviderQuotaError,
+                EmbeddingValidationError, EmbeddingProviderNotFoundError,
+                EmbeddingDimensionError, EmbeddingBatchError,
+            ):
                 if not settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
                     raise
                 use_lexical_only = True
