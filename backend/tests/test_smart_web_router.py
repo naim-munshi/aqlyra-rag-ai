@@ -132,3 +132,49 @@ def test_routed_decision_does_not_rerun_model(enabled, monkeypatch):
         message=query,web_mode="auto",routed_web_mode="search",
     )
     assert "https://example.org/result" in result.content
+
+
+
+def test_authenticated_stream_auto_ai_selects_web_once(client, enabled, monkeypatch):
+    """Actual chat SSE responds with tool status, citation, and one AI choice."""
+    model = StubSelector()
+    monkeypatch.setattr(router.settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(router, "create_configured_llm_provider", lambda: model)
+    calls = []
+    monkeypatch.setattr(chat_service, "research_web", lambda question, **kwargs: (
+        calls.append((question, kwargs["mode"])) or SimpleNamespace(
+            answer="Two public roles [W1].",
+            sources=[SimpleNamespace(citation="[W1]", title="Public job board",
+                                     url="https://example.org/jobs")],
+            provider_name="stub", model_name="stub",
+        )
+    ))
+    registered = client.post("/api/v1/auth/register", json={
+        "username": "ai_search_stream_user",
+        "email": "ai_search_stream_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert registered.status_code == 201
+    login = client.post("/api/v1/auth/login", json={
+        "email": "ai_search_stream_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert login.status_code == 200
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post("/api/v1/conversations", json={
+        "title": "Auto web integration", "mode": "normal",
+    }, headers=auth)
+    assert created.status_code == 201
+    identifier = created.json()["id"]
+    question = "Find AI engineer jobs in Tokyo"
+    answer = client.post(
+        f"/api/v1/conversations/{identifier}/messages/stream",
+        json={"content": question, "web_mode": "auto"}, headers=auth,
+    )
+    assert answer.status_code == 200
+    assert "event: tool_status" in answer.text
+    assert '"status":"searching"' in answer.text
+    assert "event: complete" in answer.text
+    assert "https://example.org/jobs" in answer.text
+    assert calls == [(question, "search")]
+    assert len(model.calls) == 1
