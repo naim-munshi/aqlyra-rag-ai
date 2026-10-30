@@ -176,7 +176,11 @@ def _retrieve_rag_hits(
                 reranking_enabled=reranking_enabled,
                 candidate_depth=candidate_depth,
             )
-        except (EmbeddingProviderRequestError, EmbeddingProviderQuotaError):
+        except (
+            EmbeddingProviderRequestError, EmbeddingProviderQuotaError,
+            EmbeddingValidationError, EmbeddingProviderNotFoundError,
+            RetrievalProviderError,
+        ):
             logger.warning("knowledge_dense_provider_unavailable fallback=lexical")
             return _lexical_evidence_fallback(db=db, query=retrieval_query)
     return _retrieve_with_optional_reranking(
