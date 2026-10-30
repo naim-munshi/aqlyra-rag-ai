@@ -156,7 +156,7 @@ def unverified_officeholder_reply(question: str) -> str | None:
         )
     return (
         "I can't verify the current officeholder from live sources right now. "
-        "If you selected Web Off, switch to Auto or On and try again."
+        "If you selected Web Search Off, switch to Auto or On and try again."
     )
 
 
