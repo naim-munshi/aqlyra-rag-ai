@@ -121,9 +121,9 @@ def unverified_officeholder_reply(question: str) -> str | None:
             + (
                 "Aqlyra-তে Tavily Web Search provider সংযুক্ত করা হয়নি। "
                 "Administrator-কে এটি configure করতে হবে।"
-                if capability == "missing_tavily_api_key"
+                if capability in ("missing_tavily_api_key", "disabled_and_missing_key")
                 else "Aqlyra administrator Web Search বন্ধ রেখেছেন।"
-                if capability == "disabled"
+                if capability == "disabled_key_present"
                 else "Web Search Auto বা On করে আবার চেষ্টা করুন।"
             )
         )
@@ -134,21 +134,21 @@ def unverified_officeholder_reply(question: str) -> str | None:
             "現在の在職者をライブ情報で確認できません。"
             + (
                 "Aqlyraの管理者によるTavily連携が必要です。"
-                if capability == "missing_tavily_api_key"
+                if capability in ("missing_tavily_api_key", "disabled_and_missing_key")
                 else "Aqlyraの管理者がウェブ検索を無効にしています。"
-                if capability == "disabled"
+                if capability == "disabled_key_present"
                 else "Web SearchをAutoまたはOnにして再度お試しください。"
             )
         )
     if ambiguous:
         return "Which country do you mean?"
-    if capability == "missing_tavily_api_key":
+    if capability in ("missing_tavily_api_key", "disabled_and_missing_key"):
         return (
             "I can't verify the current officeholder because Aqlyra's live "
             "Web Search provider is not connected. The administrator needs "
             "to configure Tavily; I won't guess from old model data."
         )
-    if capability == "disabled":
+    if capability == "disabled_key_present":
         return (
             "I can't verify the current officeholder because Aqlyra's "
             "live Web Search is disabled by its administrator. "
