@@ -1152,6 +1152,17 @@ export function RAGWorkspace({
       return;
     }
 
+    // Production proxy uploads are capped at 3 MiB. Reject early, before
+    // allocating an image preview or buffering a potentially huge file.
+    if (
+      process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+      file.size > 3 * 1024 * 1024
+    ) {
+      setAttachmentError("Choose a file or image of 3 MB or less.");
+      setUploadState("idle");
+      return;
+    }
+
     setAttachmentError("");
     setUploadState("uploading");
 
@@ -1245,10 +1256,16 @@ export function RAGWorkspace({
         process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
         document.status === "uploaded"
       ) {
-        setAttachedDocument(null);
         setDocumentsVersion((current) => current + 1);
+        if (["image/png", "image/jpeg", "image/webp"].includes(document.content_type)) {
+          // Direct vision uses the owner-verified S3 object; it does not
+          // need embeddings. The file has already been durably finalized.
+          setAttachedDocument(document);
+          return;
+        }
+        setAttachedDocument(null);
         setAttachmentError(
-          "File saved in private storage. Open Documents to review it; AI indexing is not yet available."
+          "File saved privately. Open Documents to process or download it. AI indexing is separate."
         );
         return;
       }
