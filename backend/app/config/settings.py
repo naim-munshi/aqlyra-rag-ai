@@ -217,6 +217,9 @@ class Settings(BaseSettings):
     KNOWLEDGE_AUTO_INDEX_ENABLED: bool = False
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
     KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
+    KNOWLEDGE_PDF_OCR_ENABLED: bool = False
+    KNOWLEDGE_PDF_OCR_MAX_PAGES: int = Field(default=20, ge=1, le=50)
+    KNOWLEDGE_PDF_OCR_PAGE_TIMEOUT_SECONDS: int = Field(default=15, ge=5, le=45)
 
     # RAG reranking
     RAG_GROUNDING_VERIFIER_ENABLED: bool = False
