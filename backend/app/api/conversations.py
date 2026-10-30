@@ -461,6 +461,16 @@ def create_message_stream_endpoint(
         try:
             generation = None
 
+            # Streaming must enforce the exact same owner/status contract
+            # as the JSON endpoint before any LLM or cloud object access.
+            # In particular an uploaded, unindexed PHOTO may be inspected
+            # in Converse; an unindexed PDF or another owner's photo may not.
+            document_scope = resolve_conversation_document_scope(
+                db=db,
+                conversation=conversation,
+                requested_document_ids=tuple(request.document_ids),
+            )
+
             # Select once per turn so ambiguous public queries do not
             # incur a second model classifier call during execution.
             selected_web = (
@@ -478,9 +488,7 @@ def create_message_stream_endpoint(
                     db=db,
                     conversation=conversation,
                     message=user_content,
-                    document_ids=tuple(
-                        request.document_ids
-                    ),
+                    document_ids=document_scope.effective_document_ids,
                     top_k=request.top_k,
                     web_mode=request.web_mode,
                     routed_web_mode=selected_web or "",
@@ -683,7 +691,7 @@ def create_message_stream_endpoint(
                 },
             )
 
-        except ChatValidationError as exc:
+        except (ChatValidationError, ConversationDocumentScopeError) as exc:
             app_logger.info(
                 "Conversation attachment "
                 "validation failed: "
