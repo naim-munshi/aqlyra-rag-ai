@@ -171,6 +171,11 @@ class Settings(BaseSettings):
     WEB_RESEARCH_ENABLED: bool = False
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
+    # Keyless SearXNG-first search. A private, trusted HTTPS endpoint is
+    # configured by the operator; never accept it from user/chat input.
+    WEB_SEARCH_PROVIDER: str = "auto"  # auto | searxng | tavily
+    SEARXNG_BASE_URL: str = ""
+    SEARXNG_READ_PAGES_ENABLED: bool = False
 
     # Real-time voice must stay disabled until a LiveKit worker and
     # real STT/TTS providers have passed the owner-controlled E2E gate.
