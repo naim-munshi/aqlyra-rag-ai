@@ -4,6 +4,7 @@
 freshness, source extraction or LLM citations have passed production acceptance.
 """
 from app.config.settings import settings
+from app.services.searxng_provider import configured_searxng_url
 
 
 def public_web_research_status() -> str:
