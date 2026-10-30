@@ -46,10 +46,9 @@ def cloud_processing_source(*, db, owner_id, document, store=None):
             raise PrivateObjectStorageError("Private file checksum mismatch")
         _validate_file_content(Path(tmp.name), document.file_extension)
         yield Path(tmp.name)
-    except PrivateObjectStorageError:
-        raise
-    except Exception as exc:
-        raise PrivateObjectStorageError("Private file processing unavailable") from exc
+    # Exception raised by the user's vision/LLM call inside the with block
+    # must propagate unchanged; wrapping it as S3 failure hides the
+    # actual provider status and turns a recoverable 503 into a 500.
     finally:
         if body is not None and callable(getattr(body, "close", None)):
             body.close()
