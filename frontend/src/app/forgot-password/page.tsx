@@ -1,0 +1,27 @@
+import Link from "next/link";
+import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
+import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
+
+export default function ForgotPasswordPage() {
+  return (
+    <main className="flex min-h-dvh items-start justify-center sm:items-center bg-[var(--aq-bg)] px-4 py-6 sm:px-6 sm:py-12 text-[var(--aq-text)]">
+      <section className="w-full max-w-[440px]">
+        <div className="mb-8 flex justify-center"><AqlyraLogo size={46} /></div>
+        <div className="rounded-3xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-5 shadow-2xl sm:p-10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--aq-cyan)]">
+            Account recovery
+          </p>
+          <h1 className="mt-3 text-2xl font-bold leading-tight tracking-tight sm:text-[32px]">Reset your password</h1>
+          <p className="mt-3 text-[15px] leading-6 text-[var(--aq-muted)]">
+            Receive a one-time code by email and choose a new password.
+          </p>
+          <ForgotPasswordForm />
+          <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
+            Remember your password?{" "}
+            <Link href="/login" className="font-semibold text-[var(--aq-blue)] hover:underline">Sign in</Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}

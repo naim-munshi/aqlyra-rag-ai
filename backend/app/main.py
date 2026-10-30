@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
+from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.observability import (
     setup_request_observability,
@@ -30,6 +31,9 @@ app = FastAPI(
 
 setup_request_observability(app)
 setup_cors(app)
+# Outer ASGI ingress check prevents direct Render requests from bypassing
+# the bounded Vercel authentication proxies.
+app.add_middleware(AuthenticationBodyLimitMiddleware)
 
 app.include_router(
     api_router,

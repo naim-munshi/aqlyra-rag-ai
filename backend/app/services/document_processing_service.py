@@ -103,6 +103,8 @@ def _mark_document_failed(
 def process_document(
     db: Session,
     document: Document,
+    *,
+    verified_source_path: Path | None = None,
 ) -> Document:
     if document.status == "ready":
         raise DocumentProcessingConflictError(
@@ -127,11 +129,20 @@ def process_document(
         db.commit()
         db.refresh(document)
 
-        document_path = (
-            _resolve_stored_document_path(
+        if document.storage_path.startswith("cloud://"):
+            if verified_source_path is None or not verified_source_path.is_file():
+                raise StoredDocumentNotFoundError(
+                    "Verified private cloud document source is required"
+                )
+            document_path = verified_source_path
+        else:
+            if verified_source_path is not None:
+                raise DocumentProcessingConflictError(
+                    "External source must not override a local document"
+                )
+            document_path = _resolve_stored_document_path(
                 document.storage_path
             )
-        )
 
         parse_result = parse_document(
             path=document_path,

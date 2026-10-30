@@ -2,6 +2,33 @@
 
 set -eu
 
+# Explicit one-boot synthetic S3 storage probe, OFF by default.
+# Results are PRIVATE_S3_PROBE=PASS/FAIL in server logs; no user objects touched.
+# Even PASS does NOT authorize turning on public uploads or artifact generation.
+if [ "${AQLYRA_PRIVATE_STORAGE_PROBE_ON_BOOT:-false}" = "true" ]; then
+  if python -m app.services.private_storage_probe; then
+    :
+  else
+    echo "Private S3 probe failed; keep private file features disabled." >&2
+  fi
+fi
+
+# Free external staging uses a separate, explicitly reviewed schema migration
+# step. Never perform CREATE EXTENSION or Alembic writes on container boot.
+# Default remains 'auto' for existing local/Docker-compose workflows.
+case "${DATABASE_MIGRATION_MODE:-auto}" in
+  manual)
+    echo "Database migrations intentionally disabled at startup."
+    exec "$@"
+    ;;
+  auto)
+    ;;
+  *)
+    echo "Invalid DATABASE_MIGRATION_MODE; expected auto or manual" >&2
+    exit 1
+    ;;
+esac
+
 echo "Waiting for PostgreSQL and preparing pgvector..."
 
 python - <<'PY'
