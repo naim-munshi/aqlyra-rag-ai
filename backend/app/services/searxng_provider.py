@@ -22,9 +22,17 @@ def configured_searxng_url() -> str | None:
     try:
         parsed = urlsplit(raw)
         host = (parsed.hostname or "").lower()
+        internal_dev = (
+            settings.APP_ENV != "production"
+            and parsed.scheme == "http"
+            and host == "searxng"
+            and parsed.port == 8080
+        )
         if (
-            parsed.scheme != "https"
-            or not host or "." not in host or parsed.port not in (None, 443)
+            (not internal_dev and parsed.scheme != "https")
+            or not host
+            or (not internal_dev and "." not in host)
+            or (not internal_dev and parsed.port not in (None, 443))
             or parsed.username or parsed.password or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment
             or any(x.isspace() for x in raw)
