@@ -212,6 +212,12 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 2
     LLM_REASONING_EFFORT: str = ""
 
+    # Durable Knowledge indexing. Disabled by default for legacy/staging.
+    # Store queue state in existing Document.status (no schema migration).
+    KNOWLEDGE_AUTO_INDEX_ENABLED: bool = False
+    KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
+    KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
+
     # RAG reranking
     RAG_GROUNDING_VERIFIER_ENABLED: bool = False
     RAG_RERANKER_ENABLED: bool = False
