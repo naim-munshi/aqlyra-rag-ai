@@ -31,11 +31,11 @@ export function KnowledgeWorkspace({
         </button>
         <div className="min-w-0">
           <h1 className="text-sm font-semibold">
-            Knowledge Chat
+            Aqlyra Chat
           </h1>
 
           <p className="mt-0.5 hidden text-[10px] text-[var(--aq-muted)] sm:block">
-            Grounded answers from your documents
+            Converse and source-grounded Knowledge
           </p>
         </div>
       </header>
