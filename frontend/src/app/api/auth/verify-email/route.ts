@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { trustedProxyClientIp } from "@/lib/security/client-ip";
 
 import { backendUrl } from "@/lib/api/backend";
 import { completeAuthentication } from "@/lib/auth/complete-authentication";
@@ -9,8 +11,11 @@ export async function POST(request: Request) {
   let body: VerifyEmailInput;
 
   try {
-    body = (await request.json()) as VerifyEmailInput;
-  } catch {
+    body = (await readBoundedJson(request)) as VerifyEmailInput;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json(
       { detail: "Invalid request body" },
       { status: 400 },
@@ -20,8 +25,7 @@ export async function POST(request: Request) {
   const backendHeaders = new Headers({
     "Content-Type": "application/json",
   });
-  const clientIp =
-    request.headers.get("x-aqlyra-client-ip");
+  const clientIp = trustedProxyClientIp(request);
 
   if (clientIp) {
     backendHeaders.set("X-Aqlyra-Client-IP", clientIp);
@@ -45,6 +49,7 @@ export async function POST(request: Request) {
         headers: backendHeaders,
         body: JSON.stringify({
           code: body.code,
+          password: body.password,
           verification_token: verificationToken,
         }),
         cache: "no-store",

@@ -13,14 +13,6 @@ on:
       - ".github/workflows/frontend-deployment.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - "docker-compose.yml"
-      - "Caddyfile"
-      - "scripts/ops/**"
-      - "docs/STAGING.md"
-      - ".github/workflows/frontend-deployment.yml"
   workflow_dispatch:
 
 permissions:
