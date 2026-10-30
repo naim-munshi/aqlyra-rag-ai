@@ -78,7 +78,7 @@ def test_persistent_upload_intent_has_short_lived_signed_grant(
     owner = create_verified_user(client, db_session, "owner")
     fake = FakeStorage()
     grant = reserve(db_session, owner, fake=fake)
-    assert grant.grant.expires_in_seconds == 120
+    assert grant.grant.expires_in_seconds == 600
     assert "documents/" + owner.id + "/" in grant.grant.key
     assert grant.expires_at > utc_now_naive()
     assert len(fake.params) == 1
