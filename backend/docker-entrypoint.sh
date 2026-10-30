@@ -34,6 +34,15 @@ if [ "${AQLYRA_VISION_PROBE_ON_BOOT:-false}" = "true" ]; then
   fi
 fi
 
+# One-time provider-backed Knowledge smoke, with NO user document reads.
+if [ "${AQLYRA_KNOWLEDGE_PROVIDER_PROBE_ON_BOOT:-false}" = "true" ]; then
+  if python -m app.services.knowledge_provider_probe; then
+    :
+  else
+    echo "Knowledge provider check failed; inspect sanitized readiness logs." >&2
+  fi
+fi
+
 # Free external staging uses a separate, explicitly reviewed schema migration
 # step. Never perform CREATE EXTENSION or Alembic writes on container boot.
 # Default remains 'auto' for existing local/Docker-compose workflows.
