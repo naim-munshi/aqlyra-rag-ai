@@ -28,6 +28,10 @@ class EmbeddingProviderRequestError(
     """Raised when an external embedding request fails."""
 
 
+class EmbeddingProviderQuotaError(EmbeddingProviderRequestError):
+    """Provider rejected inference due to billing/usage quota (HTTP 402)."""
+
+
 @dataclass(frozen=True, slots=True)
 class EmbeddingProviderInfo:
     provider_name: str
