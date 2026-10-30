@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { trustedProxyClientIp } from "@/lib/security/client-ip";
+
 import { backendUrl, readJson } from "@/lib/api/backend";
 import {
   clearEmailVerificationToken,
@@ -27,14 +29,10 @@ export async function POST(request: Request) {
     "Content-Type": "application/json",
   });
 
-  const clientIp =
-    request.headers.get("x-aqlyra-client-ip");
+  const clientIp = trustedProxyClientIp(request);
 
   if (clientIp) {
-    backendHeaders.set(
-      "X-Aqlyra-Client-IP",
-      clientIp,
-    );
+    backendHeaders.set("X-Aqlyra-Client-IP", clientIp);
   }
 
   try {
