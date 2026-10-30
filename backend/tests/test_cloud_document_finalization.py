@@ -477,7 +477,7 @@ def test_private_cloud_prepare_finalize_api_is_explicitly_gated(
     assert prepared.status_code == 201, prepared.text
     grant = prepared.json()
     assert grant["method"] == "PUT"
-    assert grant["expires_in_seconds"] == 120
+    assert grant["expires_in_seconds"] == 600
     assert grant["headers"] == {"Content-Type": "text/plain"}
     assert "X-Amz-Signature" in grant["upload_url"]
     finalize = f"/api/v1/documents/cloud/{grant['intent_id']}/finalize"
