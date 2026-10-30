@@ -17,11 +17,11 @@ _ROLE = re.compile(
     r"|প্রধানমন্ত্রী|রাষ্ট্রপতি|首相|総理大臣|大統領",
     flags=re.IGNORECASE,
 )
-_ASKING_WHO = re.compile(
-    r"\bwho(?:'s| is|\s+currently\s+is)?\b|\bwho\b"
-    r"|কে(?:\s|\?|$)|কার\b|誰|だれ",
+_EN_OFFICE_QUESTION = re.compile(
+    r"^\s*who(?:'s|\s+is|\s+currently\s+is|\s+holds|\s+currently\s+holds)\b",
     flags=re.IGNORECASE,
 )
+_BN_JA_WHO = re.compile(r"কে(?:\s|\?|$)|কার\b|誰|だれ")
 _GENERIC_EN = re.compile(
     r"(?:who(?:'s| is)|tell me who(?:'s| is))\s+"
     r"(?:(?:the|our)\s+)?(?:(?:current|present)\s+)?"
@@ -52,7 +52,9 @@ def _normalized(question: str) -> str:
 def is_public_officeholder_question(question: str) -> bool:
     """Only questions asking *who* holds a public executive office."""
     text = _normalized(question)
-    if not _ROLE.search(text) or not _ASKING_WHO.search(text):
+    if not _ROLE.search(text):
+        return False
+    if not (_EN_OFFICE_QUESTION.search(text) or _BN_JA_WHO.search(text)):
         return False
     # Don't add a hard live-data requirement to a request explicitly about
     # past incumbents; the ordinary historical-answer path remains available.
