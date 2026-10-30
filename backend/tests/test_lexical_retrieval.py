@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.retrieval import RetrievalQuery
 from app.services.lexical_retrieval_service import (
     search_lexical_chunks,
+    _fallback_unicode_chunks,
 )
 
 
@@ -88,6 +89,40 @@ def upload_and_process(
     assert process_response.status_code == 200
 
     return document_id
+
+
+def test_unicode_fallback_ranks_by_matched_ngrams(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user_id, headers = create_user(
+        client=client,
+        username="unicodecoverage",
+        email="unicodecoverage@example.com",
+    )
+    weak_id = upload_and_process(
+        client, headers, "weak.md",
+        "# Weak match\\n\\n京都大学について記載しています。",
+    )
+    strong_id = upload_and_process(
+        client, headers, "strong.md",
+        "# Strong match\\n\\n京都大学の研究に関する情報です。",
+    )
+
+    hits = _fallback_unicode_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=user_id,
+            text="京都大学の研究",
+            top_k=2,
+            document_ids=(weak_id, strong_id),
+            chunk_roles=("content",),
+        ),
+    )
+    assert len(hits) >= 2
+    assert hits[0].document_id == strong_id
+    assert hits[0].lexical_score > hits[1].lexical_score
+    assert all(hit.document_id in {weak_id, strong_id} for hit in hits)
 
 
 def test_lexical_search_finds_exact_terms(
