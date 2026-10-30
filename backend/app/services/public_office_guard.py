@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from app.llms.types import LLMGeneration, LLMProviderInfo, LLMStreamEvent
+from app.services.web_research_capability import public_web_research_status
 
 
 _ROLE = re.compile(
@@ -125,11 +126,24 @@ def unverified_officeholder_reply(question: str) -> str | None:
             "現在の在職者をライブ情報で確認できません。"
             "ウェブ検索を有効にして再度お試しください。"
         )
+    if ambiguous:
+        return "Which country do you mean?"
+    capability = public_web_research_status()
+    if capability == "missing_tavily_api_key":
+        return (
+            "I can't verify the current officeholder because Aqlyra's live "
+            "Web Search provider is not connected. The administrator needs "
+            "to configure Tavily; I won't guess from old model data."
+        )
+    if capability == "disabled":
+        return (
+            "I can't verify the current officeholder because Aqlyra's "
+            "live Web Search is disabled by its administrator. "
+            "I won't guess from old model data."
+        )
     return (
-        "Which country do you mean?"
-        if ambiguous else
         "I can't verify the current officeholder from live sources right now. "
-        "Please enable Web Search or try again when it is available."
+        "If you selected Web Off, switch to Auto or On and try again."
     )
 
 
