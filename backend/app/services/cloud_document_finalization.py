@@ -216,7 +216,15 @@ def commit_verified_cloud_document(
             file_extension=extension,
             file_size=verified.size_bytes,
             checksum_sha256=verified.sha256,
-            status="uploaded",
+            status=(
+                "queued"
+                if cfg.KNOWLEDGE_AUTO_INDEX_ENABLED
+                and extension in {
+                    ".pdf", ".docx", ".xlsx", ".pptx",
+                    ".txt", ".md", ".csv",
+                }
+                else "uploaded"
+            ),
             requires_ocr=False,
         )
         db.add(document)
