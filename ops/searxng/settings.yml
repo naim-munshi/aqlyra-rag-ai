@@ -1,0 +1,17 @@
+# Internal-only SearXNG for local Compose. Do not expose port 8080.
+# The official SearXNG image overrides server.secret_key using SEARXNG_SECRET.
+use_default_settings: true
+general:
+  debug: false
+  instance_name: "Aqlyra Search"
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "REPLACED_BY_SEARXNG_SECRET_ENV_DO_NOT_EXPOSE"
+  limiter: false  # internal Compose network ONLY, no published ports
+  image_proxy: false
