@@ -124,6 +124,8 @@ def _unicode_search_terms(text: str) -> tuple[str, ...]:
         candidate = match.group(0)
         if "\u0980" <= candidate[0] <= "\u09ff":
             values.append(candidate[:36])
+            if len(candidate) > 5:
+                values.append(candidate[:5])
         elif len(candidate) <= 3:
             values.append(candidate)
         else:
