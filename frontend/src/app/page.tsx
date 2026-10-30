@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { KnowledgeWorkspace } from "@/components/workspace/knowledge-workspace";
-import { Sidebar } from "@/components/workspace/sidebar";
+import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
 import { unauthenticatedLanding } from "@/lib/deployment/mode";
@@ -60,10 +59,5 @@ export default async function Home() {
     redirect(unauthenticatedLanding(process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY));
   }
 
-  return (
-    <main className="flex h-screen overflow-hidden bg-[var(--aq-bg)] text-[var(--aq-text)]">
-      <Sidebar user={user} />
-      <KnowledgeWorkspace user={user} />
-    </main>
-  );
+  return <ResponsiveWorkspaceShell user={user} />;
 }

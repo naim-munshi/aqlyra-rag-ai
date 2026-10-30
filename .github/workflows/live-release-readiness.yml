@@ -1,0 +1,43 @@
+name: Live Release Readiness (read-only)
+
+on:
+  push:
+    branches:
+      - release/full-with-study-abroad-20261028
+    paths:
+      - 'scripts/ops/live_release_probe.py'
+      - '.github/workflows/live-release-readiness.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/ops/live_release_probe.py'
+      - 'scripts/ops/test_live_release_probe.py'
+      - '.github/workflows/live-release-readiness.yml'
+  workflow_dispatch:
+    inputs:
+      expected_phase:
+        description: "Expected live backend phase (core, study-core, or full)"
+        required: true
+        default: study-core
+        type: choice
+        options:
+          - core
+          - study-core
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-release-gate:
+    name: Observe Aqlyra Render phase without data writes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Probe fixed Aqlyra API without credentials or mutations
+        run: python3 scripts/ops/live_release_probe.py --expected-phase "${{ inputs.expected_phase || 'study-core' }}"

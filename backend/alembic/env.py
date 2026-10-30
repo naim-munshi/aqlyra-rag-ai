@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config.settings import settings
 from app.database.base import Base
 from app.models import (
+    CloudUploadIntent,
     Conversation,
     Document,
     EmailVerificationCode,
@@ -13,6 +14,11 @@ from app.models import (
     MemoryEmbedding,
     Message,
     Project,
+    PasswordResetCode,
+    StudyCase,
+    StudyCaseDocument,
+    StudyResearchReport,
+    StudyUniversity,
     User,
 )
 
@@ -31,6 +37,7 @@ if config.config_file_name is not None:
 
 # Importing the models registers their tables with Base.metadata.
 _ = (
+    CloudUploadIntent,
     Conversation,
     Document,
     EmailVerificationCode,
@@ -38,6 +45,7 @@ _ = (
     MemoryEmbedding,
     Message,
     Project,
+    PasswordResetCode,
     User,
 )
 target_metadata = Base.metadata

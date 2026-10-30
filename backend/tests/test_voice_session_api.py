@@ -61,6 +61,11 @@ def configure_livekit(
         "VOICE_AGENT_NAME",
         "aqlyra-voice",
     )
+    monkeypatch.setattr(
+        settings,
+        "VOICE_AGENT_READY",
+        True,
+    )
 
 
 def test_voice_session_requires_authentication(

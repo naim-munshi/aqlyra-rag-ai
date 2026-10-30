@@ -64,14 +64,21 @@ export default function RegisterPage() {
               </p>
 
               <h2 className="mt-3 text-[32px] font-bold tracking-tight">
-                Create your account
+                Verify your email to join
               </h2>
 
               <p className="mt-3 text-[15px] leading-6 text-[var(--aq-muted)]">
-                Set up your private Aqlyra workspace.
+                Your account activates only after you confirm the verification code sent to your email.
               </p>
 
               <RegisterForm />
+
+              <p className="mt-5 text-center text-xs leading-5 text-[var(--aq-muted)]">
+                Email already has an unverified registration?{" "}
+                <Link href="/claim-pending-email" className="font-semibold text-[var(--aq-blue)] hover:underline">
+                  Secure your email account
+                </Link>
+              </p>
 
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 Already have an account?{" "}
