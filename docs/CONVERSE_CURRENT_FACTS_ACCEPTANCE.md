@@ -17,13 +17,18 @@ Reference: https://cabinet.gov.bd/ (the government source, not a model fact).
    `latest`, `current` or `today`; add an as-of date and official
    government source preference. The public query contains the **current
    question only**, never private chat history, file content or memory.
-3. Explicit Web On/Deep still use the verified source service; Web Off and
+3. If the assistant just asked which country and the next user message is
+   only a country (for example `Bangladesh`), reconstruct the standalone
+   public officeholder lookup using only the preceding generic question and
+   the selected jurisdiction. The prior assistant response must match the
+   local clarification exactly. No unrelated private context is shared.
+4. Explicit Web On/Deep still use the verified source service; Web Off and
    unavailable/misconfigured live provider must not fall back to a guessed
    current officeholder. Return an uncertainty message instead.
-4. Streaming and synchronous Converse both call the shared guard.
+5. Streaming and synchronous Converse both call the shared guard.
    Uploaded file/Knowledge paths are unchanged and never sent to public
    search automatically.
-5. An answer about a changing incumbent should cite actual extracted sources;
+6. An answer about a changing incumbent should cite actual extracted sources;
    if recent official evidence cannot support it, do not fabricate a name.
 
 ## Acceptance (not equivalent to green CI)
