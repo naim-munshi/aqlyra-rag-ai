@@ -7,8 +7,12 @@ from app.config.settings import settings
 
 
 def public_web_research_status() -> str:
-    if not settings.WEB_RESEARCH_ENABLED:
-        return "disabled"
-    if not settings.TAVILY_API_KEY.strip():
+    enabled = settings.WEB_RESEARCH_ENABLED
+    key_present = bool(settings.TAVILY_API_KEY.strip())
+    if not enabled and not key_present:
+        return "disabled_and_missing_key"
+    if not enabled:
+        return "disabled_key_present"
+    if not key_present:
         return "missing_tavily_api_key"
     return "configured_unverified"
