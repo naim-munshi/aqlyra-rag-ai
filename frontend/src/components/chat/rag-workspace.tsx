@@ -19,6 +19,7 @@ import {
   useState,
 } from "react";
 
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { AttachmentPreview } from "@/components/chat/attachment-preview";
 import { ChatToolsMenu } from "@/components/chat/chat-tools-menu";
 import { detectChatArtifactIntent, wantsChatArtifactList } from "@/lib/chat-artifact-intent";
@@ -1156,6 +1157,7 @@ export function RAGWorkspace({
     // allocating an image preview or buffering a potentially huge file.
     if (
       process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+      process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true" &&
       file.size > 3 * 1024 * 1024
     ) {
       setAttachmentError("Choose a file or image of 3 MB or less.");
@@ -1187,32 +1189,21 @@ export function RAGWorkspace({
     );
 
     try {
-      const formData =
-        new FormData();
+      let document: DocumentResponse;
 
-      formData.append(
-        "file",
-        file,
-      );
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+        document = await uploadViaPrivateCloud(file);
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadResponse = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = (await uploadResponse.json()) as
+          | DocumentResponse | DocumentApiError;
 
-      const uploadResponse =
-        await fetch(
-          "/api/documents/upload",
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
-
-      const uploadData =
-        (await uploadResponse.json()) as
-          | DocumentResponse
-          | DocumentApiError;
-
-      let document:
-        DocumentResponse;
-
-      if (!uploadResponse.ok) {
+        if (!uploadResponse.ok) {
         const duplicateId =
           uploadResponse.status === 409
             ? getDuplicateDocumentId(
@@ -1244,9 +1235,9 @@ export function RAGWorkspace({
 
         document =
           existingDocument;
-      } else {
-        document =
-          uploadData as DocumentResponse;
+        } else {
+          document = uploadData as DocumentResponse;
+        }
       }
 
       // Private upload is durable, but RAG indexing is independently
