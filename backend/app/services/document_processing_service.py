@@ -16,7 +16,11 @@ from app.services.chunk_service import (
 from app.services.embedding_service import (
     create_chunk_embeddings,
 )
-from app.embeddings import EmbeddingProviderQuotaError, EmbeddingProviderRequestError
+from app.embeddings import (
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError, EmbeddingProviderNotFoundError,
+)
+from app.services.embedding_service import EmbeddingDimensionError, EmbeddingBatchError
 
 
 class DocumentProcessingConflictError(Exception):
