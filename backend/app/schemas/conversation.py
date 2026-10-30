@@ -171,6 +171,10 @@ class ConversationMessageCreate(BaseModel):
         extra="forbid",
     )
 
+    # Auto only shares the CURRENT user question with public search.
+    # Knowledge-mode and attachments never use this field for web lookup.
+    web_mode: Literal["auto", "off", "on", "deep"] = "auto"
+
     content: str = Field(
         min_length=1,
         max_length=4_000,

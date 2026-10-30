@@ -34,7 +34,11 @@ export async function POST(request: NextRequest) {
     backendFormData.append("file", file);
 
     const response = await fetch(
-      backendUrl("/documents/upload"),
+      backendUrl(
+        process.env.AQLYRA_UPLOAD_PROXY_ENABLED === "true"
+          ? "/documents/cloud/proxy"
+          : "/documents/upload",
+      ),
       {
         method: "POST",
         headers: {
