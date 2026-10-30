@@ -21,6 +21,7 @@ type NormalChatStreamRequest = {
   display_content?: string;
   conversation_id?: string | null;
   document_ids?: string[];
+  web_mode?: "auto" | "off" | "on" | "deep";
 };
 
 type ApiError = {
@@ -102,6 +103,10 @@ export async function POST(
         status: 400,
       },
     );
+  }
+
+  if (body.web_mode !== undefined && !["auto", "off", "on", "deep"].includes(body.web_mode)) {
+    return NextResponse.json({ detail: "Invalid web research mode" }, { status: 400 });
   }
 
   const displayContent =
@@ -210,6 +215,7 @@ export async function POST(
                 : {}),
               document_ids:
                 documentIds,
+              web_mode: body.web_mode ?? "auto",
             }),
             cache: "no-store",
             signal: request.signal,
@@ -306,6 +312,7 @@ export async function POST(
               : {}),
             document_ids:
               documentIds,
+            web_mode: body.web_mode ?? "auto",
           }),
           cache: "no-store",
           signal: request.signal,
