@@ -75,7 +75,14 @@ def search_searxng(
     try:
         response = client.get(
             base + "/search", params=params,
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                **(
+                    {"X-Aqlyra-Search-Token": settings.SEARXNG_SERVICE_TOKEN.strip()}
+                    if settings.SEARXNG_SERVICE_TOKEN.strip()
+                    else {}
+                ),
+            },
             timeout=8.0,
             follow_redirects=False,
         )
