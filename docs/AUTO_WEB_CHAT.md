@@ -9,11 +9,15 @@ Abroad, auth, guest access, document persistence, migrations, or the standalone
 the release owner's approval and exact-head CI and end-to-end gates.
 
 Normal authenticated chat has four user-selectable modes:
-- **Web: Auto** (default): deterministically detects explicit public web
-  research requests and date-sensitive questions in English, Bangla, Japanese.
-  If `WEB_RESEARCH_ENABLED=false`, falls back to ordinary normal chat
-  without asserting a web lookup. Auto does NOT make requests for ordinary
-  timeless/private-file questions.
+- **Web: Auto** (default): first applies high-confidence public web and
+  date-sensitive rules (English, Bangla, Japanese), then uses ONE bounded
+  structured AI decision on ambiguous **public** questions, such as job
+  vacancies, scholarships, visa requirements, prices, schedules or availability.
+  The AI selector only receives the current question, never private files or
+  conversation history. If uncertain or unavailable, it defaults to normal
+  chat. With `WEB_RESEARCH_ENABLED=false`, it never performs public search.
+  Auto blocks private-account and credential-looking queries before even
+  considering a high-confidence web match.
 - **Web: On**: forces live source-backed public web research; when unconfigured,
   returns a transparent error rather than an ungrounded LLM answer.
 - **Deep web**: user-triggered two bounded Tavily Search calls (the original
@@ -45,8 +49,13 @@ SSE `start/delta/complete/error` and conversation persistence are reused.
 - Never silently fall back from failed web research to a guessed general
   model answer. Real Tavily, embeddings, LLM and costs remain dependent on
   existing private configuration.
-- Classification is deliberately deterministic, not a claim of fully
-  intelligent tool planning. The user can select On/Off/Deep to override.
+- Classification is a hybrid high-confidence deterministic + structured AI
+  public-question router, not an unrestricted autonomous browsing agent.
+  On/Off/Deep override automatic routing and do not invoke the classifier.
+  The streaming backend emits a `tool_status` SSE frame only when it has
+  actually routed the turn to web research; the chat UI then displays
+  "Searching public sources...". The selector is called at most once per
+  streaming request.
 
 ## Acceptance and rollout
 
@@ -55,10 +64,13 @@ SSE `start/delta/complete/error` and conversation persistence are reused.
 2. In isolated HTTPS staging, configure a privately stored
    `WEB_RESEARCH_ENABLED=true`, `TAVILY_API_KEY` and a real approved LLM.
    Never use the development-only keyless mode in production.
-3. With a real signed-in test account, verify Auto timely search, Off no
+3. With a real signed-in test account, verify AI-selected public job search,
+   Auto timely search, Off no
    Tavily egress, On mandatory citations, Deep two bounded search passes,
    citations still available after a browser refresh, and mobile selector.
-4. Simulate Tavily timeout/429, malicious HTML/link/source title, invalid
+4. Simulate selector malformed JSON, private history/credential protection,
+   duplicate classification prevention, Tavily timeout/429,
+   malicious HTML/link/source title, invalid
    provider [W99], query-planner drift/failure, oversize questions,
    misconfigured model, secret-looking prompts, unsupported
    document attachments and account isolation. Errors must be transparent
