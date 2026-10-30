@@ -188,6 +188,24 @@ export function DocumentPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!documents.some((document) =>
+      document.status === "queued" || document.status === "processing"
+    )) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const response = await fetch("/api/documents", { cache: "no-store" });
+        if (!response.ok || !active) return;
+        const payload = (await response.json()) as DocumentListResponse;
+        if (active) setDocuments(payload.items);
+      } catch {
+        // Existing data remains available. The next poll can recover.
+      }
+    }, 4000);
+    return () => { active = false; clearInterval(poll); };
+  }, [documents]);
+
   async function refreshDocuments() {
     setLoading(true);
     setError("");
@@ -368,16 +386,18 @@ export function DocumentPanel() {
 
       // A successful cloud upload means bytes are durable, not that
       // a quota-limited embedding provider has indexed the document.
-      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true") {
-        setError(
-          "File saved in private storage. AI indexing is currently unavailable; you can retry processing later."
-        );
+      if (uploadedDocument.status === "queued" ||
+          uploadedDocument.status === "processing") {
+        setRecoveryNotice("File securely saved. Knowledge indexing is running in the background.");
+        return;
+      }
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true") {
+        setError("File saved privately. Automatic indexing is not available on this upload route.");
         return;
       }
 
-      await processDocument(
-        uploadedDocument.id,
-      );
+      await processDocument(uploadedDocument.id);
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
