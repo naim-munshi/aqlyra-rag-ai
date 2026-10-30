@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +29,7 @@ from app.services.converse_vision_service import (
     generate_converse_image_reply,
     is_converse_vision_document,
 )
+from app.services.cloud_process_io import cloud_processing_source
 from app.product_identity import (
     PRODUCT_IDENTITY_MODEL_NAME,
     PRODUCT_IDENTITY_PROVIDER_NAME,
@@ -700,8 +702,7 @@ def generate_normal_document_chat_reply(
                 == document_ids[0],
                 Document.user_id
                 == conversation.user_id,
-                Document.status
-                == "ready",
+                Document.status.in_(("ready", "uploaded")),
             )
         )
 
@@ -724,24 +725,34 @@ def generate_normal_document_chat_reply(
             extracted_context = (
                 _load_normal_attachment_context(
                     db=db,
-                    user_id=(
-                        conversation.user_id
-                    ),
+                    user_id=conversation.user_id,
                     document_ids=document_ids,
                 )
+                if image_document.status == "ready"
+                else None
             )
 
-            generation = (
-                generate_converse_image_reply(
+            # Cloud images may be inspected directly without embedding
+            # indexing. Validate the owner, completed upload intent,
+            # byte length, SHA256 and actual image signature before
+            # handing a temporary copy to the vision provider. Never
+            # send a raw cloud:// key, URL or other account's image.
+            source = (
+                cloud_processing_source(
+                    db=db,
+                    owner_id=conversation.user_id,
                     document=image_document,
-                    conversation_input=(
-                        normal_input
-                    ),
-                    extracted_context=(
-                        extracted_context
-                    ),
                 )
+                if image_document.storage_path.startswith("cloud://")
+                else nullcontext(None)
             )
+            with source as verified_path:
+                generation = generate_converse_image_reply(
+                    document=image_document,
+                    conversation_input=normal_input,
+                    extracted_context=extracted_context,
+                    verified_image_path=verified_path,
+                )
 
             return ChatExecutionResult(
                 content=generation.text,
