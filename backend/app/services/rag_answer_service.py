@@ -40,7 +40,11 @@ from app.retrieval import (
     RetrievalHit,
     RetrievalQuery,
 )
-from app.embeddings import EmbeddingProviderQuotaError, EmbeddingProviderRequestError
+from app.embeddings import (
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError, EmbeddingProviderNotFoundError,
+)
+from app.retrieval import RetrievalProviderError
 from app.services.lexical_retrieval_service import search_lexical_chunks
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
