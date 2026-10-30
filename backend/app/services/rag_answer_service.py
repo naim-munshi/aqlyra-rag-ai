@@ -40,6 +40,12 @@ from app.retrieval import (
     RetrievalHit,
     RetrievalQuery,
 )
+from app.embeddings import (
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError, EmbeddingProviderNotFoundError,
+)
+from app.retrieval import RetrievalProviderError
+from app.services.lexical_retrieval_service import search_lexical_chunks
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
@@ -91,6 +97,44 @@ def _rewrite_retrieval_query(
     )
 
 
+def _lexical_evidence_fallback(*, db: Session, query: RetrievalQuery) -> list[RetrievalHit]:
+    """Return ONLY real matched chunks, never invented semantic scores.
+
+    If caller specifically requires a dense min_similarity, refuse to
+    downgrade rather than bypass its filtering requirement.
+    """
+    if query.min_similarity is not None:
+        return []
+    return [
+        RetrievalHit(
+            chunk_id=hit.chunk_id,
+            document_id=hit.document_id,
+            original_filename=hit.original_filename,
+            parent_chunk_id=hit.parent_chunk_id,
+            chunk_role=hit.chunk_role,
+            chunk_level=hit.chunk_level,
+            chunk_index=hit.chunk_index,
+            source_label=hit.source_label,
+            section_path=hit.section_path,
+            content=hit.content,
+            start_page=hit.start_page,
+            end_page=hit.end_page,
+            # Dense similarity is not available. It is never presented
+            # as an embedding score; metadata states the exact mode.
+            similarity_score=0.0,
+            cosine_distance=1.0,
+            ranking_score=1.0 / (index + 1),
+            metadata={
+                **hit.metadata,
+                "retrieval_mode": "lexical_only",
+                "semantic_similarity_available": False,
+                "lexical_score": hit.lexical_score,
+            },
+        )
+        for index, hit in enumerate(search_lexical_chunks(db=db, query=query))
+    ]
+
+
 def _retrieve_rag_hits(
     *,
     db: Session,
@@ -120,14 +164,41 @@ def _retrieve_rag_hits(
         settings.RERANKER_CANDIDATE_DEPTH
     )
 
-    if (
-        not reranking_enabled
-        or query.top_k > candidate_depth
-    ):
-        return search_hybrid_chunks(
-            db=db,
-            query=retrieval_query,
-        )
+    if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
+        if settings.EMBEDDING_PROVIDER == "deterministic":
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+        try:
+            return _retrieve_with_optional_reranking(
+                db=db,
+                retrieval_query=retrieval_query,
+                original_query_text=original_query_text,
+                reranker=reranker,
+                reranking_enabled=reranking_enabled,
+                candidate_depth=candidate_depth,
+            )
+        except (
+            EmbeddingProviderRequestError, EmbeddingProviderQuotaError,
+            EmbeddingValidationError, EmbeddingProviderNotFoundError,
+            RetrievalProviderError,
+        ):
+            logger.warning("knowledge_dense_provider_unavailable fallback=lexical")
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+    return _retrieve_with_optional_reranking(
+        db=db, retrieval_query=retrieval_query,
+        original_query_text=original_query_text,
+        reranker=reranker,
+        reranking_enabled=reranking_enabled,
+        candidate_depth=candidate_depth,
+    )
+
+
+def _retrieve_with_optional_reranking(
+    *, db: Session, retrieval_query: RetrievalQuery,
+    original_query_text: str, reranker: RerankerProvider | None,
+    reranking_enabled: bool, candidate_depth: int,
+) -> list[RetrievalHit]:
+    if not reranking_enabled or retrieval_query.top_k > candidate_depth:
+        return search_hybrid_chunks(db=db, query=retrieval_query)
 
     try:
         active_reranker = (

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,6 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
+from app.services.auto_web_research_service import (
+    choose_web_mode,
+    detect_time_range,
+    cited_web_answer,
+)
+from app.services.web_research_service import research_web
+from app.services.smart_web_router import route_web_request
 from app.llms import (
     LLMError,
     LLMProvider,
@@ -21,6 +29,7 @@ from app.services.converse_vision_service import (
     generate_converse_image_reply,
     is_converse_vision_document,
 )
+from app.services.cloud_process_io import cloud_processing_source
 from app.product_identity import (
     PRODUCT_IDENTITY_MODEL_NAME,
     PRODUCT_IDENTITY_PROVIDER_NAME,
@@ -28,6 +37,7 @@ from app.product_identity import (
     ProductIdentityLLMProvider,
     resolve_product_identity_answer,
 )
+from app.product_identity.service import resolve_founder_followup_answer
 from app.services.conversation_service import (
     get_recent_messages_for_conversation,
 )
@@ -94,10 +104,20 @@ Rules:
   mechanics unless the user explicitly asks about memory behavior.
 - Personal memory is not document evidence and must never be represented
   as an Aqlyra document citation.
+- Do not claim to have searched live websites unless web evidence was actually supplied.
+- If the user needs current information but no web tool was used, say that it was not verified.
 - Do not claim that an answer is grounded in private documents.
 - Do not invent Aqlyra document citations such as [S1], [S2], or similar.
 - Respond in the language of the current user message unless the user
   explicitly requests another language.
+- For the first reply to an explicit request to speak Bangla (for example,
+  "Talk me bangla" or "বাংলায় কথা বলো"), reply in natural Bengali script.
+  Aqlyra's preferred introductory greeting is "আসসালামু আলাইকুম";
+  do not initiate that welcome with "নমস্কার".
+- This is a configurable conversational style, not evidence of the user's
+  religion or identity. Respect any explicit user preference for "নমস্কার",
+  "হ্যালো", another greeting, or no greeting. Do not repeat a greeting on
+  every turn or add one to unrelated answers.
 """.strip()
 
 
@@ -358,17 +378,32 @@ def _prepare_normal_chat_generation(
             message,
         )
 
-    active_provider = (
-        provider
-        or create_configured_llm_provider()
-    )
-
     history = (
         get_recent_messages_for_conversation(
             db=db,
             conversation_id=conversation.id,
             limit=NORMAL_CHAT_HISTORY_LIMIT,
         )
+    )
+
+    # Only an immediately preceding founder-identifying answer may anchor
+    # pronouns such as "সে" or "he". Never infer a home address or other
+    # private founder details from conversation memory.
+    last_assistant = (
+        history[-1].content
+        if history and history[-1].role == "assistant"
+        else None
+    )
+    founder_followup = resolve_founder_followup_answer(
+        message,
+        last_assistant_content=last_assistant,
+    )
+    if founder_followup is not None:
+        return ProductIdentityLLMProvider(founder_followup), message
+
+    active_provider = (
+        provider
+        or create_configured_llm_provider()
     )
 
     memories = _retrieve_normal_chat_memories(
@@ -430,6 +465,14 @@ When the user asks a specific question:
   when genuinely useful.
 
 Keep the response conversational and practical.
+- For the first reply to an explicit request to speak Bangla (for example,
+  "Talk me bangla" or "বাংলায় কথা বলো"), reply in natural Bengali script.
+  Aqlyra's preferred introductory greeting is "আসসালামু আলাইকুম";
+  do not initiate that welcome with "নমস্কার".
+- This is a configurable conversational style, not evidence of the user's
+  religion or identity. Respect any explicit user preference for "নমস্কার",
+  "হ্যালো", another greeting, or no greeting. Do not repeat a greeting on
+  every turn or add one to unrelated answers.
 """.strip()
 
 
@@ -558,6 +601,37 @@ def _load_normal_attachment_context(
     )
 
 
+def generate_web_chat_reply(
+    *,
+    message: str,
+    research_mode: str,
+    provider: LLMProvider | None = None,
+) -> ChatExecutionResult:
+    # Only the current user message is sent externally: NEVER history,
+    # user memories, uploaded document content or knowledge retrieval text.
+    research = research_web(
+        message,
+        max_sources=5,
+        mode=research_mode,
+        time_range=detect_time_range(message),
+        provider=provider,
+        iterative=(research_mode == "deep"),
+    )
+    return ChatExecutionResult(
+        content=cited_web_answer(research.answer, research.sources),
+        mode="normal",
+        provider_name=research.provider_name,
+        model_name=research.model_name,
+        response_id=None,
+        citations=(),  # Web citations are clickable links, not private [S#] chunks.
+        is_refusal=False,
+        input_tokens=None,
+        output_tokens=None,
+        total_tokens=None,
+        evidence_tokens=None,
+    )
+
+
 def generate_normal_chat_reply(
     *,
     db: Session,
@@ -628,8 +702,7 @@ def generate_normal_document_chat_reply(
                 == document_ids[0],
                 Document.user_id
                 == conversation.user_id,
-                Document.status
-                == "ready",
+                Document.status.in_(("ready", "uploaded")),
             )
         )
 
@@ -652,24 +725,34 @@ def generate_normal_document_chat_reply(
             extracted_context = (
                 _load_normal_attachment_context(
                     db=db,
-                    user_id=(
-                        conversation.user_id
-                    ),
+                    user_id=conversation.user_id,
                     document_ids=document_ids,
                 )
+                if image_document.status == "ready"
+                else None
             )
 
-            generation = (
-                generate_converse_image_reply(
+            # Cloud images may be inspected directly without embedding
+            # indexing. Validate the owner, completed upload intent,
+            # byte length, SHA256 and actual image signature before
+            # handing a temporary copy to the vision provider. Never
+            # send a raw cloud:// key, URL or other account's image.
+            source = (
+                cloud_processing_source(
+                    db=db,
+                    owner_id=conversation.user_id,
                     document=image_document,
-                    conversation_input=(
-                        normal_input
-                    ),
-                    extracted_context=(
-                        extracted_context
-                    ),
                 )
+                if image_document.storage_path.startswith("cloud://")
+                else nullcontext(None)
             )
+            with source as verified_path:
+                generation = generate_converse_image_reply(
+                    document=image_document,
+                    conversation_input=normal_input,
+                    extracted_context=extracted_context,
+                    verified_image_path=verified_path,
+                )
 
             return ChatExecutionResult(
                 content=generation.text,
@@ -860,6 +943,8 @@ def execute_chat_turn(
     document_ids: tuple[str, ...] = (),
     top_k: int = 8,
     provider: LLMProvider | None = None,
+    web_mode: str = "auto",
+    routed_web_mode: str | None = None,
 ) -> ChatExecutionResult:
     cleaned = message.strip()
 
@@ -879,6 +964,24 @@ def execute_chat_turn(
                     top_k=top_k,
                     provider=provider,
                 )
+            )
+
+        # The streaming endpoint passes a pre-computed decision ("" means
+        # no search). This prevents duplicate LLM selector calls and costs.
+        research_mode = (
+            route_web_request(cleaned, web_mode, provider=provider)
+            if routed_web_mode is None
+            else routed_web_mode or None
+        )
+        if research_mode is not None:
+            if len(cleaned) > 600:
+                raise ChatValidationError(
+                    "Web research questions must be at most 600 characters"
+                )
+            return generate_web_chat_reply(
+                message=cleaned,
+                research_mode=research_mode,
+                provider=provider,
             )
 
         return generate_normal_chat_reply(

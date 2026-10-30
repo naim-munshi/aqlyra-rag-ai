@@ -10,7 +10,8 @@ _MULTILINGUAL_WORD_PATTERN = re.compile(
     r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*"
     r"|[\u3040-\u30ff]"
     r"|[\u3400-\u9fff]"
-    r"|[\uac00-\ud7af]",
+    r"|[\uac00-\ud7af]"
+    r"|[\u0980-\u09ff]+",
     flags=re.UNICODE,
 )
 

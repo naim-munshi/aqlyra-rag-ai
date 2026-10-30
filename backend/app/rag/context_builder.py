@@ -15,6 +15,7 @@ _TOKEN_PATTERN = re.compile(
     r"|[\u3040-\u30ff]"
     r"|[\u3400-\u9fff]"
     r"|[\uac00-\ud7af]"
+    r"|[\u0980-\u09ff]+"
     r"|[^\s]",
     flags=re.UNICODE,
 )

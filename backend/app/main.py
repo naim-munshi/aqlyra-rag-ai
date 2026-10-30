@@ -2,6 +2,10 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
+from app.services.knowledge_index_queue import KnowledgeIndexWorker
+
+_knowledge_worker = KnowledgeIndexWorker()
+from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.observability import (
     setup_request_observability,
@@ -30,6 +34,9 @@ app = FastAPI(
 
 setup_request_observability(app)
 setup_cors(app)
+# Outer ASGI ingress check prevents direct Render requests from bypassing
+# the bounded Vercel authentication proxies.
+app.add_middleware(AuthenticationBodyLimitMiddleware)
 
 app.include_router(
     api_router,
@@ -44,3 +51,14 @@ async def root():
         "status": "running",
         "version": settings.VERSION,
     }
+
+@app.on_event("startup")
+def start_knowledge_index_worker() -> None:
+    # Existing FastAPI service can process the durable queue without
+    # adding a new deployment or requiring a user to hold an HTTP request.
+    _knowledge_worker.start()
+
+
+@app.on_event("shutdown")
+def stop_knowledge_index_worker() -> None:
+    _knowledge_worker.stop()
