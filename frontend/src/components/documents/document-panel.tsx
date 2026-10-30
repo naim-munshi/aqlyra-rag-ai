@@ -692,10 +692,12 @@ export function DocumentPanel() {
                           isProcessing
                         }
                         onClick={() => {
-                          void processDocument(
-                            document.id,
-                          );
-                        }}
+                           if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+                             void retryIndex(document.id);
+                           } else {
+                             void processDocument(document.id);
+                           }
+                         }}
                         className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
                       >
                         {isProcessing ? (
