@@ -1,0 +1,7 @@
+# Isolated SearXNG + token-authenticated gateway; not the Aqlyra API image.
+FROM searxng/searxng:2026.10.30-1cd13d98d
+COPY ops/searxng/settings.yml /etc/searxng/settings.yml
+COPY ops/searxng/gateway.py /usr/local/bin/aqlyra-search-gateway.py
+COPY ops/searxng/start_render.sh /usr/local/bin/aqlyra-search-start.sh
+EXPOSE 10000
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/aqlyra-search-start.sh"]
