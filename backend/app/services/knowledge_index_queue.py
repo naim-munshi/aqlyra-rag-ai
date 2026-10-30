@@ -149,8 +149,12 @@ class KnowledgeIndexWorker:
     def start(self) -> None:
         if not settings.KNOWLEDGE_AUTO_INDEX_ENABLED:
             return
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             return
+        # A worker may be stopped and restarted during an application
+        # lifespan reinitialization. Never relaunch with a latched stop
+        # event or an exhausted Thread instance.
+        self._stop.clear()
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name="aqlyra-knowledge-index",
         )
@@ -160,6 +164,8 @@ class KnowledgeIndexWorker:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=3)
+            if not self._thread.is_alive():
+                self._thread = None
 
     def _loop(self) -> None:
         # Reclaim stale work every 30 minutes, not every poll.
