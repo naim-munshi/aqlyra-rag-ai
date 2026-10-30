@@ -180,7 +180,7 @@ def verified_private_temporary_file(
     *, owner_id: str, key: str, expected_size: int, expected_sha256: str,
     cfg: Settings = settings, client=None,
 ) -> Iterator[Path]:
-    """Stream 25 MB max to temporary storage, then validate magic/content.
+    """Stream configured-size files to temporary storage; validate magic/content.
 
     The caller must first verify account ownership and persist a signed
     upload-intent/expiry in a transactional store; this primitive does not
