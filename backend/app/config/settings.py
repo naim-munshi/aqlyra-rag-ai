@@ -175,6 +175,7 @@ class Settings(BaseSettings):
     # configured by the operator; never accept it from user/chat input.
     WEB_SEARCH_PROVIDER: str = "auto"  # auto | searxng | tavily
     SEARXNG_BASE_URL: str = ""
+    SEARXNG_SERVICE_TOKEN: str = ""  # Optional trusted gateway token
     SEARXNG_READ_PAGES_ENABLED: bool = False
 
     # Real-time voice must stay disabled until a LiveKit worker and
