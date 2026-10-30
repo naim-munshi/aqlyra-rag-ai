@@ -98,7 +98,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             connection.request(
                 "GET", path,
-                headers={"Accept": "application/json", "User-Agent": "Aqlyra/1.0"},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "Aqlyra/1.0",
+                    "X-Forwarded-For": "127.0.0.1",
+                    "X-Real-IP": "127.0.0.1",
+                },
             )
             response = connection.getresponse()
             content = response.read(MAX_BYTES + 1)
@@ -124,12 +129,18 @@ class Handler(BaseHTTPRequestHandler):
 
 def startup_search_probe() -> None:
     """One fixed public query per boot; never collect users' search content."""
-    time.sleep(6)
-    connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=9)
+    # Granian binds its socket before worker-1 has finished loading engines.
+    # A 6-second probe races the startup and yields a false DEGRADED.
+    time.sleep(22)
+    connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=12)
     try:
         connection.request(
             "GET", "/search?q=official+government+website&format=json",
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "X-Forwarded-For": "127.0.0.1",
+                "X-Real-IP": "127.0.0.1",
+            },
         )
         reply = connection.getresponse()
         raw = reply.read(MAX_BYTES + 1)
