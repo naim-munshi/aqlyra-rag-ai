@@ -173,9 +173,12 @@ def readiness():
             "storage": upload_storage_status,
             # "configured" is not real-provider acceptance or a successful
             # cloud object write: it only describes the selected code path.
-            # Core deliberately has no remote artifact/cloud-upload settings.
+            # Configured is not a private object read/write or restore proof.
             "artifact_storage": (
-                "ready" if local_writes_permitted() else "writes_disabled"
+                "private_remote_configured"
+                if settings.ARTIFACT_REMOTE_STORAGE_ENABLED
+                else "ready" if local_writes_permitted()
+                else "writes_disabled"
             ),
             # A configured private-proxy route is not a verified live
             # upload. The provider's probe and two-account E2E remain
