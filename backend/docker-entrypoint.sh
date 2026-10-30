@@ -43,6 +43,15 @@ if [ "${AQLYRA_KNOWLEDGE_PROVIDER_PROBE_ON_BOOT:-false}" = "true" ]; then
   fi
 fi
 
+# One-shot real scanned-page OCR test. No user documents involved.
+if [ "${AQLYRA_KNOWLEDGE_OCR_PROBE_ON_BOOT:-false}" = "true" ]; then
+  if python -m app.services.knowledge_ocr_probe; then
+    :
+  else
+    echo "PDF OCR runtime probe failed; investigate before enabling uploads." >&2
+  fi
+fi
+
 # Free external staging uses a separate, explicitly reviewed schema migration
 # step. Never perform CREATE EXTENSION or Alembic writes on container boot.
 # Default remains 'auto' for existing local/Docker-compose workflows.
