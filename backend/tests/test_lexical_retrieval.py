@@ -102,11 +102,11 @@ def test_unicode_fallback_ranks_by_matched_ngrams(
     )
     weak_id = upload_and_process(
         client, headers, "weak.md",
-        "# Weak match\\n\\n京都大学について記載しています。",
+        "# Weak match\n\n京都大学について記載しています。",
     )
     strong_id = upload_and_process(
         client, headers, "strong.md",
-        "# Strong match\\n\\n京都大学の研究に関する情報です。",
+        "# Strong match\n\n京都大学の研究に関する情報です。",
     )
 
     hits = _fallback_unicode_chunks(
