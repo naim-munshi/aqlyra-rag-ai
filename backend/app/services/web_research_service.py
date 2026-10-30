@@ -7,6 +7,7 @@ untrusted evidence, not commands, and no model-generated tool calls execute.
 from datetime import datetime, timezone
 import ipaddress
 import json
+import logging
 import re
 from urllib.parse import urlsplit
 from typing import Any
@@ -25,6 +26,8 @@ from app.schemas.web_research import (
     WebResearchSource,
 )
 
+
+logger = logging.getLogger(__name__)
 
 TAVILY_SEARCH = "https://api.tavily.com/search"
 TAVILY_EXTRACT = "https://api.tavily.com/extract"
@@ -273,6 +276,7 @@ def research_web(
                     break
 
         if not candidates:
+            logger.warning("web_research_stage_failed stage=search_no_candidates")
             raise WebResearchEvidenceError("No public web sources found")
 
         if mode in ("compare", "deep"):
@@ -331,6 +335,7 @@ def research_web(
             published_date=item["published_date"],
         ))
     if not sources:
+        logger.warning("web_research_stage_failed stage=extract_no_readable_pages candidates=%s extracted_items=%s failed_items=%s", len(candidates), len(raw_pages), len(extracted.get("failed_results", [])) if isinstance(extracted.get("failed_results"), list) else -1)
         raise WebResearchEvidenceError("No readable public web pages could be extracted")
 
     body = {
@@ -350,17 +355,20 @@ def research_web(
     )
     text = generation.text.strip()
     if len(text) > 15_000:
+        logger.warning("web_research_stage_failed stage=answer_too_long sources=%s", len(sources))
         raise WebResearchEvidenceError("Generated answer exceeds safe size limit")
     cited_numbers = {int(x) for x in CITATION_PATTERN.findall(text)}
     if not text or not cited_numbers or not cited_numbers.issubset(
         set(range(1, len(sources) + 1))
     ):
+        logger.warning("web_research_stage_failed stage=invalid_citations sources=%s cited_count=%s empty_answer=%s", len(sources), len(cited_numbers), not bool(text))
         raise WebResearchEvidenceError("Generated answer has no valid source citations")
     # The AI may quote approved sources, but must never introduce unverified
     # external URLs; citations [W#] alone do not validate arbitrary links.
     approved_urls = {source.url for source in sources}
     for visible_url in re.findall(r"https?://[^\s<>)\]]+", text):
         if visible_url.rstrip(".,;!?") not in approved_urls:
+            logger.warning("web_research_stage_failed stage=unapproved_generated_link sources=%s", len(sources))
             raise WebResearchEvidenceError("Generated answer contains unapproved external links")
 
     return WebResearchResponse(
