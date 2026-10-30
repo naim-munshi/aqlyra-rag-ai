@@ -26,7 +26,7 @@ from app.services.private_object_storage import (
 )
 from app.services.storage_service import _sanitize_original_filename
 
-_INTENT_TTL_SECONDS = 600
+_INTENT_TTL_SECONDS = 900
 _HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
