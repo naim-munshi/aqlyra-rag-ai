@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+SEARXNG_SECRET="${SEARXNG_SECRET:-}"
+SEARXNG_SERVICE_TOKEN="${SEARXNG_SERVICE_TOKEN:-}"
 if [ "${#SEARXNG_SECRET}" -lt 32 ] || [ "${#SEARXNG_SERVICE_TOKEN}" -lt 32 ]; then
   echo "Search service requires SEARXNG_SECRET and SEARXNG_SERVICE_TOKEN." >&2
   exit 64
