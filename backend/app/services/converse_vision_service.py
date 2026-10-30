@@ -1,5 +1,6 @@
 import base64
 import re
+from pathlib import Path
 
 from openai import OpenAI
 
@@ -375,6 +376,7 @@ def generate_converse_image_reply(
     document: Document,
     conversation_input: str,
     extracted_context: str | None = None,
+    verified_image_path: Path | None = None,
 ) -> LLMGeneration:
     if not is_converse_vision_document(
         document
@@ -402,19 +404,19 @@ def generate_converse_image_reply(
         )
 
     try:
+        # A verified cloud temporary file comes exclusively from the
+        # owner-checked cloud_processing_source() context in chat_service.
+        # Never resolve a cloud:// key as a local filesystem path.
         image_path = (
-            resolve_stored_file_path(
-                document.storage_path
-            )
+            verified_image_path
+            if verified_image_path is not None
+            else resolve_stored_file_path(document.storage_path)
         )
-
-    except StoredFileNotFoundError as exc:
+        image_bytes = image_path.read_bytes()
+    except (StoredFileNotFoundError, OSError) as exc:
         raise LLMValidationError(
-            "The uploaded image file "
-            "is unavailable"
+            "The uploaded image file is unavailable"
         ) from exc
-
-    image_bytes = image_path.read_bytes()
 
     if len(image_bytes) > _MAX_VISION_IMAGE_BYTES:
         raise LLMValidationError(

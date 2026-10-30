@@ -56,8 +56,49 @@ export async function GET(
               `Bearer ${accessToken}`,
           },
           cache: "no-store",
+          redirect: "manual",
         },
       );
+
+    // Only forward a backend-authorized, short-lived private Neon S3 link.
+    // Never follow it server-side: Vercel's Function payload is limited,
+    // and a 25 MB file must transfer directly to the authenticated browser.
+    if (response.status === 307) {
+      const destination = response.headers.get("location");
+      if (!destination) {
+        return NextResponse.json(
+          { detail: "Private document link unavailable" },
+          { status: 502, headers: { "Cache-Control": "private, no-store" } },
+        );
+      }
+      let target: URL;
+      try {
+        target = new URL(destination);
+      } catch {
+        return NextResponse.json(
+          { detail: "Invalid private document link" },
+          { status: 502 },
+        );
+      }
+      if (
+        target.protocol !== "https:" ||
+        !target.hostname.endsWith(".aws.neon.tech") ||
+        target.username || target.password || target.port
+      ) {
+        return NextResponse.json(
+          { detail: "Invalid private document destination" },
+          { status: 502 },
+        );
+      }
+      return NextResponse.redirect(target, {
+        status: 307,
+        headers: {
+          "Cache-Control": "private, no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
 
     if (!response.ok) {
       const data =

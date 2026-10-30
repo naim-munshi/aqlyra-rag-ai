@@ -10,10 +10,16 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.config.settings import settings
+from app.services.storage_durability_policy import local_writes_permitted
+from app.services.cloud_document_access import private_document_read_grant
+from app.services.cloud_process_io import cloud_processing_source
+from app.services.cloud_document_deletion import delete_cloud_document
+from app.services.private_object_storage import PrivateObjectStorageError
 from app.core.logging import app_logger
 from app.core.rate_limit import (
     limit_process_request,
@@ -21,6 +27,7 @@ from app.core.rate_limit import (
 )
 from app.database.connection import get_db
 from app.models.user import User
+from app.embeddings import EmbeddingProviderQuotaError, EmbeddingProviderRequestError
 from app.parsers import DocumentParsingError
 from app.schemas.document import (
     DocumentListResponse,
@@ -87,6 +94,11 @@ async def upload_document(
     ),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
+    if not local_writes_permitted():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Durable document storage is not configured. Upload is temporarily unavailable.",
+        )
     try:
         pending_upload = (
             await save_upload_to_temporary_storage(
@@ -253,11 +265,19 @@ def process_uploaded_document(
             detail="Document not found",
         )
 
+    if document.storage_path.startswith("cloud://") and not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+        raise HTTPException(status_code=409, detail="Cloud processing disabled")
+
     try:
-        processed_document = process_document(
-            db=db,
-            document=document,
-        )
+        if document.storage_path.startswith("cloud://"):
+            with cloud_processing_source(
+                db=db, owner_id=str(current_user.id), document=document,
+            ) as source:
+                processed_document = process_document(
+                    db=db, document=document, verified_source_path=source,
+                )
+        else:
+            processed_document = process_document(db=db, document=document)
 
         app_logger.info(
             f"Document processed: {document_id}"
@@ -275,6 +295,35 @@ def process_uploaded_document(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
+        ) from exc
+
+    except PrivateObjectStorageError as exc:
+        raise HTTPException(
+            status_code=409, detail="Private cloud document is unavailable",
+        ) from exc
+
+    except EmbeddingProviderQuotaError as exc:
+        app_logger.warning(
+            "document_processing_embedding_quota_exhausted document_id=%s",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Document indexing is unavailable because the embedding "
+                "service quota was exhausted. Your upload is saved; "
+                "retry processing after the embedding service is restored."
+            ),
+        ) from exc
+
+    except EmbeddingProviderRequestError as exc:
+        app_logger.warning(
+            "document_processing_embedding_provider_unavailable document_id=%s",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Document indexing service is temporarily unavailable.",
         ) from exc
 
     except DocumentParsingError as exc:
@@ -372,6 +421,31 @@ def read_document_content(
             detail="Document not found",
         )
 
+    # Only a completed, owner-bound cloud Document can obtain a 45s GET.
+    # The browser transfers bytes directly from private storage rather
+    # than routing a 25MB response through a Vercel Function.
+    if document.storage_path.startswith("cloud://"):
+        if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise HTTPException(
+                status_code=409, detail="Cloud document operation is not available yet"
+            )
+        try:
+            url = private_document_read_grant(
+                db=db, owner_id=str(current_user.id), document=document,
+            )
+        except PrivateObjectStorageError as exc:
+            raise HTTPException(
+                status_code=409, detail="Private cloud document unavailable"
+            ) from exc
+        return RedirectResponse(
+            url=url, status_code=307,
+            headers={
+                "Cache-Control": "private, no-store",
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     try:
         file_path = (
             resolve_stored_file_path(
@@ -458,6 +532,21 @@ def delete_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
         )
+
+    if document.storage_path.startswith("cloud://"):
+        if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise HTTPException(
+                status_code=409, detail="Private cloud deletion is disabled",
+            )
+        try:
+            delete_cloud_document(
+                db=db, owner_id=str(current_user.id), document_id=document.id,
+            )
+        except PrivateObjectStorageError as exc:
+            raise HTTPException(
+                status_code=503, detail="Private cloud deletion unavailable; retry",
+            ) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     storage_path = document.storage_path
 
