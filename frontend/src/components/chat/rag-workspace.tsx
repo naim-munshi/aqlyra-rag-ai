@@ -1240,11 +1240,44 @@ export function RAGWorkspace({
         }
       }
 
-      // Private upload is durable, but RAG indexing is independently
-      // gated by the embedding provider. Never claim an uploaded file
-      // is already AI-ready when cloud beta is active.
+      // A durable uploaded image is ready for Converse vision without
+      // embedding. Text documents are queued for grounded Knowledge.
+      if (
+        ["image/png", "image/jpeg", "image/webp"].includes(document.content_type)
+        && document.status === "uploaded"
+      ) {
+        setAttachedDocument(document);
+        setDocumentsVersion((current) => current + 1);
+        return;
+      }
+
+      if (document.status === "queued" || document.status === "processing") {
+        setUploadState("processing");
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+          const current = await findExistingDocument(document.id);
+          if (current?.status === "ready") {
+            setAttachedDocument(current);
+            setDocumentsVersion((value) => value + 1);
+            return;
+          }
+          if (current?.status === "failed") {
+            setAttachmentError(
+              "File saved, but indexing failed. Open Documents and choose Retry indexing."
+            );
+            return;
+          }
+        }
+        setAttachmentError(
+          "File saved. Knowledge indexing continues in the background. Open Documents to check progress."
+        );
+        setDocumentsVersion((value) => value + 1);
+        return;
+      }
+
       if (
         process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+        process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true" &&
         document.status === "uploaded"
       ) {
         setDocumentsVersion((current) => current + 1);
