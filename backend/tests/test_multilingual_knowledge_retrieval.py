@@ -92,3 +92,17 @@ def test_unicode_queries_are_bounded_and_do_not_escape_sql_patterns():
     assert len(terms) <= 16
     assert terms
     assert all("%" not in term and "_" not in term for term in terms)
+
+def test_bengali_ocr_words_are_counted_and_chunked():
+    from app.parsers.common import count_words, create_parsed_unit
+    from app.chunking import estimate_tokens
+    from app.rag.context_builder import estimate_context_tokens
+    text = "বাংলা তথ্যপ্রযুক্তি এবং গবেষণা"
+    unit = create_parsed_unit(
+        unit_index=1, unit_type="page", source_label="Page 1",
+        content=text,
+    )
+    assert count_words(text) >= 3
+    assert unit.word_count >= 3
+    assert estimate_tokens(text) >= 3
+    assert estimate_context_tokens(text) >= 3
