@@ -19,6 +19,7 @@ from redis.exceptions import RedisError
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
 from app.services.storage_durability_policy import local_writes_permitted
+from app.services.web_research_capability import public_web_research_status
 
 
 router = APIRouter()
@@ -186,6 +187,8 @@ def readiness():
                 and settings.CLOUD_UPLOAD_PROXY_ENABLED
                 else "disabled"
             ),
+            # A config snapshot is NOT a successful real Tavily search.
+            "public_web_research": public_web_research_status(),
             "knowledge_indexing": (
                 "automatic_queue_configured"
                 if settings.KNOWLEDGE_AUTO_INDEX_ENABLED
