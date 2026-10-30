@@ -17,6 +17,27 @@ _ROLE = re.compile(
     r"|প্রধানমন্ত্রী|রাষ্ট্রপতি|首相|総理大臣|大統領",
     flags=re.IGNORECASE,
 )
+# Common romanized Bangla shorthand in Converse:
+# "prime minister nam" -> clarify, not a timeless explanation.
+# "prime minister name of Japan" -> present-tense public fact, not Groq.
+_ROMANIZED_PUBLIC_NAME = re.compile(
+    r"^(?:(?:current|present)\s+)?"
+    r"(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?"
+    r"(?:\s+(?:of|in)\s+[a-z][a-z .'-]{1,70})?$",
+    re.IGNORECASE,
+)
+_ROMANIZED_COUNTRY_FIRST = re.compile(
+    r"^[a-z][a-z .'-]{1,65}\s+"
+    r"(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?$",
+    re.IGNORECASE,
+)
+_ROMANIZED_AMBIGUOUS = re.compile(
+    r"^(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?$",
+    re.IGNORECASE,
+)
 _EN_OFFICE_QUESTION = re.compile(
     r"^\s*who(?:'s|\s+is|\s+currently\s+is|\s+holds|\s+currently\s+holds)\b",
     flags=re.IGNORECASE,
@@ -52,15 +73,14 @@ def _normalized(question: str) -> str:
 def is_public_officeholder_question(question: str) -> bool:
     """Only questions asking *who* holds a public executive office."""
     text = _normalized(question)
-    if not _ROLE.search(text):
-        return False
-    if not (_EN_OFFICE_QUESTION.search(text) or _BN_JA_WHO.search(text)):
-        return False
-    # Don't add a hard live-data requirement to a request explicitly about
-    # past incumbents; the ordinary historical-answer path remains available.
+    # Don't enforce a current-data guard on an explicit historical request.
     if _HISTORICAL.search(text):
         return False
-    return True
+    if _ROMANIZED_PUBLIC_NAME.fullmatch(text) or _ROMANIZED_COUNTRY_FIRST.fullmatch(text):
+        return True
+    if not _ROLE.search(text):
+        return False
+    return bool(_EN_OFFICE_QUESTION.search(text) or _BN_JA_WHO.search(text))
 
 
 def is_ambiguous_public_officeholder_question(question: str) -> bool:
@@ -68,7 +88,7 @@ def is_ambiguous_public_officeholder_question(question: str) -> bool:
     text = _normalized(question)
     text = _TERMINAL_PUNCTUATION.sub("", text)
     return any(pattern.fullmatch(text) for pattern in (
-        _GENERIC_EN, _GENERIC_BN, _GENERIC_JA,
+        _GENERIC_EN, _GENERIC_BN, _GENERIC_JA, _ROMANIZED_AMBIGUOUS,
     ))
 
 
