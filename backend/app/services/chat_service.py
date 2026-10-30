@@ -91,7 +91,7 @@ def resolve_public_office_followup(
     if (not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
         or len(country.split()) > 4
         or re.search(
-            r"\\b(?:password|passcode|api.?key|secret|token|otp|bearer|private)\\b",
+            r"\b(?:password|passcode|api.?key|secret|token|otp|bearer|private)\b",
             country, re.IGNORECASE,
         )):
         return message
