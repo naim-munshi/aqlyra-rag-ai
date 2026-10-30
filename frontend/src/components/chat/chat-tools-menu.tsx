@@ -21,11 +21,14 @@ type Props = {
   onUpload: () => void;
   onOpenDocuments: () => void;
   onSwitchMode: () => void;
+  webMode: "auto" | "off" | "on" | "deep";
+  onSetWebMode: (value: "auto" | "on" | "deep") => void;
 };
 
 const icons = {
   upload: FileUp,
   web: Globe2,
+  "web-deep": Globe2,
   browser: MousePointer2,
   knowledge: BookOpen,
   documents: Files,
@@ -33,6 +36,7 @@ const icons = {
 
 export function ChatToolsMenu({
   mode, disabled, onUpload, onOpenDocuments, onSwitchMode,
+  webMode, onSetWebMode,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -133,6 +137,11 @@ export function ChatToolsMenu({
       onOpenDocuments();
     } else if (id === "knowledge") {
       onSwitchMode();
+    } else if (id === "web" || id === "web-deep") {
+      // In-place choice only: no /web navigation, history or window.
+      onSetWebMode(id === "web"
+        ? (webMode === "on" ? "auto" : "on")
+        : (webMode === "deep" ? "auto" : "deep"));
     } else if (href) {
       router.push(href);
     }
@@ -173,7 +182,7 @@ export function ChatToolsMenu({
           <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--aq-muted)]">
             Tools
           </p>
-          {tools.map((tool) => {
+          {tools.filter((tool) => mode === "normal" || !["web", "web-deep"].includes(tool.id)).map((tool) => {
             const Icon = tool.id === "knowledge" && mode === "knowledge"
               ? MessageSquareText
               : icons[tool.id];
@@ -184,6 +193,7 @@ export function ChatToolsMenu({
                 role="menuitem"
                 title={tool.description}
                 aria-label={tool.label + ". " + tool.description}
+                aria-pressed={tool.id === "web" ? webMode === "on" : tool.id === "web-deep" ? webMode === "deep" : undefined}
                 onClick={() => selectTool(tool.id, tool.href)}
                 className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition hover:bg-[var(--aq-card)] focus-visible:bg-[var(--aq-card)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
               >
@@ -191,7 +201,11 @@ export function ChatToolsMenu({
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] font-medium text-[var(--aq-text)]">
-                  {tool.label}
+                  {tool.id === "web" && webMode === "on"
+                    ? "Stop web search"
+                    : tool.id === "web-deep" && webMode === "deep"
+                      ? "Stop deep research"
+                      : tool.label}
                 </span>
               </button>
             );
