@@ -300,6 +300,30 @@ export function DocumentPanel() {
     }
   }
 
+  async function retryIndex(documentId: string) {
+    setProcessingId(documentId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/documents/${encodeURIComponent(documentId)}/retry-index`,
+        { method: "POST", cache: "no-store" },
+      );
+      const payload = (await response.json()) as DocumentResponse | ApiError;
+      if (!response.ok) {
+        setError(getErrorMessage(payload as ApiError, "Unable to retry indexing."));
+        return;
+      }
+      const queued = payload as DocumentResponse;
+      setDocuments((current) => current.map((item) =>
+        item.id === queued.id ? queued : item
+      ));
+    } catch {
+      setError("Indexing service unreachable. Your file is still saved.");
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
   async function recoverPendingUploads() {
     if (recovering) return;
     setRecovering(true);
@@ -645,6 +669,18 @@ export function DocumentPanel() {
                       >
                         <Eye size={13} />
                         Preview extracted content
+                      </button>
+                    )}
+
+                    {document.status === "failed" &&
+                      ![".png", ".jpg", ".jpeg", ".webp"].includes(document.file_extension) && (
+                      <button
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() => { void retryIndex(document.id); }}
+                        className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
+                      >
+                        <RefreshCw size={12} /> Retry indexing
                       </button>
                     )}
 
