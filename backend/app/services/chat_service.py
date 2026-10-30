@@ -74,8 +74,9 @@ _PUBLIC_COUNTRY_FOLLOWUP = re.compile(
     r"|[\u3040-\u30ff\u3400-\u9fff][\u3040-\u30ff\u3400-\u9fff\s]{1,55})"
 )
 _COUNTRY_ALIASES = {
-    "bd": "Bangladesh", "বাংলাদেশ": "Bangladesh",
-    "jp": "Japan", "日本": "Japan",
+    "bd": "Bangladesh", "bangladesh": "Bangladesh",
+    "বাংলাদেশ": "Bangladesh",
+    "jp": "Japan", "japan": "Japan", "日本": "Japan",
     "uk": "United Kingdom", "us": "United States", "usa": "United States",
 }
 _OFFICE_CLARIFICATION = re.compile(
