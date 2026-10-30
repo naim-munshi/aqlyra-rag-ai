@@ -10,6 +10,10 @@ import re
 from app.config.settings import settings
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
+from app.services.public_office_guard import (
+    is_ambiguous_public_officeholder_question,
+    is_public_officeholder_question,
+)
 from app.services.auto_web_research_service import (
     _NO_WEB,
     _PERSONAL_CONTEXT,
@@ -76,6 +80,11 @@ def route_web_request(
     high-confidence rules first, then a structured AI classification for
     selected PUBLIC questions only. Any planner fault falls back to chat.
     """
+    # If no jurisdiction was named, ask instead of making any guess.
+    # This also applies to forced Web On/Deep.
+    if is_ambiguous_public_officeholder_question(question):
+        return None
+
     # Guard BEFORE high-confidence keyword routing. A public-current marker
     # must never override a private/credential-looking question.
     if mode == "auto" and (
@@ -95,6 +104,9 @@ def route_web_request(
     primary = choose_web_mode(question, mode)
     if mode != "auto" or primary is not None:
         return primary
+    # No "latest/today" keyword is required for a present-tense office.
+    if settings.WEB_RESEARCH_ENABLED and is_public_officeholder_question(question):
+        return "search"
     if not settings.WEB_RESEARCH_ENABLED or len(question) > 600:
         return None
     if _NO_WEB.search(question):
