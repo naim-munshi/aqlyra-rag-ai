@@ -1,0 +1,17 @@
+# Isolated Render SearXNG. Bound to loopback only: all public traffic
+# must pass through the token-verified Aqlyra gateway on $PORT.
+use_default_settings: true
+general:
+  debug: false
+  instance_name: "Aqlyra Protected Search"
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+server:
+  bind_address: "127.0.0.1"
+  port: 8080
+  secret_key: "REPLACED_BY_SEARXNG_SECRET_ENV_DO_NOT_EXPOSE"
+  limiter: false  # Gateway requires strong private token on every JSON query
+  image_proxy: false
