@@ -381,3 +381,53 @@ def test_domain_validation_and_url_mode_filter_rejection() -> None:
             question="Summarize webpage", mode="url",
             source_url="https://example.org", time_range="day",
         )
+
+
+def test_iterative_deep_research_uses_two_searches_and_shared_source_budget(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    queries = []
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        data = json.loads(request.content)
+        if request.url.path == "/search":
+            queries.append(data["query"])
+            domain = "example.com" if len(queries) == 1 else "example.org"
+            return httpx.Response(200, json={"results": [
+                {"url": f"https://{domain}/evidence", "title": "Source evidence"},
+            ]})
+        assert request.url.path == "/extract"
+        assert set(data["urls"]) == {
+            "https://example.com/evidence", "https://example.org/evidence",
+        }
+        return httpx.Response(200, json={"results": [
+            {"url": url, "raw_content": "Verified public source evidence"}
+            for url in data["urls"]
+        ]})
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        result = research_web(
+            "Deep research on AI deployment safety",
+            mode="deep",
+            max_sources=5,
+            iterative=True,
+            client=client,
+            provider=StubProvider("Both sources agree [W1] [W2]."),
+        )
+    assert len(queries) == 2
+    assert queries[0] != queries[1]
+    assert len(result.sources) == 2
+    assert [source.citation for source in result.sources] == ["[W1]", "[W2]"]
+
+def test_untrusted_web_urls_and_model_invented_links_are_rejected(monkeypatch):
+    assert safe_public_url("https://example.com/path" + chr(10) + "malicious") is None
+    assert safe_public_url("https://example.com/path" + chr(9) + "malicious") is None
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "test-web-key")
+    with httpx.Client(transport=httpx.MockTransport(fake_tavily)) as client:
+        with pytest.raises(WebResearchEvidenceError, match="unapproved external links"):
+            research_web(
+                "What are the latest research figures?",
+                max_sources=3, client=client,
+                provider=StubProvider("An unsupported link [W1] https://phishing.example/bait"),
+            )
