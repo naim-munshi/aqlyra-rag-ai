@@ -33,7 +33,7 @@ _PROTECTED_TOKEN_PATTERN = re.compile(
 _NEGATION_PATTERN = re.compile(
     r"\b(?:not|never|no|without|except|excluding|exclude|"
     r"cannot|can't|don't|doesn't|isn't|aren't|won't)\b"
-    r"|\b(?:না|নয়|নয়|নেই|ছাড়া|ছাড়া|বাদে)\b"
+    r"|(?<![\u0980-\u09ff])(?:না|নয়|নয়|নেই|ছাড়া|ছাড়া|বাদে)(?![\u0980-\u09ff])"
     r"|ない|ません|除く|以外",
     re.IGNORECASE,
 )
