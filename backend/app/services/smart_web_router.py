@@ -97,9 +97,18 @@ def route_web_request(
     # Production may deploy this feature before its Tavily key is configured.
     # Keep automatic normal chat working instead of turning all timely
     # questions into 503s; forced On/Deep still report missing setup clearly.
-    if mode == "auto" and (
-        not settings.TAVILY_API_KEY.strip()
-        and (settings.is_production or not settings.TAVILY_KEYLESS_ENABLED)
+    if mode == "auto" and not (
+        (
+            settings.WEB_SEARCH_PROVIDER in ("auto", "searxng")
+            and configured_searxng_url()
+        )
+        or (
+            settings.WEB_SEARCH_PROVIDER in ("auto", "tavily")
+            and (
+                bool(settings.TAVILY_API_KEY.strip())
+                or (settings.TAVILY_KEYLESS_ENABLED and not settings.is_production)
+            )
+        )
     ):
         return None
     primary = choose_web_mode(question, mode)
