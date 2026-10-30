@@ -1,6 +1,10 @@
 """One-shot real Knowledge provider smoke; synthetic strings, no user files."""
 from app.config.settings import settings
-from app.embeddings import create_configured_embedding_provider
+from app.embeddings import (
+    create_configured_embedding_provider,
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError,
+)
 from app.llms import create_configured_llm_provider
 
 
@@ -12,14 +16,24 @@ def run_knowledge_probe() -> None:
             raise RuntimeError("No real embedding provider and lexical mode is disabled")
         print("KNOWLEDGE_RETRIEVAL_PROBE=LEXICAL_ONLY", flush=True)
     else:
-        embedder = create_configured_embedding_provider()
-        vectors = embedder.embed_documents([
-            "Aqlyra synthetic retrieval canary one",
-            "Aqlyra synthetic retrieval canary two",
-        ])
-        if len(vectors) != 2 or any(len(v) != 384 for v in vectors):
-            raise RuntimeError("Embedding provider returned inconsistent vectors")
-        print("KNOWLEDGE_EMBEDDING_PROBE=PASS", flush=True)
+        try:
+            embedder = create_configured_embedding_provider()
+            vectors = embedder.embed_documents([
+                "Aqlyra synthetic retrieval canary one",
+                "Aqlyra synthetic retrieval canary two",
+            ])
+            if len(vectors) != 2 or any(len(v) != 384 for v in vectors):
+                raise RuntimeError("Embedding provider returned inconsistent vectors")
+            print("KNOWLEDGE_EMBEDDING_PROBE=PASS", flush=True)
+        except (EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+                EmbeddingValidationError) as exc:
+            if not settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
+                raise
+            print(
+                f"KNOWLEDGE_EMBEDDING_PROBE=DEGRADED_LEXICAL;"
+                f"reason_{type(exc).__name__}",
+                flush=True,
+            )
 
     if settings.LLM_PROVIDER == "deterministic":
         raise RuntimeError("Knowledge generation is using a deterministic test provider")
