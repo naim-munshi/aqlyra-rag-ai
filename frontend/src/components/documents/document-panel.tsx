@@ -378,9 +378,11 @@ export function DocumentPanel() {
       await processDocument(
         uploadedDocument.id,
       );
-    } catch {
+    } catch (uploadError) {
       setError(
-        "Unable to connect to document upload service.",
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Unable to connect to document upload service.",
       );
     } finally {
       setUploading(false);
