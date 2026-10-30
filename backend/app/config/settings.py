@@ -160,7 +160,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     CONVERSE_VISION_MODEL: str = (
-        "qwen/qwen3.6-27b"
+        "qwen/qwen3.8-27b"
     )
     HF_TOKEN: str = ""
 
@@ -257,7 +257,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = Path(
         "uploads"
     )
-    MAX_UPLOAD_SIZE_MB: int = 25
+    MAX_UPLOAD_SIZE_MB: int = 50
     UPLOAD_CHUNK_SIZE_BYTES: int = (
         1_048_576
     )
