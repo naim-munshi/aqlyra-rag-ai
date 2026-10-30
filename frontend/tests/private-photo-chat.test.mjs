@@ -20,7 +20,7 @@ test("direct verified cloud photos are attachable without embedding processing",
   assert.match(workspace, /document\.status === "uploaded"/);
   assert.match(workspace, /\["image\/png", "image\/jpeg", "image\/webp"\]\.includes\(document\.content_type\)/);
   assert.match(workspace, /setAttachedDocument\(document\)/);
-  assert.match(workspace, /AI indexing is separate/);
+  assert.match(workspace, /AI indexing is not yet available/);
 });
 
 test("front and secure server proxy enforce the same 3 MiB upload cap", () => {
