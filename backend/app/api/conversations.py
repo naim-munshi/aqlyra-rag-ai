@@ -468,6 +468,11 @@ def create_message_stream_endpoint(
                 if not request.document_ids
                 else None
             )
+            if selected_web is not None:
+                yield _encode_stream_event(
+                    "tool_status",
+                    {"tool": "web", "status": "searching", "mode": selected_web},
+                )
             if request.document_ids or selected_web is not None:
                 result = execute_chat_turn(
                     db=db,
