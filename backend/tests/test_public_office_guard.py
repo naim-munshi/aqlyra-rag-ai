@@ -259,6 +259,7 @@ def test_sensitive_text_not_misinterpreted_as_public_country(monkeypatch, unsafe
 
 @pytest.mark.parametrize("question", [
     "prime minister nam",
+    "prime minister nam?",
     "Prime Minister Name",
     "pm nam",
     "prime minister",
