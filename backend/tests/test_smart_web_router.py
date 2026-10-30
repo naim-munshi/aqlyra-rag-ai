@@ -25,6 +25,7 @@ class StubSelector:
 @pytest.fixture
 def enabled(monkeypatch):
     monkeypatch.setattr(web_rules.settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(web_rules.settings, "TAVILY_API_KEY", "test-only-key")
 
 
 def test_ambiguous_public_job_lookup_calls_ai_once(enabled):
@@ -178,3 +179,14 @@ def test_authenticated_stream_auto_ai_selects_web_once(client, enabled, monkeypa
     assert "https://example.org/jobs" in answer.text
     assert calls == [(question, "search")]
     assert len(model.calls) == 1
+
+
+def test_auto_chat_without_tavily_key_avoids_live_search_errors(monkeypatch):
+    monkeypatch.setattr(web_rules.settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(web_rules.settings, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(web_rules.settings, "TAVILY_KEYLESS_ENABLED", False)
+    model = StubSelector()
+    assert router.route_web_request("What's the latest news today?", provider=model) is None
+    assert model.calls == []
+    # Explicitly selected web mode never falsely claims online citations.
+    assert router.route_web_request("Find AI jobs", mode="on", provider=model) == "search"
