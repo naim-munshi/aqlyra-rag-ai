@@ -194,6 +194,10 @@ def readiness():
                 if settings.KNOWLEDGE_AUTO_INDEX_ENABLED
                 else "manual"
             ),
+            # Readiness checks DB/Redis. It must never imply that a
+            # paid embedding endpoint has responded or that existing
+            # 384-dim vectors can be searched right now.
+            "knowledge_embedding_provider_check": "not_performed",
             "knowledge_retrieval": (
                 "lexical_only"
                 if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED
