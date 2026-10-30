@@ -84,13 +84,18 @@ def resolve_public_office_followup(
     This never forwards arbitrary history or private memories to the web.
     """
     country = message.strip(" \t\r\n?!？।。")
+    # A complete BN/JA officeholder question can be all letters,
+    # but is not a country-only reply.
+    if is_public_officeholder_question(message):
+        return message
     if (not _PUBLIC_COUNTRY_FOLLOWUP.fullmatch(country)
         or len(country.split()) > 4):
         return message
     recent = get_recent_messages_for_conversation(
         db=db, conversation_id=conversation.id, limit=2,
     )
-    if (len(recent) != 2
+    if (not isinstance(recent, (list, tuple))
+        or len(recent) != 2
         or recent[0].role != "user"
         or recent[1].role != "assistant"):
         return message
