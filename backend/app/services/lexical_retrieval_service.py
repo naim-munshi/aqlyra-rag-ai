@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import (
     func,
+    case,
     literal_column,
     select,
     or_,
@@ -146,8 +147,14 @@ def _fallback_unicode_chunks(db: Session, query: RetrievalQuery) -> list[Lexical
     for term in terms:
         escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         conditions.append(content.ilike(f"%{escaped}%", escape="\\"))
+    # Rank by bounded Unicode n-gram coverage instead of arbitrary
+    # chunk insertion order; lexical and vector scores remain distinct.
+    unicode_score = sum(
+        (case((matched, 1.0), else_=0.0) for matched in conditions),
+        literal(0.0),
+    )
     statement = (
-        select(DocumentChunk, Document, literal(0.1).label("lexical_score"))
+        select(DocumentChunk, Document, unicode_score.label("lexical_score"))
         .join(Document, Document.id == DocumentChunk.document_id)
         .where(
             Document.user_id == query.user_id,
@@ -161,7 +168,9 @@ def _fallback_unicode_chunks(db: Session, query: RetrievalQuery) -> list[Lexical
         statement = statement.where(DocumentChunk.chunk_role.in_(query.chunk_roles))
     rows = db.execute(
         statement.order_by(
-            DocumentChunk.chunk_index.asc(), DocumentChunk.id.asc()
+            unicode_score.desc(),
+            DocumentChunk.chunk_index.asc(),
+            DocumentChunk.id.asc(),
         ).limit(query.top_k)
     ).all()
     return [
