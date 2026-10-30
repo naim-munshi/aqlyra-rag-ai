@@ -125,7 +125,23 @@ export function GoogleSignInButton() {
   }, [authenticate, clientId]);
 
   if (!clientId) {
-    return null;
+    return (
+      <div className="mt-7" data-google-oauth-status="not-configured">
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          className="flex min-h-12 w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm font-semibold text-[var(--aq-muted)] opacity-80"
+        >
+          <span aria-hidden="true" className="text-lg font-bold">G</span>
+          Continue with Google
+          <span className="ml-auto text-[10px] font-medium">Unavailable</span>
+        </button>
+        <p className="mt-2 text-center text-xs leading-5 text-[var(--aq-muted)]" role="status">
+          Google sign-in is not configured yet. Use email and password for now.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -134,6 +150,7 @@ export function GoogleSignInButton() {
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onReady={initializeGoogle}
+        onError={() => setError("Google sign-in could not load. Open this page in Safari or Chrome and retry.")}
       />
 
       {loading && (

@@ -2,12 +2,15 @@ import tempfile
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     status,
 )
 from sqlalchemy import text
 
+from app.api.admin import get_current_admin
 from app.config.settings import settings
+from app.core.logging import app_logger
 from app.database.connection import SessionLocal
 
 from fastapi.responses import Response
@@ -18,6 +21,10 @@ from app.core.rate_limit import get_rate_limit_redis
 
 
 router = APIRouter()
+
+# The explicitly reviewed full-release Alembic head. Update this constant
+# alongside any future schema migration in the full-release branch.
+_FULL_RELEASE_DB_REVISION = "d4ec2f9b7860"
 
 
 @router.get("/health")
@@ -46,12 +53,39 @@ def readiness():
     writable.
     """
     db = SessionLocal()
+    check_stage = "database_connection"
 
     try:
         db.execute(
             text("SELECT 1")
         )
 
+        # SELECT 1 succeeds on an empty Neon database. In production,
+        # block RAG and accounts until the exact reviewed schema and
+        # pgvector core dependencies have actually been migrated.
+        if settings.is_production:
+            check_stage = "schema_revision"
+            version = db.execute(
+                text("SELECT version_num FROM public.alembic_version")
+            ).scalar_one_or_none()
+            if version != _FULL_RELEASE_DB_REVISION:
+                raise RuntimeError("Aqlyra database revision is not current")
+
+            check_stage = "schema_core"
+            core_schema_ready = db.execute(
+                text(
+                    "SELECT "
+                    "to_regclass('public.users') IS NOT NULL "
+                    "AND to_regclass('public.documents') IS NOT NULL "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_extension WHERE extname = 'vector'"
+                    ")"
+                )
+            ).scalar_one()
+            if not core_schema_ready:
+                raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
+
+        check_stage = "upload_storage"
         upload_dir = (
             settings
             .UPLOAD_DIR
@@ -75,6 +109,13 @@ def readiness():
             pass
 
     except Exception as exc:
+        # Only fixed stage labels and exception class are emitted. Never
+        # log the database URL, SQL exception text or user data.
+        app_logger.warning(
+            "readiness_backend_not_ready",
+            stage=check_stage,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=(
                 status
@@ -91,7 +132,13 @@ def readiness():
             redis_ready = bool(
                 get_rate_limit_redis().ping()
             )
-        except RedisError:
+        except (RedisError, ValueError) as exc:
+            # Log only the exception CLASS. Exception messages may expose
+            # hostnames, usernames or other connection information.
+            app_logger.warning(
+                "readiness_redis_backend_unavailable",
+                error_type=type(exc).__name__,
+            )
             redis_ready = False
 
         if not redis_ready:
@@ -118,6 +165,7 @@ def readiness():
 @router.get(
     "/metrics",
     include_in_schema=False,
+    dependencies=[Depends(get_current_admin)],
 )
 def metrics():
     return Response(
@@ -128,6 +176,6 @@ def metrics():
             "charset=utf-8"
         ),
         headers={
-            "Cache-Control": "no-store",
+            "Cache-Control": "private, no-store",
         },
     )

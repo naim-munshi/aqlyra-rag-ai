@@ -675,3 +675,28 @@ def test_random_object_ids_fail_closed(
             response.status_code,
             response.text,
         )
+
+
+
+def test_anonymous_guest_cannot_list_any_private_workspace(
+    client: TestClient,
+) -> None:
+    """Public guest mode must never turn authenticated list APIs public."""
+    private_routes = (
+        "/api/v1/users/me",
+        "/api/v1/projects",
+        "/api/v1/conversations",
+        "/api/v1/documents",
+        "/api/v1/memories",
+        "/api/v1/study-abroad/cases",
+        "/api/v1/admin/overview",
+        "/api/v1/admin/guest-traffic",
+        "/api/v1/metrics",
+    )
+    for route in private_routes:
+        unauthenticated = client.get(route)
+        assert unauthenticated.status_code == 401, (
+            route, unauthenticated.status_code, unauthenticated.text
+        )
+        assert "user_id" not in unauthenticated.text
+        assert "203.0.113." not in unauthenticated.text

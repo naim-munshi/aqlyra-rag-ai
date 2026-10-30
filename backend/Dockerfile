@@ -37,6 +37,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libgomp1 \
+        fonts-dejavu-core \
         tesseract-ocr \
         tesseract-ocr-eng \
         tesseract-ocr-jpn \

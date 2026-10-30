@@ -12,10 +12,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - ".github/workflows/backend-tests.yml"
 
   workflow_dispatch:
 
@@ -28,9 +24,14 @@ concurrency:
 
 jobs:
   test:
-    name: Python 3.13 / PostgreSQL 16
+    name: Python 3.13 / PostgreSQL ${{ matrix.postgres-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: [16, 18]
 
     env:
       PYTHONUNBUFFERED: "1"
@@ -51,7 +52,7 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg${{ matrix.postgres-version }}
 
         env:
           POSTGRES_USER: postgres
@@ -120,7 +121,123 @@ jobs:
           alembic upgrade head
           alembic current
 
+      - name: Verify exact Full Study Abroad catalog on real PG16/18 (read-only)
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import os
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          import psycopg
+
+          root = Path.cwd().parent
+          source = root / 'scripts/ops/neon_study_schema_audit.py'
+          spec = importlib.util.spec_from_file_location('ci_schema_audit', source)
+          audit = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(audit)
+          database_url = os.environ['DATABASE_URL'].replace(
+              'postgresql+psycopg://', 'postgresql://', 1
+          )
+          target = urlsplit(database_url)
+          # Only the local CI fixture may ever be touched by this step.
+          if not (os.environ.get('GITHUB_ACTIONS') == 'true'
+                  and target.hostname in ('localhost', '127.0.0.1')
+                  and target.path == '/aqlyra_rag_ai'
+                  and target.username == 'postgres'
+                  and target.port in (None, 5432)):
+              raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED unsafe target')
+          with psycopg.connect(
+              database_url, connect_timeout=5,
+              options='-c default_transaction_read_only=on',
+          ) as conn:
+              if conn.execute('SHOW transaction_read_only').fetchone() != ('on',):
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED read-only')
+              revision, is_full = audit.backup.audit_revision(conn)
+              if revision != audit.backup.EXPECTED_FULL or not is_full:
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED revision')
+              phase, count = audit.audit_schema(conn, 'full')
+              if phase != 'full' or count != 20:
+                  raise SystemExit('CI_SCHEMA_AUDIT=BLOCKED table count')
+              conn.rollback()
+          print('CI_FULL_SCHEMA_CATALOG=PASS')
+          print('CI_SCHEMA_AUDIT_DATABASE=LOCAL_ONLY')
+          print('CI_DATABASE_MIGRATION=NOT_RUN_BY_AUDIT')
+          PY
+      - name: Verify isolated synthetic Full Release backup restore
+        run: |
+          set -Eeuo pipefail
+          backup_dir="${RUNNER_TEMP}/aqlyra-synthetic-restore"
+          mkdir -p "$backup_dir"
+          chmod 700 "$backup_dir"
+          # The source is ONLY the disposable GitHub Actions PG16/18 fixture.
+          # Use a PG18 client against either server version; no Neon URL.
+          docker run --rm --network host \
+            -e PGPASSWORD=postgres \
+            --mount "type=bind,src=$backup_dir,dst=/private-backup" \
+            pgvector/pgvector:pg18 \
+            pg_dump --host 127.0.0.1 --username postgres \
+              --dbname aqlyra_rag_ai --format=custom \
+              --no-owner --no-acl --file=/private-backup/ci-full.dump
+          python3 - "$backup_dir" <<'PY'
+          import hashlib, json, pathlib, sys
+          directory = pathlib.Path(sys.argv[1])
+          archive = directory / "ci-full.dump"
+          record = {
+              "format": "aqlyra-neon-backup.v1",
+              "archive": archive.name,
+              "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "alembic_revision": "d4ec2f9b7860",
+              "restore_rehearsal": "NOT_RUN",
+          }
+          (directory / "ci-full.json").write_text(json.dumps(record))
+          PY
+          bash scripts/ops/neon_restore_rehearsal.sh \
+            "$backup_dir/ci-full.dump" "$backup_dir/ci-full.json"
       - name: Run backend tests
         working-directory: backend
         run: |
           python -m pytest
+
+      - name: Verify artifact S3 HTTP restart durability on disposable Moto
+        run: |
+          set -Eeuo pipefail
+          # Never connect to real Neon, AWS or customer object storage.
+          python -m pip install 'moto[server]==5.2.3'
+          python -m moto.server -H 127.0.0.1 -p 5000 >"$RUNNER_TEMP/aqlyra-moto-ci.log" 2>&1 &
+          moto_pid=$!
+          trap 'kill "$moto_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import socket, time
+          for i in range(40):
+              try:
+                  with socket.create_connection(('127.0.0.1', 5000), timeout=1):
+                      break
+              except OSError:
+                  time.sleep(.5)
+          else:
+              raise SystemExit('CI_MOTO_HTTP=BLOCKED no loopback server')
+          PY
+          state="$RUNNER_TEMP/aqlyra-artifact-http-state.json"
+          # Each invocation is a separate Python application process.
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase write --state-file "$state"
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase verify --state-file "$state"
+          python scripts/ops/ci_artifact_s3_roundtrip.py \
+            --phase cleanup --state-file "$state"
+          # Original user-document stage -> server-owned final isolation.
+          # Same loopback Moto only, but each phase starts a fresh app process.
+          original_state="$RUNNER_TEMP/aqlyra-original-private-state.json"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase write --state-file "$original_state"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase verify --state-file "$original_state"
+          python scripts/ops/ci_private_document_s3_roundtrip.py \
+            --phase cleanup --state-file "$original_state"
+      - name: Verify offline Neon backup and recovery safety contracts
+        run: |
+          python -m unittest discover \
+            -s scripts/ops \
+            -p 'test_neon_remote_backup.py' \
+            -v
