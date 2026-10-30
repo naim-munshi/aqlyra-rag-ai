@@ -125,8 +125,15 @@ def run_one_index_job() -> bool:
                 process_document(db=db, document=doc, claimed_for_worker=True)
             log.info("knowledge_index_complete doc_id=%s", document_id)
         except Exception as exc:
-            # process_document has already committed status=failed so
-            # one broken item never poisons the queue or blocks others.
+            # Cloud byte verification may fail BEFORE process_document is
+            # invoked. Mark those failures explicitly; the safe owner
+            # retry endpoint can queue the preserved original again.
+            db.rollback()
+            current = db.get(Document, document_id)
+            if current is not None and current.status == "processing":
+                current.status = "failed"
+                current.error_message = type(exc).__name__[:120]
+                db.commit()
             log.warning(
                 "knowledge_index_failed doc_id=%s error_type=%s",
                 document_id, type(exc).__name__,
