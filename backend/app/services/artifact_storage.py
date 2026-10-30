@@ -15,7 +15,6 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from app.config.settings import settings
-from app.services.storage_durability_policy import artifact_writes_permitted
 from app.services.artifact_rendering import MIMES, render_artifact
 
 MAX_ARTIFACTS_PER_USER = 50
@@ -71,13 +70,28 @@ def _artifact_lock(folder: Path):
         raise
 
 
+def _remote_call(action: str, **kwargs):
+    """An explicit opt-in, never a fallback to a less durable or public store."""
+    from app.services import artifact_remote_storage as remote
+    try:
+        return getattr(remote, action)(**kwargs)
+    except remote.RemoteArtifactQuotaError as exc:
+        raise ArtifactQuotaError(str(exc)) from exc
+    except remote.RemoteArtifactError as exc:
+        raise ArtifactStorageError(str(exc)) from exc
+
+
 def create_artifact(
     *, user_id: str, title: str, kind: str, content: str,
     provider_name: str, source_document_ids: list[str],
     citation_count: int,
 ) -> dict:
-    if not artifact_writes_permitted():
-        raise ArtifactStorageError("Durable artifact storage is not configured")
+    if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+        return _remote_call(
+            "create_artifact", user_id=user_id, title=title, kind=kind,
+            content=content, provider_name=provider_name,
+            source_document_ids=source_document_ids, citation_count=citation_count,
+        )
     if kind not in MIMES:
         raise ArtifactStorageError("Unsupported format")
     # Render *before* reserving storage, so failures consume no slot.
@@ -121,6 +135,8 @@ def create_artifact(
 
 
 def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
+    if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+        return _remote_call("read_artifact", user_id=user_id, artifact_id=artifact_id)
     folder = _owner_dir(user_id)
     path = _record_path(folder, artifact_id)
     if not path.is_file() or path.is_symlink():
@@ -138,6 +154,8 @@ def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
 
 
 def list_artifacts(*, user_id: str) -> list[dict]:
+    if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+        return _remote_call("list_artifacts", user_id=user_id)
     folder = _owner_dir(user_id)
     results: list[dict] = []
     for path in folder.glob("*.json"):
@@ -147,7 +165,9 @@ def list_artifacts(*, user_id: str) -> list[dict]:
     return sorted(results, key=lambda item: item["created_at"], reverse=True)
 
 
-def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | None:
+def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path | bytes, dict] | None:
+    if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+        return _remote_call("artifact_download", user_id=user_id, artifact_id=artifact_id)
     item = read_artifact(user_id=user_id, artifact_id=artifact_id)
     if item is None:
         return None
@@ -161,6 +181,8 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | 
 
 
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
+    if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+        return _remote_call("delete_artifact", user_id=user_id, artifact_id=artifact_id)
     folder = _owner_dir(user_id)
     with _artifact_lock(folder):
         item = read_artifact(user_id=user_id, artifact_id=artifact_id)

@@ -4,14 +4,14 @@ import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 
 export default function ForgotPasswordPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--aq-bg)] px-6 py-12 text-[var(--aq-text)]">
+    <main className="flex min-h-dvh items-start justify-center sm:items-center bg-[var(--aq-bg)] px-4 py-6 sm:px-6 sm:py-12 text-[var(--aq-text)]">
       <section className="w-full max-w-[440px]">
         <div className="mb-8 flex justify-center"><AqlyraLogo size={46} /></div>
-        <div className="rounded-3xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-8 shadow-2xl sm:p-10">
+        <div className="rounded-3xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-5 shadow-2xl sm:p-10">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--aq-cyan)]">
             Account recovery
           </p>
-          <h1 className="mt-3 text-[32px] font-bold tracking-tight">Reset your password</h1>
+          <h1 className="mt-3 text-2xl font-bold leading-tight tracking-tight sm:text-[32px]">Reset your password</h1>
           <p className="mt-3 text-[15px] leading-6 text-[var(--aq-muted)]">
             Receive a one-time code by email and choose a new password.
           </p>

@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 import { trustedProxyClientIp } from "@/lib/security/client-ip";
 import { backendUrl, readJson } from "@/lib/api/backend";
 
 export async function POST(request: Request) {
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readBoundedJson(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json({ detail: "Invalid request body" }, { status: 400 });
   }
   if (

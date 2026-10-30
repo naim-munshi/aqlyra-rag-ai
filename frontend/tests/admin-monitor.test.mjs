@@ -22,6 +22,15 @@ test("admin JSON proxy checks session and never caches responses", () => {
   assert.doesNotMatch(api, /NEXT_PUBLIC_ADMIN/i);
 });
 
+test("private guest monitoring separates visits and chats without claiming unique people", () => {
+  const ui = get("../src/components/admin/guest-traffic-panel.tsx");
+  assert.match(ui, /chat_requests/);
+  assert.match(ui, /item\.visits/);
+  assert.match(ui, /at most 24 hours from the first event/);
+  assert.match(ui, /not unique people/);
+  assert.doesNotMatch(ui, /localStorage/);
+});
+
 test("monitor shows only process-local API traffic, not unique visitors", () => {
   const ui = get("../src/components/admin/admin-monitor.tsx");
   assert.match(ui, /single|per backend process/i);

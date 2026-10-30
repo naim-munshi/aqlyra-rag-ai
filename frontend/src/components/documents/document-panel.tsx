@@ -188,6 +188,24 @@ export function DocumentPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!documents.some((document) =>
+      document.status === "queued" || document.status === "processing"
+    )) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const response = await fetch("/api/documents", { cache: "no-store" });
+        if (!response.ok || !active) return;
+        const payload = (await response.json()) as DocumentListResponse;
+        if (active) setDocuments(payload.items);
+      } catch {
+        // Existing data remains available. The next poll can recover.
+      }
+    }, 4000);
+    return () => { active = false; clearInterval(poll); };
+  }, [documents]);
+
   async function refreshDocuments() {
     setLoading(true);
     setError("");
@@ -282,6 +300,30 @@ export function DocumentPanel() {
     }
   }
 
+  async function retryIndex(documentId: string) {
+    setProcessingId(documentId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/documents/${encodeURIComponent(documentId)}/retry-index`,
+        { method: "POST", cache: "no-store" },
+      );
+      const payload = (await response.json()) as DocumentResponse | ApiError;
+      if (!response.ok) {
+        setError(getErrorMessage(payload as ApiError, "Unable to retry indexing."));
+        return;
+      }
+      const queued = payload as DocumentResponse;
+      setDocuments((current) => current.map((item) =>
+        item.id === queued.id ? queued : item
+      ));
+    } catch {
+      setError("Indexing service unreachable. Your file is still saved.");
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
   async function recoverPendingUploads() {
     if (recovering) return;
     setRecovering(true);
@@ -368,19 +410,23 @@ export function DocumentPanel() {
 
       // A successful cloud upload means bytes are durable, not that
       // a quota-limited embedding provider has indexed the document.
-      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true") {
-        setError(
-          "File saved in private storage. AI indexing is currently unavailable; you can retry processing later."
-        );
+      if (uploadedDocument.status === "queued" ||
+          uploadedDocument.status === "processing") {
+        setRecoveryNotice("File securely saved. Knowledge indexing is running in the background.");
+        return;
+      }
+      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true") {
+        setError("File saved privately. Automatic indexing is not available on this upload route.");
         return;
       }
 
-      await processDocument(
-        uploadedDocument.id,
-      );
-    } catch {
+      await processDocument(uploadedDocument.id);
+    } catch (uploadError) {
       setError(
-        "Unable to connect to document upload service.",
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Unable to connect to document upload service.",
       );
     } finally {
       setUploading(false);
@@ -626,6 +672,18 @@ export function DocumentPanel() {
                       </button>
                     )}
 
+                    {document.status === "failed" &&
+                      ![".png", ".jpg", ".jpeg", ".webp"].includes(document.file_extension) && (
+                      <button
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() => { void retryIndex(document.id); }}
+                        className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
+                      >
+                        <RefreshCw size={12} /> Retry indexing
+                      </button>
+                    )}
+
                     {document.status ===
                       "uploaded" && (
                       <button
@@ -634,10 +692,12 @@ export function DocumentPanel() {
                           isProcessing
                         }
                         onClick={() => {
-                          void processDocument(
-                            document.id,
-                          );
-                        }}
+                           if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+                             void retryIndex(document.id);
+                           } else {
+                             void processDocument(document.id);
+                           }
+                         }}
                         className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
                       >
                         {isProcessing ? (
