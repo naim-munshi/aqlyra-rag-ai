@@ -419,11 +419,25 @@ def research_web(
         generation = repair
         problem = validation_error(text)
     if problem is not None:
+        # Keep public error contracts and sanitized diagnostic stage names
+        # stable for existing clients and monitoring.
+        if problem == "answer_too_long":
+            logger.warning(
+                "web_research_stage_failed stage=answer_too_long sources=%s",
+                len(sources),
+            )
+            raise WebResearchEvidenceError("Generated answer exceeds safe size limit")
+        if problem == "unapproved_generated_link":
+            logger.warning(
+                "web_research_stage_failed stage=unapproved_generated_link sources=%s",
+                len(sources),
+            )
+            raise WebResearchEvidenceError("Generated answer contains unapproved external links")
         logger.warning(
-            "web_research_stage_failed stage=%s sources=%s",
-            problem, len(sources),
+            "web_research_stage_failed stage=invalid_citations sources=%s",
+            len(sources),
         )
-        raise WebResearchEvidenceError("Generated answer lacks validated evidence")
+        raise WebResearchEvidenceError("Generated answer has no valid source citations")
 
     return WebResearchResponse(
         question=question,
