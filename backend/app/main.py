@@ -63,6 +63,15 @@ def start_knowledge_index_worker() -> None:
         "public_web_research_configuration=%s", public_web_research_status(),
     )
     _knowledge_worker.start()
+    if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
+        # Daemon keeps live startup/health independent of upstream latency.
+        from threading import Thread
+        from app.services.web_research_live_canary import run_live_web_canary
+        Thread(
+            target=run_live_web_canary,
+            name="aqlyra-public-web-canary",
+            daemon=True,
+        ).start()
 
 
 @app.on_event("shutdown")
