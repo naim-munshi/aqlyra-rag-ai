@@ -21,6 +21,11 @@ import {
   VoiceOrb,
   type VoiceVisualState,
 } from "@/components/voice/voice-orb";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 import type {
   ConversationMode,
 } from "@/types/conversation";
@@ -153,6 +158,9 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
+  const browserVoiceRef =
+    useRef<BrowserVoiceController | null>(null);
+  const [browserMode, setBrowserMode] = useState(false);
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -206,6 +214,9 @@ export function VoiceCallButton({
 
 
   async function endCall() {
+    browserVoiceRef.current?.stop();
+    browserVoiceRef.current = null;
+    setBrowserMode(false);
     const room =
       roomRef.current;
 
@@ -281,6 +292,38 @@ export function VoiceCallButton({
         (await response.json()) as
           | VoiceSessionResponse
           | VoiceApiError;
+
+      if (
+        response.status === 503 &&
+        browserSpeechIsSupported()
+      ) {
+        const browserVoice = await startBrowserVoiceMode({
+          mode,
+          conversationId,
+          documentIds,
+          onConversationStarted,
+          onUserTranscript,
+          onAgentTranscript,
+          onState: setAgentState,
+          onError: (message) => {
+            setError(message);
+            onError?.(message);
+          },
+          onStopped: () => {
+            browserVoiceRef.current = null;
+            setBrowserMode(false);
+            setActive(false);
+            setStarting(false);
+            setAgentState("idle");
+          },
+        });
+        browserVoiceRef.current = browserVoice;
+        setBrowserMode(true);
+        setActive(true);
+        setStarting(false);
+        setAgentState("listening");
+        return;
+      }
 
       if (
         !response.ok ||
@@ -505,6 +548,12 @@ export function VoiceCallButton({
 
 
   async function toggleMute() {
+    if (browserVoiceRef.current) {
+      const nextMuted = !muted;
+      browserVoiceRef.current.setMuted(nextMuted);
+      setMuted(nextMuted);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -536,6 +585,8 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
+      browserVoiceRef.current?.stop();
+      browserVoiceRef.current = null;
       const room =
         roomRef.current;
 
@@ -568,6 +619,11 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
+        {error ? (
+          <span role="alert" className="max-w-[180px] text-xs text-red-500">
+            {error}
+          </span>
+        ) : null}
 
         <div
           ref={audioContainerRef}
@@ -593,7 +649,7 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              Aqlyra Voice
+              {browserMode ? "Aqlyra Browser Voice" : "Aqlyra Voice"}
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -650,7 +706,9 @@ export function VoiceCallButton({
             {!liveUserText &&
             !liveAgentText ? (
               <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                Speak naturally. Aqlyra is listening.
+                {browserMode
+                  ? "Browser speech mode: recognition and playback depend on your device."
+                  : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>
