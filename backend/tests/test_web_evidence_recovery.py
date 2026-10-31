@@ -44,6 +44,7 @@ def _run(monkeypatch, handler, replies):
 
 def test_search_raw_content_survives_extract_empty(monkeypatch):
     def handler(req):
+        assert req.url.path == "/search", "Don't redundantly extract present raw_content"
         if req.url.path == "/search":
             assert json.loads(req.content)["include_raw_content"] is True
             return httpx.Response(200, json={"results": [{
@@ -62,15 +63,25 @@ def test_search_raw_content_survives_extract_empty(monkeypatch):
 
 
 def test_search_raw_content_survives_extract_error(monkeypatch):
+    calls = []
     def handler(req):
+        calls.append(req.url.path)
         if req.url.path == "/search":
-            return httpx.Response(200, json={"results": [{
-                "url": "https://example.org/official",
-                "raw_content": "Page text from the search provider.",
-            }]})
+            return httpx.Response(200, json={"results": [
+                {
+                    "url": "https://example.org/official",
+                    "raw_content": "Page text from the search provider.",
+                },
+                {
+                    "url": "https://another.org/missing",
+                    "content": "Unverified snippet that cannot be cited.",
+                },
+            ]})
+        assert json.loads(req.content)["urls"] == ["https://another.org/missing"]
         return httpx.Response(503, json={"error": "Temporarily unavailable"})
 
     result, _ = _run(monkeypatch, handler, ["Grounded page evidence [W1]."])
+    assert calls == ["/search", "/extract"]
     assert len(result.sources) == 1
 
 
