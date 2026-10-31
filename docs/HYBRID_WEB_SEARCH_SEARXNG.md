@@ -84,3 +84,7 @@ Before enabling production:
 - Provider URL and live credentials are external release gates. Do not
   manufacture a public instance URL, claim full live success from CI or
   silently enable feature flags.
+
+## Real availability limitations (October 31, 2026)
+
+SearXNG's public upstream engines may rate-limit cloud hosting addresses and return zero results. The protected gateway now offers an explicitly bounded **Wikipedia MediaWiki API** fallback for a zero-result SearXNG response. It only returns real, live public search hits with valid positive page IDs, canonical Wikipedia URLs and sanitized snippets. It is not a private crawler, broad independent web index or real-time news search. When no real source exists, it must not synthesize sources or claim successful independent search. The gateway's startup probe checks the full authenticated search path. Keep production `WEB_SEARCH_PROVIDER=tavily` until real result counts, response latency, citation validity, and fallback behavior all pass an operator-approved release gate.
