@@ -1,3 +1,5 @@
+> **Historical release gate:** This document began as a pre-production acceptance plan for the October 27 Core. The application has since reached a **partial production beta** on separate Vercel and Render release branches. Its tests and checks remain mandatory; do **not** read the original "production not live" statement as a current status report. For last-verified live evidence and outstanding gates, see [Production Status](PRODUCTION_STATUS_2026-10-31.md). The protected `main` branch must not be merged without owner approval.
+
 # Aqlyra final release acceptance and operating handoff
 
 **Repository:** `naim-munshi/aqlyra-rag-ai` only. This is the **full-stack**
