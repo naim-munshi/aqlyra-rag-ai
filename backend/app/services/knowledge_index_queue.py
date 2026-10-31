@@ -17,6 +17,7 @@ from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.database.connection import SessionLocal
 from app.models.document import Document
+from app.models.cloud_upload_intent import CloudUploadIntent
 from app.services.cloud_process_io import cloud_processing_source
 from app.services.document_processing_service import process_document
 
@@ -53,6 +54,52 @@ def enqueue_document(
         db.commit()
         db.refresh(document)
     return document
+
+
+def requeue_verified_legacy_cloud_documents(
+    db: Session, *, limit: int = 10,
+) -> int:
+    """One-shot operator recovery of old durable uploads, never local files.
+
+    Only completed owner-matched upload intents qualify. The subsequent
+    worker verifies immutable cloud bytes and checksum before parsing.
+    No file deletion, ownership changes, or reprocessing of ready files.
+    """
+    if not settings.KNOWLEDGE_AUTO_INDEX_ENABLED:
+        return 0
+    if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+        return 0
+    if not 1 <= limit <= 25:
+        raise ValueError("Backfill batch limit must be 1..25")
+    try:
+        documents = list(db.scalars(
+            select(Document)
+            .join(
+                CloudUploadIntent,
+                (CloudUploadIntent.document_id == Document.id)
+                & (CloudUploadIntent.user_id == Document.user_id),
+            )
+            .where(
+                CloudUploadIntent.status == "completed",
+                Document.status == "uploaded",
+                Document.storage_path.like("cloud://%"),
+                Document.file_extension.in_(tuple(INDEXABLE_EXTENSIONS)),
+            )
+            .order_by(Document.created_at, Document.id)
+            .limit(limit)
+            .with_for_update(of=Document, skip_locked=True)
+        ).all())
+        for document in documents:
+            document.status = "queued"
+            document.error_message = None
+        db.commit()
+        log.info(
+            "knowledge_legacy_cloud_backfill queued=%s", len(documents)
+        )
+        return len(documents)
+    except Exception:
+        db.rollback()
+        raise
 
 
 def claim_next_document(db: Session) -> str | None:
