@@ -137,9 +137,13 @@ def safe_browser_url(url: object, allowed_host: str) -> str | None:
 def _check_feature() -> None:
     if not settings.BROWSER_AGENT_ENABLED:
         raise BrowserAgentUnavailable("Browser agent is disabled")
-    if settings.is_production:
+    if settings.is_production and not (
+        settings.BROWSER_AGENT_HTML_ONLY_PRODUCTION_ENABLED
+        and settings.BROWSER_APPROVAL_REDIS_ENABLED
+        and settings.REDIS_URL.strip()
+    ):
         raise BrowserAgentUnavailable(
-            "Production browser execution requires an isolated worker; disabled"
+            "Production browser requires read-only public HTML mode and durable approvals"
         )
     if settings.LLM_PROVIDER == "deterministic":
         raise BrowserAgentUnavailable("Configure a real Groq/OpenAI model")
@@ -548,8 +552,17 @@ async def execute_browser_plan(token: str, user_id: str) -> BrowserRunResponse:
         _redeem_browser_plan(payload)
         llm = create_configured_llm_provider()
         try:
+            if settings.is_production:
+                # Production has no Chromium, JS, filesystem or signed-in
+                # browser. DNS-pinned, no-redirect public HTTPS HTML only.
+                from app.services.browser_public_html_service import (
+                    run_read_only_html_browser,
+                )
+                runner = run_read_only_html_browser
+            else:
+                runner = _run_browser
             return await asyncio.wait_for(
-                _run_browser(payload["task"], payload["url"], payload["host"], llm),
+                runner(payload["task"], payload["url"], payload["host"], llm),
                 timeout=MAX_DURATION_SECONDS,
             )
         except asyncio.TimeoutError as exc:
