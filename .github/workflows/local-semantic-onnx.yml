@@ -39,3 +39,11 @@ jobs:
         working-directory: backend
         run: |
           python -m app.embeddings.local_onnx_probe
+      - name: Probe API imports plus ONNX within 512 MiB RAM
+        run: |
+          docker build --tag aqlyra-local-semantic-probe --file backend/Dockerfile backend
+          docker run --rm --memory=512m --memory-swap=512m \
+            --env DATABASE_URL=postgresql+psycopg://unused:unused@localhost/unused \
+            --env SECRET_KEY=ci-local-onnx-public-only \
+            --entrypoint python aqlyra-local-semantic-probe \
+            -c "from app.main import app; from app.embeddings.local_onnx_probe import main; main()"
