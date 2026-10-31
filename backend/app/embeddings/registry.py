@@ -7,6 +7,7 @@ from app.embeddings.deterministic import (
 from app.embeddings.openai_provider import (
     OpenAIEmbeddingProvider,
 )
+from app.embeddings.local_onnx_provider import LocalMultilingualE5Provider
 from app.embeddings.huggingface_provider import (
     DEFAULT_HF_EMBEDDING_MODEL,
     HuggingFaceEmbeddingProvider,
