@@ -106,6 +106,14 @@ def start_knowledge_index_worker() -> None:
             name="aqlyra-browser-html-canary",
             daemon=True,
         ).start()
+    if settings.WEB_KEYLESS_CANARY_ON_STARTUP:
+        from threading import Thread
+        from app.services.keyless_web_canary import run_keyless_web_canary
+        Thread(
+            target=run_keyless_web_canary,
+            name="aqlyra-public-keyless-canary",
+            daemon=True,
+        ).start()
     if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
         # Daemon keeps live startup/health independent of upstream latency.
         from threading import Thread
