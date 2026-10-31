@@ -522,7 +522,7 @@ export function DemoExperience() {
               </div>
               <div className={styles.heroActions}>
                 {demoOnly ? (
-                  <a href="https://github.com/naim-munshi/aqlyra-rag-ai/blob/main/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md"
+                  <a href="https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md"
                     className={styles.secondaryButton} target="_blank" rel="noopener noreferrer">
                     Read acceptance steps <ArrowUpRight size={15}/>
                   </a>
