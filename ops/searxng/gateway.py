@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hmac
 import http.client
+import html
+import re
 import json
 import os
 import socket
@@ -55,6 +57,61 @@ def validated_search_path(value: str) -> str | None:
         })
     except (ValueError, UnicodeError):
         return None
+
+
+def wikipedia_public_search(query: str, *, limit: int = 5) -> list[dict[str, str]]:
+    """Fixed Wikimedia API fallback; never a general outbound URL proxy.
+
+    Only actual MediaWiki search hits with page IDs enter the result set.
+    HTTPS and certificate validation are enforced by HTTPSConnection.
+    """
+    if not 3 <= len(query) <= 600 or not 1 <= limit <= 5:
+        return []
+    connection = http.client.HTTPSConnection(
+        "en.wikipedia.org", 443, timeout=3.0,
+    )
+    try:
+        path = "/w/api.php?" + urlencode({
+            "action": "query", "list": "search", "srsearch": query,
+            "srlimit": str(limit), "format": "json", "formatversion": "2",
+        })
+        connection.request("GET", path, headers={
+            "User-Agent": "AqlyraPublicSearch/1.0 (noncommercial; source-linked)",
+            "Accept": "application/json",
+        })
+        response = connection.getresponse()
+        if response.status != 200:
+            return []
+        if not response.getheader("Content-Type", "").lower().startswith("application/json"):
+            return []
+        raw = response.read(180001)
+        if len(raw) > 180000:
+            return []
+        payload = json.loads(raw)
+        hits = payload.get("query", {}).get("search", [])
+        if not isinstance(hits, list):
+            return []
+        results: list[dict[str, str]] = []
+        for item in hits[:limit]:
+            if not isinstance(item, dict):
+                continue
+            page_id = item.get("pageid")
+            title = item.get("title")
+            if type(page_id) is not int or page_id <= 0 or not isinstance(title, str):
+                continue
+            snippet = item.get("snippet", "")
+            plain = html.unescape(re.sub(r"<[^>]*>", " ", snippet)) if isinstance(snippet, str) else ""
+            results.append({
+                "url": f"https://en.wikipedia.org/?curid={page_id}",
+                "title": title[:180],
+                "content": " ".join(plain.split())[:1200],
+                "engine": "wikipedia-api",
+            })
+        return results
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+    finally:
+        connection.close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -113,6 +170,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if len(content) > MAX_BYTES:
                 self.send_json_error(502, "upstream-too-large")
+                return
+            try:
+                payload = json.loads(content)
+                if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+                    self.send_json_error(503, "invalid-search-response")
+                    return
+                if not payload["results"]:
+                    query = parse_qs(urlsplit(path).query).get("q", [""])[0]
+                    fallback = wikipedia_public_search(query)
+                    if fallback:
+                        payload["results"] = fallback
+                        content = json.dumps(payload, ensure_ascii=False).encode()
+            except (ValueError, UnicodeError, TypeError):
+                self.send_json_error(503, "invalid-search-response")
                 return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
