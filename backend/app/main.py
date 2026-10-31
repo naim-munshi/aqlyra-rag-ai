@@ -78,6 +78,28 @@ def start_knowledge_index_worker() -> None:
                 type(exc).__name__,
             )
     _knowledge_worker.start()
+    if settings.KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP:
+        # Operator-only, bounded. Never delay HTTP readiness while the
+        # quantized model initializes, and never log document content.
+        from threading import Thread
+        def run_semantic_backfill() -> None:
+            try:
+                from app.database.connection import SessionLocal
+                from app.services.knowledge_semantic_backfill import (
+                    backfill_ready_semantic_embeddings,
+                )
+                with SessionLocal() as db:
+                    backfill_ready_semantic_embeddings(db=db, limit=1)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "knowledge_semantic_backfill status=ERROR error_type=%s",
+                    type(exc).__name__,
+                )
+        Thread(
+            target=run_semantic_backfill,
+            name="aqlyra-semantic-backfill",
+            daemon=True,
+        ).start()
     if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
         # Daemon keeps live startup/health independent of upstream latency.
         from threading import Thread
