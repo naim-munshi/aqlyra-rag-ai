@@ -173,6 +173,9 @@ class Settings(BaseSettings):
     # Optional Redis SET NX replay ledger for cross-instance approved plans.
     # Local test mode still uses the process guard; production browser stays OFF.
     BROWSER_APPROVAL_REDIS_ENABLED: bool = False
+    # Safer public HTML navigation without a Chromium process; default OFF.
+    BROWSER_AGENT_HTML_ONLY_PRODUCTION_ENABLED: bool = False
+    BROWSER_AGENT_HTML_CANARY_ON_STARTUP: bool = False
     BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
     # Temporary one-shot operator-only E2E check; OFF after validation.
