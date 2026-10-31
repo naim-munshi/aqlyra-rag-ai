@@ -162,6 +162,7 @@ export function VoiceCallButton({
     useRef<BrowserVoiceController | null>(null);
   const [browserMode, setBrowserMode] = useState(false);
   const [offerBrowserVoice, setOfferBrowserVoice] = useState(false);
+  const [browserLocale, setBrowserLocale] = useState("auto");
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -540,6 +541,7 @@ export function VoiceCallButton({
         mode,
         conversationId,
         documentIds,
+        speechLocale: browserLocale,
         onConversationStarted,
         onUserTranscript,
         onAgentTranscript,
@@ -648,6 +650,17 @@ export function VoiceCallButton({
         {offerBrowserVoice ? (
           <div className="max-w-[240px] space-y-1 text-xs text-[var(--aq-muted)]">
             <p>LiveKit voice is unavailable. Browser voice may send microphone audio to your browser provider.</p>
+            <select
+              value={browserLocale}
+              onChange={(event) => setBrowserLocale(event.target.value)}
+              aria-label="Voice recognition language"
+              className="w-full rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] p-2 text-[var(--aq-text)]"
+            >
+              <option value="auto">Device language</option>
+              <option value="bn-BD">বাংলা</option>
+              <option value="ja-JP">日本語</option>
+              <option value="en-US">English</option>
+            </select>
             <button
               type="button"
               onClick={() => { void startBrowserCall(); }}
