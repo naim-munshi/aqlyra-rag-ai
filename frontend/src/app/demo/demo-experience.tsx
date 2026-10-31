@@ -293,6 +293,11 @@ export function DemoExperience() {
                 evidence behind an answer, and keeps source context in view.
               </p>
               <div className={styles.heroActions}>
+                {!demoOnly ? (
+                  <Link href="/login" className={styles.primaryButton}>
+                    <ArrowRight size={17} /> Try the real AI app
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   className={styles.primaryButton}
@@ -472,6 +477,60 @@ export function DemoExperience() {
                     </div>
                   )}
                 </div>
+              </div>
+            </section>
+
+            <section className={styles.featureTour} aria-labelledby="capability-heading">
+              <div className={styles.sectionEyebrow}>REAL APPLICATION VS SCRIPTED DEMO</div>
+              <h2 id="capability-heading">Explore every major workflow</h2>
+              <p className={styles.featureTourIntro}>
+                This page displays scripted samples only. The live workflows below
+                require the real app, authentication and available providers.
+                Not every advanced feature is currently enabled.
+              </p>
+              <div className={styles.featureGrid}>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatus}>LIVE BETA</span>
+                  <h3>Converse &amp; memory</h3>
+                  <p>Ask, follow up, attach permitted files and inspect user-scoped conversations.</p>
+                </article>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatus}>LIVE BETA</span>
+                  <h3>Knowledge RAG</h3>
+                  <p>Upload a sample document; test semantic + lexical retrieval and source citations.</p>
+                </article>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatus}>PROVIDER LIVE</span>
+                  <h3>Web Research</h3>
+                  <p>Tavily supplies current public sources. Independent search has a limited fallback only.</p>
+                </article>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatus}>BROWSER DEPENDENT</span>
+                  <h3>Voice</h3>
+                  <p>Speech recognition/playback fallback may work with permission. LiveKit RTC is not certified.</p>
+                </article>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatusRestricted}>SAFETY-GATED</span>
+                  <h3>Browser Agent</h3>
+                  <p>Production execution remains off until isolated runtime and egress controls are accepted.</p>
+                </article>
+                <article className={styles.featureCard}>
+                  <span className={styles.featureStatusRestricted}>LIMITED CANARY</span>
+                  <h3>Own Hybrid Search</h3>
+                  <p>Token-protected SearXNG has a Wikipedia-backed probe; not a replacement for broad web search.</p>
+                </article>
+              </div>
+              <div className={styles.heroActions}>
+                {demoOnly ? (
+                  <a href="https://github.com/naim-munshi/aqlyra-rag-ai/blob/main/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md"
+                    className={styles.secondaryButton} target="_blank" rel="noopener noreferrer">
+                    Read acceptance steps <ArrowUpRight size={15}/>
+                  </a>
+                ) : (
+                  <Link href="/login" className={styles.secondaryButton}>
+                    Open real sign-in <ArrowUpRight size={15}/>
+                  </Link>
+                )}
               </div>
             </section>
 
