@@ -321,6 +321,7 @@ class Settings(BaseSettings):
             "deterministic",
             "huggingface",
             "openai",
+            "local_onnx",
         }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
