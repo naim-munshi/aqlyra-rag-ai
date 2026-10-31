@@ -1,5 +1,7 @@
 # AI Artifact Workspace (feature branch)
 
+> **Release update (2026-10-31):** The sections below describe the original local-volume artifact implementation. [PR #82](https://github.com/naim-munshi/aqlyra-rag-ai/pull/82) adds a default-off private S3-compatible backend. It is **not live or production-accepted**. Remote mode does **not** automatically migrate or dual-read older local artifacts; follow the [non-destructive storage rollout and acceptance guide](ARTIFACT_REMOTE_STORAGE_ROLLOUT.md) before considering activation. Preserve the local files, private bucket, and stable metadata-signing key throughout any migration and restore rehearsal.
+
 Aqlyra generates actual downloadable .docx, .xlsx, .pptx, .pdf and .md
 files. This is a separate authenticated service built around the existing
 LLM and citation-validated RAG architecture. It does **not** modify
