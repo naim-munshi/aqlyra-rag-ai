@@ -169,6 +169,8 @@ class Settings(BaseSettings):
     BROWSER_AGENT_ENABLED: bool = False
     BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
+    # Temporary one-shot operator-only E2E check; OFF after validation.
+    WEB_RESEARCH_CANARY_ON_STARTUP: bool = False
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
 
