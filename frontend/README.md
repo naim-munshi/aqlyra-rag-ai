@@ -48,4 +48,4 @@ The real frontend is a Vercel Next.js project called `aqlyra`. It is not the sep
 
 Production `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` should be `false` or unset so the root route remains the actual app/login. The explicit `/demo` route stays accessible as a scripted showcase regardless of that flag. In an isolated portfolio-only build, set it to `true` to redirect anonymous root traffic to the demo.
 
-See [Production status](../docs/PRODUCTION_STATUS_2026-10-31.md), [Demo and acceptance](../docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) and [Release acceptance](../docs/RELEASE_ACCEPTANCE.md).
+See [Production status](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCTION_STATUS_2026-10-31.md), [Demo and acceptance](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) and [Release acceptance](../docs/RELEASE_ACCEPTANCE.md).
