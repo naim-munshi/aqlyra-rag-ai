@@ -39,6 +39,7 @@ export type BrowserVoiceOptions = {
   mode: ConversationMode;
   conversationId: string | null;
   documentIds: string[];
+  speechLocale?: string;
   onConversationStarted?: (id: string) => void;
   onUserTranscript?: (text: string, isFinal: boolean) => void;
   onAgentTranscript?: (text: string, isFinal: boolean) => void;
@@ -112,7 +113,8 @@ export async function startBrowserVoiceMode(
   }
 
   const recognition = new SpeechRecognition();
-  recognition.lang = navigator.language || "en-US";
+  recognition.lang = options.speechLocale && options.speechLocale !== "auto"
+    ? options.speechLocale : (navigator.language || "en-US");
   recognition.continuous = false;
   recognition.interimResults = true;
   let stopped = false;
