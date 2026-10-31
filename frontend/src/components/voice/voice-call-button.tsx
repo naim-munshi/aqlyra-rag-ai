@@ -161,6 +161,7 @@ export function VoiceCallButton({
   const browserVoiceRef =
     useRef<BrowserVoiceController | null>(null);
   const [browserMode, setBrowserMode] = useState(false);
+  const [offerBrowserVoice, setOfferBrowserVoice] = useState(false);
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -217,6 +218,7 @@ export function VoiceCallButton({
     browserVoiceRef.current?.stop();
     browserVoiceRef.current = null;
     setBrowserMode(false);
+    setOfferBrowserVoice(false);
     const room =
       roomRef.current;
 
@@ -256,6 +258,7 @@ export function VoiceCallButton({
 
     setStarting(true);
     setError("");
+    setOfferBrowserVoice(false);
     setLiveUserText("");
     setLiveAgentText("");
     setAgentState("connecting");
@@ -297,31 +300,11 @@ export function VoiceCallButton({
         response.status === 503 &&
         browserSpeechIsSupported()
       ) {
-        const browserVoice = await startBrowserVoiceMode({
-          mode,
-          conversationId,
-          documentIds,
-          onConversationStarted,
-          onUserTranscript,
-          onAgentTranscript,
-          onState: setAgentState,
-          onError: (message) => {
-            setError(message);
-            onError?.(message);
-          },
-          onStopped: () => {
-            browserVoiceRef.current = null;
-            setBrowserMode(false);
-            setActive(false);
-            setStarting(false);
-            setAgentState("idle");
-          },
-        });
-        browserVoiceRef.current = browserVoice;
-        setBrowserMode(true);
-        setActive(true);
+        // Browser SpeechRecognition may process microphone audio via the
+        // browser vendor. Never activate it without separate user approval.
+        setOfferBrowserVoice(true);
         setStarting(false);
-        setAgentState("listening");
+        setAgentState("idle");
         return;
       }
 
@@ -547,6 +530,49 @@ export function VoiceCallButton({
   }
 
 
+  async function startBrowserCall() {
+    if (disabled || active || starting || !offerBrowserVoice) return;
+    setStarting(true);
+    setError("");
+    setAgentState("connecting");
+    try {
+      const browserVoice = await startBrowserVoiceMode({
+        mode,
+        conversationId,
+        documentIds,
+        onConversationStarted,
+        onUserTranscript,
+        onAgentTranscript,
+        onState: setAgentState,
+        onError: (message) => {
+          setError(message);
+          onError?.(message);
+        },
+        onStopped: () => {
+          browserVoiceRef.current = null;
+          setBrowserMode(false);
+          setActive(false);
+          setStarting(false);
+          setAgentState("idle");
+        },
+      });
+      browserVoiceRef.current = browserVoice;
+      setBrowserMode(true);
+      setOfferBrowserVoice(false);
+      setActive(true);
+      setStarting(false);
+      setAgentState("listening");
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message : "Browser voice unavailable.";
+      setError(message);
+      setStarting(false);
+      setAgentState("error");
+      onError?.(message);
+    }
+  }
+
+
   async function toggleMute() {
     if (browserVoiceRef.current) {
       const nextMuted = !muted;
@@ -619,6 +645,19 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
+        {offerBrowserVoice ? (
+          <div className="max-w-[240px] space-y-1 text-xs text-[var(--aq-muted)]">
+            <p>LiveKit voice is unavailable. Browser voice may send microphone audio to your browser provider.</p>
+            <button
+              type="button"
+              onClick={() => { void startBrowserCall(); }}
+              disabled={disabled}
+              className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-[var(--aq-text)]"
+            >
+              Use browser voice
+            </button>
+          </div>
+        ) : null}
         {error ? (
           <span role="alert" className="max-w-[180px] text-xs text-red-500">
             {error}
