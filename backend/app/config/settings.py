@@ -217,6 +217,8 @@ class Settings(BaseSettings):
     # Durable Knowledge indexing. Disabled by default for legacy/staging.
     # Store queue state in existing Document.status (no schema migration).
     KNOWLEDGE_AUTO_INDEX_ENABLED: bool = False
+    # Operator recovery for previously finalized cloud uploads; default OFF.
+    KNOWLEDGE_BACKFILL_ON_STARTUP: bool = False
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
     KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
     KNOWLEDGE_PDF_OCR_ENABLED: bool = False
