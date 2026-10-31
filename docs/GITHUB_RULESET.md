@@ -1,11 +1,14 @@
 # GitHub main branch ruleset - owner setup and verification
 
-Status as checked on 2026-10-27: `main` is not protected and there are no
-active repository rulesets. **This requires a GitHub repository administrator's
-explicit action.** GitHub's connected code integration cannot update Rulesets;
-do not confuse an always-on CI job with enforced branch protection.
+**Verified on 2026-10-31 via GitHub API:** `main` reports `protected=true`
+and repository ruleset `aqlyra-main-production-gate` (ID `25905480`) is
+**active**, targets the default branch, requires at least one independent PR
+approval and 11 status-check contexts, blocks deletion/force-push, and has
+**no configured bypass actors**. The original 2026-10-27 unprotected finding
+is historical. Re-check this enforcement at the exact release HEAD;
+a green CI workflow alone is not branch protection.
 
-## Owner action - create one enforced ruleset
+## Owner recovery procedure — use only if enforcement is lost
 
 Open https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules.
 **Fastest:** choose **New ruleset > Import a ruleset** and select
