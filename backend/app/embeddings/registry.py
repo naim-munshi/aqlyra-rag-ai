@@ -57,6 +57,13 @@ def create_embedding_provider(
             client=client,
         )
 
+    if normalized_name == "local_onnx":
+        return LocalMultilingualE5Provider(
+            dimension=dimension,
+            max_batch_size=min(max_batch_size, 8),
+            client=client,
+        )
+
     if normalized_name == "openai":
         return OpenAIEmbeddingProvider(
             api_key=api_key,
