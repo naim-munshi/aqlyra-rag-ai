@@ -52,6 +52,10 @@ current. If the evidence is old, conflicting or undated, say you cannot
 confirm the current officeholder instead of guessing.
 Do not infer publication dates or freshness from an undated page.
 Do not claim you searched or visited additional sources.
+When sources do not establish a current fact, explain the uncertainty and
+cite the evidence you actually reviewed; do not state an unverified name.
+Every response, including an uncertainty or refusal, must cite at least
+one actual [W#] evidence source. Do not invent citations.
 Never mix [W#] web citations with Aqlyra's private [S#] document citations.
 Respond in the language of the user's question.
 """.strip()
@@ -210,6 +214,7 @@ def research_web(
     )
     try:
         candidates: list[dict[str, str | None]] = []
+        search_raw_pages: dict[str, str] = {}
         if mode == "url":
             # Tavily, not Aqlyra, fetches the user-selected public webpage.
             assert source_url is not None
@@ -227,7 +232,8 @@ def research_web(
                 queries.append(plan_second_query(question, planning_provider))
             seen: set[str] = set()
             limit = min(10, max_sources + 5) if mode in ("compare", "deep") else max_sources
-            per_search = min(6, max_sources + 1) if len(queries) > 1 else min(10, max_sources + 5)
+            # Do not request expensive raw pages for results we cannot use.
+            per_search = min(6, max_sources + 1)
             for research_query in queries:
                 search = _tavily_json(
                     client=active_client,
@@ -240,7 +246,7 @@ def research_web(
                         **({"time_range": time_range} if time_range else {}),
                         **({"include_domains": domains} if domains else {}),
                         "include_answer": False,
-                        "include_raw_content": False,
+                        "include_raw_content": True,
                         "include_images": False,
                     },
                 )
@@ -261,6 +267,12 @@ def research_web(
                         continue
                     title = entry.get("title")
                     seen.add(url)
+                    # Tavily can supply page text directly in /search even
+                    # when the subsequent /extract cannot read a page.
+                    # Never promote the short "content" search snippet.
+                    raw = entry.get("raw_content")
+                    if isinstance(raw, str) and raw.strip():
+                        search_raw_pages[url] = raw[:MAX_EVIDENCE_CHARS].strip()
                     candidates.append({
                         "url": url,
                         "title": (title[:180] if isinstance(title, str) else url),
@@ -294,16 +306,34 @@ def research_web(
                     covered.add(hostname)
             candidates = (diversified + remaining)[:max_sources]
 
-        extracted = _tavily_json(
-            client=active_client,
-            endpoint=TAVILY_EXTRACT,
-            api_key=key,
-            data={
-                "urls": [item["url"] for item in candidates],
-                "extract_depth": "advanced" if mode == "deep" else "basic",
-                "include_images": False,
-            },
-        )
+        missing_raw_urls = [
+            item["url"] for item in candidates
+            if item["url"] not in search_raw_pages
+        ]
+        if not missing_raw_urls:
+            extracted = {"results": []}
+        else:
+            try:
+                extracted = _tavily_json(
+                    client=active_client,
+                    endpoint=TAVILY_EXTRACT,
+                    api_key=key,
+                    data={
+                        "urls": missing_raw_urls,
+                        "extract_depth": "advanced" if mode == "deep" else "basic",
+                        "include_images": False,
+                    },
+                )
+            except WebResearchUnavailable:
+                # Search raw_content is verified page text, unlike snippets.
+                # URL mode cannot fall back without the search response.
+                if not any(item["url"] in search_raw_pages for item in candidates):
+                    raise
+                logger.warning(
+                    "web_research_extract_failed fallback=search_raw sources=%s",
+                    len(search_raw_pages),
+                )
+                extracted = {"results": []}
     finally:
         if managed:
             active_client.close()
@@ -324,7 +354,7 @@ def research_web(
     sources: list[WebResearchSource] = []
     for item in candidates:
         url = item["url"]
-        excerpt = page_content.get(url)
+        excerpt = page_content.get(url) or search_raw_pages.get(url)
         if not excerpt:
             continue
         sources.append(WebResearchSource(
@@ -354,22 +384,60 @@ def research_web(
         input_text=json.dumps(body, ensure_ascii=False),
     )
     text = generation.text.strip()
-    if len(text) > 15_000:
-        logger.warning("web_research_stage_failed stage=answer_too_long sources=%s", len(sources))
-        raise WebResearchEvidenceError("Generated answer exceeds safe size limit")
-    cited_numbers = {int(x) for x in CITATION_PATTERN.findall(text)}
-    if not text or not cited_numbers or not cited_numbers.issubset(
-        set(range(1, len(sources) + 1))
-    ):
-        logger.warning("web_research_stage_failed stage=invalid_citations sources=%s cited_count=%s empty_answer=%s", len(sources), len(cited_numbers), not bool(text))
-        raise WebResearchEvidenceError("Generated answer has no valid source citations")
-    # The AI may quote approved sources, but must never introduce unverified
-    # external URLs; citations [W#] alone do not validate arbitrary links.
     approved_urls = {source.url for source in sources}
-    for visible_url in re.findall(r"https?://[^\s<>)\]]+", text):
-        if visible_url.rstrip(".,;!?") not in approved_urls:
-            logger.warning("web_research_stage_failed stage=unapproved_generated_link sources=%s", len(sources))
+
+    def validation_error(answer: str) -> str | None:
+        if len(answer) > 15_000:
+            return "answer_too_long"
+        cited = {int(x) for x in CITATION_PATTERN.findall(answer)}
+        if not answer or not cited or not cited.issubset(
+            set(range(1, len(sources) + 1))
+        ):
+            return "invalid_citations"
+        for visible_url in re.findall(r"https?://[^\s<>)\]]+", answer):
+            if visible_url.rstrip(".,;!?") not in approved_urls:
+                return "unapproved_generated_link"
+        return None
+
+    problem = validation_error(text)
+    if problem is not None:
+        # Bounded one-shot format repair, using the *same* approved evidence.
+        # No uncited answer is ever returned, even when repair fails.
+        logger.warning(
+            "web_research_answer_repair_attempt stage=%s sources=%s",
+            problem, len(sources),
+        )
+        repair = llm.generate(
+            instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode]
+            + "\nRepair task: answer using only the supplied evidence; "
+            "include valid [W1] style citations adjacent to factual claims; "
+            "include no raw URLs; if evidence is insufficient explain uncertainty "
+            "and cite the evidence you inspected. Do not invent facts.",
+            input_text=json.dumps(body, ensure_ascii=False),
+        )
+        text = repair.text.strip()
+        generation = repair
+        problem = validation_error(text)
+    if problem is not None:
+        # Keep public error contracts and sanitized diagnostic stage names
+        # stable for existing clients and monitoring.
+        if problem == "answer_too_long":
+            logger.warning(
+                "web_research_stage_failed stage=answer_too_long sources=%s",
+                len(sources),
+            )
+            raise WebResearchEvidenceError("Generated answer exceeds safe size limit")
+        if problem == "unapproved_generated_link":
+            logger.warning(
+                "web_research_stage_failed stage=unapproved_generated_link sources=%s",
+                len(sources),
+            )
             raise WebResearchEvidenceError("Generated answer contains unapproved external links")
+        logger.warning(
+            "web_research_stage_failed stage=invalid_citations sources=%s",
+            len(sources),
+        )
+        raise WebResearchEvidenceError("Generated answer has no valid source citations")
 
     return WebResearchResponse(
         question=question,
