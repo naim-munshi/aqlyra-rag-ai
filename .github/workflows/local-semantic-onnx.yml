@@ -1,0 +1,41 @@
+name: Local Semantic ONNX Acceptance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/app/embeddings/**"
+      - "backend/requirements.txt"
+      - ".github/workflows/local-semantic-onnx.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-encoder:
+    name: Quantized multilingual E5 real inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: "postgresql+psycopg://unused:unused@localhost/unused"
+      SECRET_KEY: "ci-onnx-public-only-test"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Download public quantized model and verify real semantic retrieval
+        working-directory: backend
+        run: |
+          python -m app.embeddings.local_onnx_probe
