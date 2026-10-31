@@ -1,0 +1,57 @@
+name: Isolated Semantic Worker Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/semantic_worker/**"
+      - "backend/app/embeddings/remote_semantic_provider.py"
+      - "backend/app/embeddings/registry.py"
+      - ".github/workflows/isolated-semantic-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-acceptance:
+    name: Real semantic inference within 512MiB
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build compact offline semantic worker
+        run: docker build -f backend/semantic_worker/Dockerfile -t aqlyra-semantic-worker-test backend
+      - name: Run genuine multilingual E5 in 512MiB container
+        run: |
+          docker run --rm --memory=512m --memory-swap=512m \
+            --entrypoint python aqlyra-semantic-worker-test -m semantic_worker.probe
+      - name: Verify isolated authenticated HTTP and health
+        run: |
+          docker run -d --name aqlyra-semantic-check --memory=512m --memory-swap=512m \
+            -e SEMANTIC_WORKER_TOKEN=ci-private-worker-test-0123456789abcdefghijklmnop \
+            -p 127.0.0.1:18008:8000 aqlyra-semantic-worker-test
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18008/health | grep -q 'ready'; then break; fi
+            sleep 3
+          done
+          curl -fsS http://127.0.0.1:18008/health | grep -q 'ready'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"mode":"query","texts":["English question"]}' \
+            http://127.0.0.1:18008/v1/embed)" = 401
+          curl -fsS -X POST \
+            -H 'Authorization: Bearer ci-private-worker-test-0123456789abcdefghijklmnop' \
+            -H 'Content-Type: application/json' \
+            -d '{"mode":"query","texts":["What is Japan capital?"]}' \
+            http://127.0.0.1:18008/v1/embed | python -c "import json,sys; a=json.load(sys.stdin); assert a['dimension']==384 and len(a['vectors'][0])==384"
+      - name: Print process diagnostics only on failure
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker inspect --format '{{.State.OOMKilled}}' aqlyra-semantic-check || true
+          docker logs --tail 60 aqlyra-semantic-check || true
+      - name: Cleanup
+        if: always()
+        run: docker rm -f aqlyra-semantic-check || true
