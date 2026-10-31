@@ -151,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
         if path is None:
             self.send_json_error(400, "bad-search-request")
             return
-        connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=9)
+        connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=4)
         try:
             connection.request(
                 "GET", path,
@@ -203,14 +203,17 @@ def startup_search_probe() -> None:
     # Granian binds its socket before worker-1 has finished loading engines.
     # A 6-second probe races the startup and yields a false DEGRADED.
     time.sleep(22)
-    connection = http.client.HTTPConnection("127.0.0.1", 8080, timeout=12)
+    connection = http.client.HTTPConnection(
+        "127.0.0.1", int(os.environ.get("PORT", "10000")), timeout=14
+    )
     try:
+        # Probe the token-authenticated public gateway, including the
+        # fixed-source fallback, not just SearXNG's sometimes empty backend.
         connection.request(
             "GET", "/search?q=Bangladesh&format=json",
             headers={
                 "Accept": "application/json",
-                "X-Forwarded-For": "127.0.0.1",
-                "X-Real-IP": "127.0.0.1",
+                "X-Aqlyra-Search-Token": os.environ["SEARXNG_SERVICE_TOKEN"],
             },
         )
         reply = connection.getresponse()
