@@ -247,6 +247,7 @@ class Settings(BaseSettings):
 
     # Personal memory chat context
     MEMORY_CHAT_ENABLED: bool = False
+    MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED: bool = False
     MEMORY_CHAT_TOP_K: int = 5
     MEMORY_CHAT_MIN_SIMILARITY: float = 0.35
 
