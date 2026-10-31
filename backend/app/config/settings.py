@@ -180,6 +180,7 @@ class Settings(BaseSettings):
     WEB_RESEARCH_ENABLED: bool = False
     # Temporary one-shot operator-only E2E check; OFF after validation.
     WEB_RESEARCH_CANARY_ON_STARTUP: bool = False
+    WEB_KEYLESS_CANARY_ON_STARTUP: bool = False
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
     # Keyless search is staged only; Tavily remains default until live acceptance.
