@@ -62,6 +62,21 @@ def start_knowledge_index_worker() -> None:
     logging.getLogger(__name__).info(
         "public_web_research_configuration=%s", public_web_research_status(),
     )
+    if settings.KNOWLEDGE_BACKFILL_ON_STARTUP:
+        # Bounded, owner-linked recovery of legacy 'uploaded' cloud docs.
+        # Errors do not take down the chat backend.
+        try:
+            from app.database.connection import SessionLocal
+            from app.services.knowledge_index_queue import (
+                requeue_verified_legacy_cloud_documents,
+            )
+            with SessionLocal() as db:
+                requeue_verified_legacy_cloud_documents(db, limit=10)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "knowledge_legacy_cloud_backfill status=FAIL error_type=%s",
+                type(exc).__name__,
+            )
     _knowledge_worker.start()
     if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
         # Daemon keeps live startup/health independent of upstream latency.
