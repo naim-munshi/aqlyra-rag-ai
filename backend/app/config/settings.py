@@ -326,7 +326,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
                 "'deterministic', "
-                "'huggingface', or 'openai'"
+                "'huggingface', 'openai', or 'local_onnx'"
             )
 
         return normalized
