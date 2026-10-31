@@ -450,3 +450,17 @@
 @media (prefers-reduced-motion: reduce) {
   .shell *, .shell *::before, .shell *::after { transition: none !important; animation: none !important; }
 }
+
+
+/* Explicit public production demo: truthful capability coverage. */
+.featureTour { margin-top: 44px; }
+.featureTour h2 { margin-top: 10px; font-size: clamp(20px, 2.3vw, 28px); font-weight: 740; letter-spacing: -0.035em; }
+.featureTourIntro { max-width: 720px; margin-top: 10px; color: #a1aec5; font-size: 12px; line-height: 1.8; }
+.featureGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.featureCard { min-width: 0; border: 1px solid rgba(155, 180, 219, .16); border-radius: 15px; padding: 20px; background: rgba(18, 23, 33, .7); }
+.featureCard h3 { margin-top: 12px; font-size: 15px; font-weight: 730; }
+.featureCard p { margin-top: 9px; color: #a1aec5; font-size: 12px; line-height: 1.7; }
+.featureStatus, .featureStatusRestricted { display: inline-flex; border-radius: 999px; background: rgba(96,229,211,.08); color: #8be5d9; font-size: 9px; font-weight: 800; letter-spacing: .08em; padding: 5px 8px; }
+.featureStatusRestricted { background: rgba(183,167,255,.08); color: #c2b3f9; }
+@media (max-width: 860px) { .featureGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .featureGrid { grid-template-columns: 1fr; } .featureCard { padding: 17px; } }

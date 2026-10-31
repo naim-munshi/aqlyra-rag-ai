@@ -87,6 +87,14 @@ export default function LoginPage() {
                 </>
               )}
 
+              <div className="mt-5 text-center text-xs text-[var(--aq-muted)]">
+                Just exploring?{" "}
+                <Link href="/demo" className="font-semibold text-[var(--aq-blue)] hover:underline">
+                  View the scripted product demo
+                </Link>
+                <span className="block mt-1">No account required · No live model calls</span>
+              </div>
+
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 New to Aqlyra?{" "}
                 <Link

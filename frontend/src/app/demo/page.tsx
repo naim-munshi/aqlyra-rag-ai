@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-
 import { DemoExperience } from "./demo-experience";
 
 export const metadata: Metadata = {
@@ -15,10 +13,8 @@ export const metadata: Metadata = {
 };
 
 export default function DemoPage() {
-  // Production has real auth and must never route users to a scripted preview.
-  // Keep this experience only for explicitly configured portfolio builds.
-  if (process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY !== "true") {
-    redirect("/login");
-  }
+  // An explicitly requested /demo page is a public, scripted portfolio
+  // walkthrough on BOTH the real app and demo-only builds.
+  // Do not redirect /login or turn scripted examples into provider calls.
   return <DemoExperience />;
 }
