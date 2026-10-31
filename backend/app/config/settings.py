@@ -270,6 +270,9 @@ class Settings(BaseSettings):
     # Private Neon branch-scoped S3-compatible storage (opt-in; not routed
     # to browser uploads until durable finalization and deletion are tested).
     PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
+    ARTIFACT_REMOTE_STORAGE_ENABLED: bool = False
+    ARTIFACT_METADATA_HMAC_KEY: str = ""
+    ARTIFACT_STORAGE_CANARY_ON_STARTUP: bool = False
     # Keep browser direct-upload API off until staging security acceptance.
     CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
     # Small authenticated browser-proxy uploads; no S3 browser CORS needed.
@@ -783,6 +786,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cloud_upload_gate(self) -> Self:
+        if self.ARTIFACT_REMOTE_STORAGE_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise ValueError("Remote artifacts require private object storage")
+        if self.ARTIFACT_REMOTE_STORAGE_ENABLED and len(self.ARTIFACT_METADATA_HMAC_KEY.strip()) < 32:
+            raise ValueError("Remote artifacts require a stable metadata signing key")
         if (self.CLOUD_UPLOAD_PUBLIC_ENABLED or self.CLOUD_UPLOAD_PROXY_ENABLED) and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Cloud upload requires private object storage")
         return self

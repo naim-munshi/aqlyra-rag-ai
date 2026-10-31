@@ -12,5 +12,5 @@ def local_writes_permitted(cfg: Settings = settings) -> bool:
 
 
 def artifact_writes_permitted(cfg: Settings = settings) -> bool:
-    # Core never pretends an unavailable remote backend is active.
-    return local_writes_permitted(cfg)
+    # Remote storage is explicit opt-in and never falls back to local disk.
+    return cfg.ARTIFACT_REMOTE_STORAGE_ENABLED or local_writes_permitted(cfg)

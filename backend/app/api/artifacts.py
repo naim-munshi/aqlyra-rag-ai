@@ -69,7 +69,11 @@ def _persist(
         )
     except ArtifactQuotaError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (ArtifactStorageError, ValueError) as exc:
+    except ArtifactStorageError as exc:
+        if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+            raise HTTPException(status_code=503, detail="Private artifact storage unavailable") from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -219,7 +223,10 @@ def render(
 
 @router.get("")
 def list_generated(current_user: User = Depends(get_current_user)) -> dict:
-    items = list_artifacts(user_id=str(current_user.id))
+    try:
+        items = list_artifacts(user_id=str(current_user.id))
+    except ArtifactStorageError as exc:
+        raise HTTPException(status_code=503, detail="Artifact storage unavailable") from exc
     return {"items": items, "total": len(items)}
 
 
@@ -229,7 +236,9 @@ def get_generated(
 ) -> dict:
     try:
         item = read_artifact(user_id=str(current_user.id), artifact_id=artifact_id)
-    except ArtifactStorageError:
+    except ArtifactStorageError as exc:
+        if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+            raise HTTPException(status_code=503, detail="Artifact storage unavailable") from exc
         item = None
     if item is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
@@ -239,14 +248,26 @@ def get_generated(
 @router.get("/{artifact_id}/download", response_class=FileResponse)
 def download(
     artifact_id: str, current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     try:
         result = artifact_download(user_id=str(current_user.id), artifact_id=artifact_id)
-    except ArtifactStorageError:
+    except ArtifactStorageError as exc:
+        if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+            raise HTTPException(status_code=503, detail="Artifact storage unavailable") from exc
         result = None
     if result is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
     path, item = result
+    if isinstance(path, bytes):
+        return Response(
+            content=path,
+            media_type=MIMES[item["format"]],
+            headers={
+                "Content-Disposition": f'attachment; filename="{item["filename"]}"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
     return FileResponse(
         path, media_type=MIMES[item["format"]], filename=item["filename"],
         content_disposition_type="attachment",
@@ -262,7 +283,9 @@ def remove(
         deleted = delete_artifact(
             user_id=str(current_user.id), artifact_id=artifact_id,
         )
-    except ArtifactStorageError:
+    except ArtifactStorageError as exc:
+        if settings.ARTIFACT_REMOTE_STORAGE_ENABLED:
+            raise HTTPException(status_code=503, detail="Artifact storage unavailable") from exc
         deleted = False
     if not deleted:
         raise HTTPException(status_code=404, detail="Artifact not found")

@@ -54,6 +54,19 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(issues, [])
         self.assertEqual(sha, self.sha)
 
+    def test_semantic_worker_is_mandatory_for_release_even_if_other_ci_passes(self):
+        self.assertIn("Isolated Semantic Worker Acceptance", gate.REQUIRED)
+        worker = next(
+            run for run in self.runs["workflow_runs"]
+            if run["name"] == "Isolated Semantic Worker Acceptance"
+        )
+        worker["conclusion"] = "failure"
+        ok, issues, _ = gate.evaluate(
+            self.main, self.release, self.runs, self.rulesets
+        )
+        self.assertFalse(ok)
+        self.assertTrue(any("Isolated Semantic Worker Acceptance" in err for err in issues))
+
     def test_unprotected_main_fails_even_with_all_checks_green(self):
         self.main["protected"] = False
         ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)

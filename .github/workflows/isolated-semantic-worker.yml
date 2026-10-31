@@ -1,13 +1,10 @@
 name: Isolated Semantic Worker Acceptance
 
 on:
+  push:
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
-    paths:
-      - "backend/semantic_worker/**"
-      - "backend/app/embeddings/remote_semantic_provider.py"
-      - "backend/app/embeddings/registry.py"
-      - ".github/workflows/isolated-semantic-worker.yml"
+    branches: [main, 'release/**']
   workflow_dispatch:
 
 permissions:
