@@ -97,3 +97,31 @@ def test_wikipedia_fallback_never_issues_arbitrary_search_endpoint(monkeypatch):
     assert calls == ["connected"]
     assert gateway.wikipedia_public_search("x") == []
     assert calls == ["connected"]
+
+
+def test_wikipedia_rest_fallback_accepts_only_returned_pages(monkeypatch):
+    gateway = load_gateway()
+    class Response:
+        status = 200
+        def getheader(self, name, default=""):
+            return "application/json" if name == "Content-Type" else default
+        def read(self, amount):
+            return (
+                b'{"pages":[{"key":"Tokyo","title":"Tokyo","excerpt":"Capital"},'
+                b'{"title":"No key","excerpt":"reject"},'
+                b'{"key":"Japan","title":"Japan","excerpt":"Island"}]}'
+            )
+    class Connection:
+        def __init__(self, host, port, timeout):
+            assert host == "en.wikipedia.org" and port == 443
+        def request(self, method, path, headers):
+            assert method == "GET" and path.startswith("/w/rest.php/v1/search/page?")
+        def getresponse(self):
+            return Response()
+        def close(self):
+            pass
+    monkeypatch.setattr(gateway.http.client, "HTTPSConnection", Connection)
+    results = gateway.wikipedia_rest_public_search("Japan")
+    assert len(results) == 2
+    assert results[0]["url"] == "https://en.wikipedia.org/wiki/Tokyo"
+    assert all(item["engine"] == "wikipedia-rest" for item in results)
