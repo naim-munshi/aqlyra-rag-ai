@@ -159,7 +159,7 @@ MODE_GUIDANCE: dict[str, str] = {
 }
 
 
-def research_web(
+def _research_web_tavily(
     question: str,
     max_sources: int = 4,
     *,
@@ -447,3 +447,202 @@ def research_web(
         model_name=generation.model_name,
         searched_at=datetime.now(timezone.utc),
     )
+
+
+def _research_web_searxng(
+    question: str, max_sources: int = 4, *,
+    mode: WebResearchMode = "search",
+    source_url: str | None = None,
+    time_range: WebResearchTimeRange | None = None,
+    include_domains: list[str] | None = None,
+    client: httpx.Client | None = None,
+    provider: LLMProvider | None = None,
+    iterative: bool = False,
+) -> WebResearchResponse:
+    """Keyless JSON search -> bounded public evidence -> source-cited LLM.
+
+    Snippets are fallback evidence, never represented as full page extraction.
+    Optional direct reader performs DNS-pinned TLS checks and blocks redirects.
+    """
+    from app.services.searxng_provider import search_searxng
+    from app.services.safe_web_reader import fetch_public_page
+
+    if not settings.WEB_RESEARCH_ENABLED:
+        raise WebResearchUnavailable("Web research is disabled")
+    if settings.LLM_PROVIDER == "deterministic" and provider is None:
+        raise WebResearchUnavailable("Real research requires a live LLM")
+    if not 1 <= max_sources <= 5 or mode not in MODE_GUIDANCE:
+        raise ValueError("Invalid bounded search request")
+    if time_range not in (None, "day", "week", "month", "year"):
+        raise ValueError("Invalid time_range")
+    domains = [normalize_research_domain(d) for d in (include_domains or [])]
+    if len(domains) > 3 or len(set(domains)) != len(domains):
+        raise ValueError("At most three distinct domains allowed")
+    question = question.strip()
+    if not 3 <= len(question) <= 600:
+        raise ValueError("Invalid question")
+    if mode == "url":
+        if not safe_public_url(source_url) or domains or time_range:
+            raise WebResearchEvidenceError("Enter a valid public HTTPS URL without filters")
+    elif source_url is not None:
+        raise ValueError("source_url requires URL mode")
+
+    planning_provider = provider
+    if iterative and mode == "deep" and planning_provider is None:
+        planning_provider = create_configured_llm_provider()
+    candidates: list[dict[str, Any]] = []
+    owned_client = client is None
+    active = client or httpx.Client(
+        timeout=httpx.Timeout(10.0), follow_redirects=False, trust_env=False,
+    )
+    try:
+        if mode == "url":
+            if not settings.SEARXNG_READ_PAGES_ENABLED:
+                raise WebResearchUnavailable("Safe Web Reader is disabled")
+            assert source_url is not None
+            candidates.append({
+                "url": source_url,
+                "title": urlsplit(source_url).hostname or "Public page",
+                "published_date": None, "content": "",
+            })
+        else:
+            queries = [question]
+            if iterative and mode == "deep":
+                queries.append(plan_second_query(question, planning_provider))
+            seen: set[str] = set()
+            for query in queries[:2]:
+                results = search_searxng(
+                    query, client=active, limit=min(10, max_sources + 4),
+                    time_range=time_range,
+                )
+                for item in results:
+                    host = (urlsplit(item["url"]).hostname or "").lower()
+                    if domains and not any(
+                        host == domain or host.endswith("." + domain)
+                        for domain in domains
+                    ):
+                        continue
+                    if item["url"] in seen:
+                        continue
+                    seen.add(item["url"])
+                    candidates.append(item)
+                    if len(candidates) >= max_sources + 5:
+                        break
+                if len(candidates) >= max_sources + 5:
+                    break
+    finally:
+        if owned_client:
+            active.close()
+    if not candidates:
+        raise WebResearchEvidenceError("No public results found through SearXNG")
+    if mode in ("deep", "compare"):
+        unique: list[dict[str, Any]] = []
+        duplicate: list[dict[str, Any]] = []
+        hosts: set[str] = set()
+        for item in candidates:
+            host = (urlsplit(item["url"]).hostname or "").lower()
+            if host in hosts:
+                duplicate.append(item)
+            else:
+                hosts.add(host)
+                unique.append(item)
+        candidates = unique + duplicate
+    candidates = candidates[:max_sources]
+    sources: list[WebResearchSource] = []
+    for item in candidates:
+        extracted = None
+        if settings.SEARXNG_READ_PAGES_ENABLED:
+            extracted = fetch_public_page(item["url"])
+        # A search snippet is weak evidence. It must not be presented as an
+        # independently fetched webpage and may not justify current facts.
+        snippet = " ".join(str(item.get("content") or "").split())[:1000]
+        if not extracted and not snippet:
+            continue
+        excerpt = (
+            extracted if extracted else
+            "[Search result excerpt only; full webpage not verified] " + snippet
+        )
+        sources.append(WebResearchSource(
+            citation=f"[W{len(sources)+1}]",
+            title=str(item["title"]),
+            url=item["url"],
+            excerpt=excerpt,
+            published_date=item.get("published_date"),
+        ))
+    if not sources:
+        raise WebResearchEvidenceError("No usable public evidence from SearXNG")
+    body = {
+        "user_question": question,
+        "research_mode": mode,
+        "search_time_filter": time_range,
+        "included_domains": domains,
+        "retrieved_public_evidence": [s.model_dump() for s in sources],
+    }
+    llm = planning_provider or create_configured_llm_provider()
+    generation = llm.generate(
+        instructions=WEB_INSTRUCTIONS + """
+SearXNG is a search index, not a verified official publication.
+Any evidence marked 'Search result excerpt only' is incomplete:
+do not assert a changing current public officeholder, live breaking news,
+or current official policy based on snippets alone. State uncertainty when
+fresh primary-source page contents could not be read.
+""" + "\nMode guidance: " + MODE_GUIDANCE[mode],
+        input_text=json.dumps(body, ensure_ascii=False),
+    )
+    answer = generation.text.strip()
+    cited = {int(x) for x in CITATION_PATTERN.findall(answer)}
+    if (not answer or len(answer) > 15_000 or not cited or
+            not cited.issubset(set(range(1, len(sources) + 1)))):
+        raise WebResearchEvidenceError("Generated answer lacks valid web citations")
+    allowed = {s.url for s in sources}
+    for visible in re.findall(r"https?://[^\s<>)\]]+", answer):
+        if visible.rstrip(".,;!?") not in allowed:
+            raise WebResearchEvidenceError("Unapproved external link in generated answer")
+    return WebResearchResponse(
+        question=question, answer=answer, sources=sources,
+        provider_name=generation.provider_name,
+        model_name=generation.model_name,
+        searched_at=datetime.now(timezone.utc),
+    )
+
+
+def research_web(
+    question: str, max_sources: int = 4, *,
+    mode: WebResearchMode = "search",
+    source_url: str | None = None,
+    time_range: WebResearchTimeRange | None = None,
+    include_domains: list[str] | None = None,
+    client: httpx.Client | None = None,
+    provider: LLMProvider | None = None,
+    iterative: bool = False,
+) -> WebResearchResponse:
+    """Switchable keyless search with fallback to the existing vetted Tavily path.
+
+    Production defaults to Tavily until real SearXNG acceptance passes.
+    """
+    from app.services.searxng_provider import configured_searxng_url
+    if not settings.WEB_RESEARCH_ENABLED:
+        raise WebResearchUnavailable("Web research is disabled")
+    option = settings.WEB_SEARCH_PROVIDER.strip().lower()
+    if option not in ("tavily", "auto", "searxng"):
+        raise WebResearchUnavailable("Unrecognized public web search provider")
+    kwargs = dict(
+        mode=mode, source_url=source_url, time_range=time_range,
+        include_domains=include_domains, client=client, provider=provider,
+        iterative=iterative,
+    )
+    has_tavily = bool(settings.TAVILY_API_KEY.strip()) or (
+        settings.TAVILY_KEYLESS_ENABLED and not settings.is_production
+    )
+    if option in ("auto", "searxng") and configured_searxng_url():
+        try:
+            return _research_web_searxng(question, max_sources, **kwargs)
+        except (WebResearchUnavailable, WebResearchEvidenceError):
+            if option == "searxng" or not has_tavily:
+                raise
+            logger.warning("keyless_web_search_failed fallback=tavily")
+    elif option == "searxng":
+        raise WebResearchUnavailable("Keyless search is not configured")
+    if option in ("tavily", "auto") and has_tavily:
+        return _research_web_tavily(question, max_sources, **kwargs)
+    raise WebResearchUnavailable("No configured public web research provider")
