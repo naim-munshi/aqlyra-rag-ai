@@ -26,6 +26,11 @@ import {
 import type {
   ConversationMode,
 } from "@/types/conversation";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 
 
 type VoiceSessionResponse = {
@@ -160,6 +165,8 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
+  const browserVoiceRef = useRef<BrowserVoiceController | null>(null);
+  const [browserMode, setBrowserMode] = useState(false);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
   const startingRef = useRef(false);
@@ -325,6 +332,9 @@ export function VoiceCallButton({
 
 
   async function endCall() {
+    browserVoiceRef.current?.stop();
+    browserVoiceRef.current = null;
+    setBrowserMode(false);
     callAttemptRef.current += 1;
     sessionRequestControllerRef.current?.abort();
     sessionRequestControllerRef.current = null;
@@ -355,6 +365,71 @@ export function VoiceCallButton({
   }
 
 
+  async function startBrowserSpeech() {
+    if (!browserSpeechIsSupported()) {
+      const message = "Browser speech recognition is not supported on this device.";
+      setError(message);
+      onError?.(message);
+      return;
+    }
+    clearAgentJoinTimer();
+    startingRef.current = true;
+    const attempt = ++callAttemptRef.current;
+    setStarting(true);
+    setError("");
+    setLiveUserText("");
+    setLiveAgentText("");
+    setAgentState("connecting");
+    try {
+      const controller = await startBrowserVoiceMode({
+        mode,
+        conversationId,
+        documentIds,
+        onConversationStarted,
+        onUserTranscript: (text, isFinal) => {
+          setLiveUserText(text);
+          onUserTranscript?.(text, isFinal);
+        },
+        onAgentTranscript: (text, isFinal) => {
+          setLiveAgentText(text);
+          onAgentTranscript?.(text, isFinal);
+        },
+        onState: setAgentState,
+        onError: (message) => {
+          setError(message);
+          onError?.(message);
+        },
+        onStopped: () => {
+          browserVoiceRef.current = null;
+          setBrowserMode(false);
+          setActive(false);
+          setStarting(false);
+          startingRef.current = false;
+          setAgentState("idle");
+        },
+      });
+      if (callAttemptRef.current !== attempt) {
+        controller.stop();
+        return;
+      }
+      browserVoiceRef.current = controller;
+      startingRef.current = false;
+      setBrowserMode(true);
+      setMuted(false);
+      setActive(true);
+      setStarting(false);
+    } catch (error) {
+      if (callAttemptRef.current !== attempt) return;
+      startingRef.current = false;
+      const message = error instanceof Error
+        ? error.message : "Browser speech mode is unavailable.";
+      setError(message);
+      setAgentState("error");
+      setStarting(false);
+      onError?.(message);
+    }
+  }
+
   async function startCall() {
     if (
       disabled ||
@@ -366,6 +441,11 @@ export function VoiceCallButton({
     }
 
     if (!availability?.available) {
+      if (availability?.available === false && browserSpeechIsSupported()) {
+        // Start public browser speech mode only from the explicit user click.
+        void startBrowserSpeech();
+        return;
+      }
       const message = availability?.detail ??
         "Checking voice availability. Please try again shortly.";
       setError(message);
@@ -723,6 +803,12 @@ export function VoiceCallButton({
   }
 
   async function toggleMute() {
+    if (browserVoiceRef.current) {
+      const next = !muted;
+      browserVoiceRef.current.setMuted(next);
+      setMuted(next);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -754,6 +840,8 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
+      browserVoiceRef.current?.stop();
+      browserVoiceRef.current = null;
       callAttemptRef.current += 1;
       sessionRequestControllerRef.current?.abort();
       sessionRequestControllerRef.current = null;
@@ -838,7 +926,7 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              Aqlyra Voice
+              {browserMode ? "Aqlyra Browser Voice" : "Aqlyra Voice"}
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -899,6 +987,8 @@ export function VoiceCallButton({
                   ? "Waiting for the AI voice agent to join..."
                   : agentState === "error"
                     ? "The AI voice agent is unavailable."
+                    : browserMode
+                    ? "Speech recognition may use your browser provider; only approved text is sent to Aqlyra."
                     : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
