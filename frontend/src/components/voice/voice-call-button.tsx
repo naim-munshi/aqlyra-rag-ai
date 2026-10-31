@@ -15,14 +15,17 @@ import {
   Room,
   RoomEvent,
   Track,
-  createLocalAudioTrack,
-  type LocalAudioTrack,
 } from "livekit-client";
 
 import {
   VoiceOrb,
   type VoiceVisualState,
 } from "@/components/voice/voice-orb";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 import type {
   ConversationMode,
 } from "@/types/conversation";
@@ -38,11 +41,6 @@ type VoiceSessionResponse = {
 
 type VoiceApiError = {
   detail?: unknown;
-};
-
-type VoiceAvailability = {
-  available: boolean;
-  detail: string;
 };
 
 type VoiceCallButtonProps = {
@@ -160,12 +158,11 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
-  const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
-  const callAttemptRef = useRef(0);
-  const startingRef = useRef(false);
-  const sessionRequestControllerRef = useRef<AbortController | null>(null);
-  const agentJoinTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const browserVoiceRef =
+    useRef<BrowserVoiceController | null>(null);
+  const [browserMode, setBrowserMode] = useState(false);
+  const [offerBrowserVoice, setOfferBrowserVoice] = useState(false);
+  const [browserLocale, setBrowserLocale] = useState("auto");
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -201,112 +198,6 @@ export function VoiceCallButton({
   const [error, setError] =
     useState("");
 
-  const [availability, setAvailability] =
-    useState<VoiceAvailability | null>(null);
-
-  const [needsAudioUnlock, setNeedsAudioUnlock] =
-    useState(false);
-
-  async function refreshVoiceAvailability(signal?: AbortSignal) {
-    try {
-      const response = await fetch("/api/voice/status", {
-        cache: "no-store",
-        signal,
-      });
-      if (!response.ok) throw new Error("Voice status unavailable");
-      const data = (await response.json()) as VoiceAvailability;
-      if (typeof data.available !== "boolean") {
-        throw new Error("Invalid voice status");
-      }
-      if (!signal?.aborted) {
-        setAvailability(data);
-        if (data.available) setError("");
-      }
-    } catch {
-      if (!signal?.aborted) {
-        setAvailability({
-          available: false,
-          detail: "Voice calling is temporarily unavailable. Please use text chat.",
-        });
-      }
-    }
-  }
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/voice/status", {
-      cache: "no-store",
-      signal: controller.signal,
-    }).then(async response => {
-      if (!response.ok) throw new Error("Voice status unavailable");
-      const data = (await response.json()) as VoiceAvailability;
-      if (typeof data.available !== "boolean") {
-        throw new Error("Invalid voice status");
-      }
-      if (!controller.signal.aborted) setAvailability(data);
-    }).catch(() => {
-      if (!controller.signal.aborted) {
-        setAvailability({
-          available: false,
-          detail: "Voice calling is temporarily unavailable. Please use text chat.",
-        });
-      }
-    });
-    return () => controller.abort();
-  }, []);
-
-
-  function clearAgentJoinTimer() {
-    if (agentJoinTimerRef.current !== null) {
-      clearTimeout(agentJoinTimerRef.current);
-      agentJoinTimerRef.current = null;
-    }
-  }
-
-  function hasVoiceAgent(room: Room): boolean {
-    return Array.from(room.remoteParticipants.values()).some(
-      (participant) =>
-        participant.isAgent &&
-        !participant.attributes["lk.publish_on_behalf"],
-    );
-  }
-
-  function waitForAgent(room: Room) {
-    clearAgentJoinTimer();
-    if (hasVoiceAgent(room)) {
-      setError("");
-      setAgentState((current) =>
-        current === "connecting" || current === "error"
-          ? "listening" : current,
-      );
-      return;
-    }
-    setAgentState("connecting");
-    agentJoinTimerRef.current = setTimeout(() => {
-      agentJoinTimerRef.current = null;
-      if (
-        roomRef.current !== room ||
-        hasVoiceAgent(room)
-      ) return;
-      const message =
-        "The AI voice agent did not join. The call was ended. " +
-        "Please retry once the voice service is online.";
-      roomRef.current = null;
-      stopMicrophoneTrack();
-      void room.disconnect();
-      clearAudioElements();
-      setActive(false);
-      setStarting(false);
-      setAgentState("error");
-      setError(message);
-      onError?.(message);
-    }, 45000); // Free LiveKit Cloud agents can cold-start before joining.
-  }
-
-  function stopMicrophoneTrack() {
-    microphoneTrackRef.current?.stop();
-    microphoneTrackRef.current = null;
-  }
 
   function clearAudioElements() {
     const container =
@@ -325,24 +216,27 @@ export function VoiceCallButton({
 
 
   async function endCall() {
-    callAttemptRef.current += 1;
-    sessionRequestControllerRef.current?.abort();
-    sessionRequestControllerRef.current = null;
-    startingRef.current = false;
-    clearAgentJoinTimer();
+    browserVoiceRef.current?.stop();
+    browserVoiceRef.current = null;
+    setBrowserMode(false);
+    setOfferBrowserVoice(false);
     const room =
       roomRef.current;
 
     roomRef.current = null;
 
-    // Release the device immediately, even if network teardown stalls.
-    stopMicrophoneTrack();
-    clearAudioElements();
     if (room) {
-      void room.disconnect().catch(() => {
-        // Local tracks are already stopped; disconnect is best effort.
-      });
+      try {
+        await room.localParticipant
+          .setMicrophoneEnabled(false);
+      } catch {
+        // Best-effort cleanup.
+      }
+
+      await room.disconnect();
     }
+
+    clearAudioElements();
 
     setActive(false);
     setStarting(false);
@@ -350,7 +244,6 @@ export function VoiceCallButton({
     setAgentState("idle");
     setLiveUserText("");
     setLiveAgentText("");
-    setNeedsAudioUnlock(false);
     setError("");
   }
 
@@ -359,77 +252,62 @@ export function VoiceCallButton({
     if (
       disabled ||
       active ||
-      starting ||
-      startingRef.current
+      starting
     ) {
       return;
     }
 
-    if (!availability?.available) {
-      const message = availability?.detail ??
-        "Checking voice availability. Please try again shortly.";
-      setError(message);
-      onError?.(message);
-      return;
-    }
-
-    clearAgentJoinTimer();
-    startingRef.current = true;
-    const attempt = ++callAttemptRef.current;
     setStarting(true);
     setError("");
+    setOfferBrowserVoice(false);
     setLiveUserText("");
     setLiveAgentText("");
     setAgentState("connecting");
 
     let room: Room | null = null;
-    let microphoneTrack: LocalAudioTrack | null = null;
 
     try {
-      // Acquire the actual LiveKit track on the direct iOS Safari tap.
-      // Do not stop it and re-request capture after network awaits: Safari
-      // may reject a second getUserMedia outside user activation.
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("This browser does not support microphone calls.");
-      }
-      microphoneTrack = await createLocalAudioTrack({
-        echoCancellation: true,
-        noiseSuppression: true,
-      });
-      if (callAttemptRef.current !== attempt) {
-        throw new DOMException("Call ended", "AbortError");
-      }
-      microphoneTrackRef.current = microphoneTrack;
-
-      // Bound backend waiting time so a stalled network cannot hold the
-      // microphone indefinitely. End Call and unmount abort the request.
-      const requestController = new AbortController();
-      sessionRequestControllerRef.current = requestController;
-      const timeoutId = setTimeout(() => requestController.abort(), 15000);
-      let response: Response;
-      try {
-        response = await fetch("/api/voice/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode,
-            ...(conversationId ? { conversation_id: conversationId } : {}),
-            title: "Voice conversation",
-            document_ids: documentIds,
-          }),
-          signal: requestController.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-        if (sessionRequestControllerRef.current === requestController) {
-          sessionRequestControllerRef.current = null;
-        }
-      }
+      const response =
+        await fetch(
+          "/api/voice/session",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              mode,
+              ...(conversationId
+                ? {
+                    conversation_id:
+                      conversationId,
+                  }
+                : {}),
+              title:
+                "Voice conversation",
+              document_ids:
+                documentIds,
+            }),
+          },
+        );
 
       const data =
         (await response.json()) as
           | VoiceSessionResponse
           | VoiceApiError;
+
+      if (
+        response.status === 503 &&
+        browserSpeechIsSupported()
+      ) {
+        // Browser SpeechRecognition may process microphone audio via the
+        // browser vendor. Never activate it without separate user approval.
+        setOfferBrowserVoice(true);
+        setStarting(false);
+        setAgentState("idle");
+        return;
+      }
 
       if (
         !response.ok ||
@@ -445,9 +323,6 @@ export function VoiceCallButton({
         );
       }
 
-      if (callAttemptRef.current !== attempt) {
-        throw new DOMException("Call ended", "AbortError");
-      }
       const session =
         data as VoiceSessionResponse;
 
@@ -517,12 +392,6 @@ export function VoiceCallButton({
         },
       );
 
-      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-        if (roomRef.current === room) {
-          setNeedsAudioUnlock(!room!.canPlaybackAudio);
-        }
-      });
-
       room.on(
         RoomEvent.TrackSubscribed,
         (track) => {
@@ -541,9 +410,6 @@ export function VoiceCallButton({
           audioContainerRef
             .current
             ?.appendChild(element);
-          if (room && !room.canPlaybackAudio) {
-            setNeedsAudioUnlock(true);
-          }
         },
       );
 
@@ -561,12 +427,6 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.ParticipantConnected,
         (participant) => {
-          if (
-            !participant.isAgent ||
-            participant.attributes["lk.publish_on_behalf"]
-          ) return;
-          clearAgentJoinTimer();
-          setError("");
           const state =
             normalizeAgentState(
               participant.attributes[
@@ -588,9 +448,8 @@ export function VoiceCallButton({
           participant,
         ) => {
           if (
-            participant === room?.localParticipant ||
-            !participant.isAgent ||
-            participant.attributes["lk.publish_on_behalf"]
+            participant ===
+            room?.localParticipant
           ) {
             return;
           }
@@ -608,30 +467,16 @@ export function VoiceCallButton({
         },
       );
 
-      room.on(RoomEvent.ParticipantDisconnected, () => {
-        if (
-          room !== null &&
-          roomRef.current === room &&
-          !hasVoiceAgent(room)
-        ) {
-          waitForAgent(room);
-        }
-      });
-
       room.on(
         RoomEvent.Disconnected,
         () => {
-          if (roomRef.current !== room) return;
-          clearAgentJoinTimer();
           roomRef.current = null;
 
-          stopMicrophoneTrack();
           clearAudioElements();
 
           setActive(false);
           setStarting(false);
           setMuted(false);
-          setNeedsAudioUnlock(false);
           setAgentState("idle");
         },
       );
@@ -640,31 +485,25 @@ export function VoiceCallButton({
         session.server_url,
         session.participant_token,
       );
-      if (callAttemptRef.current !== attempt || roomRef.current !== room) {
-        throw new DOMException("Call ended", "AbortError");
-      }
-      // Publish the track acquired on the original user gesture. No
-      // second microphone permission request after the network roundtrip.
-      await room.localParticipant.publishTrack(microphoneTrack, {
-        source: Track.Source.Microphone,
-      });
-      if (callAttemptRef.current !== attempt || roomRef.current !== room) {
-        throw new DOMException("Call ended", "AbortError");
-      }
 
       onConversationStarted?.(
         session.conversation_id,
       );
 
+      await room.localParticipant
+        .setMicrophoneEnabled(true);
+
       setMuted(false);
       setActive(true);
-      startingRef.current = false;
       setStarting(false);
-      setNeedsAudioUnlock(!room.canPlaybackAudio);
 
-      waitForAgent(room);
+      setAgentState(
+        (current) =>
+          current === "connecting"
+            ? "listening"
+            : current,
+      );
     } catch (startError) {
-      clearAgentJoinTimer();
       if (room) {
         try {
           await room.disconnect();
@@ -673,56 +512,76 @@ export function VoiceCallButton({
         }
       }
 
-      if (microphoneTrack) {
-        microphoneTrack.stop();
-        if (microphoneTrackRef.current === microphoneTrack) {
-          microphoneTrackRef.current = null;
-        }
-      }
-      if (roomRef.current === room) roomRef.current = null;
-      if (callAttemptRef.current !== attempt) return;
+      roomRef.current = null;
 
-      startingRef.current = false;
       clearAudioElements();
 
       const message =
-        startError instanceof DOMException &&
-        (startError.name === "NotAllowedError" ||
-         startError.name === "PermissionDeniedError")
-          ? "Microphone access was denied. Allow the microphone in Safari or browser settings and retry."
-          : startError instanceof DOMException &&
-            startError.name === "AbortError"
-            ? "The voice connection timed out or was cancelled. Please retry."
-            : startError instanceof Error
-              ? startError.message
-              : "Unable to start voice conversation.";
+        startError instanceof Error
+          ? startError.message
+          : "Unable to start voice conversation.";
 
       setError(message);
       setAgentState("error");
       setStarting(false);
       setActive(false);
-      setNeedsAudioUnlock(false);
 
       onError?.(message);
     }
   }
 
 
-  async function enableAudio() {
-    const room = roomRef.current;
-    if (!room) return;
+  async function startBrowserCall() {
+    if (disabled || active || starting || !offerBrowserVoice) return;
+    setStarting(true);
+    setError("");
+    setAgentState("connecting");
     try {
-      // Must run directly from the user's click on iOS Safari.
-      await room.startAudio();
-      setNeedsAudioUnlock(!room.canPlaybackAudio);
-      setError("");
-    } catch {
-      setNeedsAudioUnlock(true);
-      setError("Tap Enable sound again or allow audio playback in your browser.");
+      const browserVoice = await startBrowserVoiceMode({
+        mode,
+        conversationId,
+        documentIds,
+        speechLocale: browserLocale,
+        onConversationStarted,
+        onUserTranscript,
+        onAgentTranscript,
+        onState: setAgentState,
+        onError: (message) => {
+          setError(message);
+          onError?.(message);
+        },
+        onStopped: () => {
+          browserVoiceRef.current = null;
+          setBrowserMode(false);
+          setActive(false);
+          setStarting(false);
+          setAgentState("idle");
+        },
+      });
+      browserVoiceRef.current = browserVoice;
+      setBrowserMode(true);
+      setOfferBrowserVoice(false);
+      setActive(true);
+      setStarting(false);
+      setAgentState("listening");
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message : "Browser voice unavailable.";
+      setError(message);
+      setStarting(false);
+      setAgentState("error");
+      onError?.(message);
     }
   }
 
+
   async function toggleMute() {
+    if (browserVoiceRef.current) {
+      const nextMuted = !muted;
+      browserVoiceRef.current.setMuted(nextMuted);
+      setMuted(nextMuted);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -754,12 +613,8 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
-      callAttemptRef.current += 1;
-      sessionRequestControllerRef.current?.abort();
-      sessionRequestControllerRef.current = null;
-      startingRef.current = false;
-      clearAgentJoinTimer();
-      stopMicrophoneTrack();
+      browserVoiceRef.current?.stop();
+      browserVoiceRef.current = null;
       const room =
         roomRef.current;
 
@@ -779,7 +634,7 @@ export function VoiceCallButton({
           type="button"
           disabled={disabled}
           aria-label="Start voice conversation"
-          title={availability?.available === false ? "Voice service unavailable" : "Start voice conversation"}
+          title="Start voice conversation"
           onClick={() => {
             void startCall();
           }}
@@ -792,32 +647,40 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
-
-        {error && (
-          <div
-            role="alert"
-            className="absolute bottom-[calc(100%+8px)] right-0 z-40 w-[min(300px,calc(100vw-24px))] rounded-xl border border-red-500/30 bg-[var(--aq-panel)] p-3 text-xs leading-5 text-[var(--aq-text)] shadow-xl"
-          >
-            {error}
-            {availability?.available === false && (
-              <button
-                type="button"
-                onClick={() => { void refreshVoiceAvailability(); }}
-                className="ml-2 font-semibold text-[var(--aq-cyan)] underline"
-              >
-                Check voice availability again
-              </button>
-            )}
+        {offerBrowserVoice ? (
+          <div className="max-w-[240px] space-y-1 text-xs text-[var(--aq-muted)]">
+            <p>LiveKit voice is unavailable. Browser voice may send microphone audio to your browser provider.</p>
+            <select
+              value={browserLocale}
+              onChange={(event) => setBrowserLocale(event.target.value)}
+              aria-label="Voice recognition language"
+              className="w-full rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] p-2 text-[var(--aq-text)]"
+            >
+              <option value="auto">Device language</option>
+              <option value="bn-BD">বাংলা</option>
+              <option value="ja-JP">日本語</option>
+              <option value="en-US">English</option>
+            </select>
             <button
               type="button"
-              onClick={() => setError("")}
-              className="ml-2 font-semibold text-[var(--aq-cyan)] underline"
+              onClick={() => { void startBrowserCall(); }}
+              disabled={disabled}
+              className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-[var(--aq-text)]"
             >
-              Dismiss
+              Use browser voice
             </button>
           </div>
-        )}
-        <div ref={audioContainerRef} className="hidden" />
+        ) : null}
+        {error ? (
+          <span role="alert" className="max-w-[180px] text-xs text-red-500">
+            {error}
+          </span>
+        ) : null}
+
+        <div
+          ref={audioContainerRef}
+          className="hidden"
+        />
       </>
     );
   }
@@ -825,7 +688,7 @@ export function VoiceCallButton({
 
   return (
     <>
-      <div className="absolute bottom-[72px] right-2 z-40 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
+      <div className="absolute bottom-[72px] right-4 z-40 w-[280px] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col items-center">
           <VoiceOrb
             state={
@@ -838,7 +701,7 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              Aqlyra Voice
+              {browserMode ? "Aqlyra Browser Voice" : "Aqlyra Voice"}
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -895,30 +758,18 @@ export function VoiceCallButton({
             {!liveUserText &&
             !liveAgentText ? (
               <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                {agentState === "connecting"
-                  ? "Waiting for the AI voice agent to join..."
-                  : agentState === "error"
-                    ? "The AI voice agent is unavailable."
-                    : "Speak naturally. Aqlyra is listening."}
+                {browserMode
+                  ? "Browser speech mode: recognition and playback depend on your device."
+                  : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>
 
           {error ? (
-            <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
+            <div className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
               {error}
             </div>
           ) : null}
-
-          {needsAudioUnlock && (
-            <button
-              type="button"
-              onClick={() => { void enableAudio(); }}
-              className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
-            >
-              Enable sound
-            </button>
-          )}
 
           <div className="mt-4 flex items-center justify-center gap-3">
             <button
