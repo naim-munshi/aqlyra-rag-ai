@@ -2,7 +2,7 @@
 
 **Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
 
-[Live application](https://aqlyra-ai.vercel.app) · [Product walkthrough](/demo) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [Deployment status](docs/PRODUCTION_STATUS_2026-10-31.md)
+[Live application](https://aqlyra-ai.vercel.app) · [Product walkthrough](https://aqlyra-ai.vercel.app/demo) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [Deployment status](docs/PRODUCTION_STATUS_2026-10-31.md)
 
 > **Production beta — verified 31 October 2026.** Aqlyra has a live Next.js frontend on Vercel, FastAPI backend on Render, Neon PostgreSQL/pgvector, Redis, cloud document storage, Groq-based chat, Tavily-backed Web Search, and a separate authenticated multilingual semantic-embedding worker. Some features remain limited or disabled; see the status matrix. Live availability and provider quotas can change after this verification date. A green CI build is not a replacement for authenticated user acceptance.
 
