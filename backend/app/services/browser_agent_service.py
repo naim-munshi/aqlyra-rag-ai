@@ -5,6 +5,7 @@ keyboard input, forms, logged-in sessions, JS execution or network access
 to arbitrary hosts. The browser only navigates same-host HTTPS GET documents.
 """
 import asyncio
+import hashlib
 from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
@@ -220,13 +221,36 @@ def verify_browser_plan(token: str, user_id: str) -> dict[str, Any]:
 
 
 def _redeem_browser_plan(plan: dict[str, Any]) -> None:
-    """Atomically consume approval once in this development API process.
+    """Consume a signed approval once; use Redis NX if operator enabled it.
 
-    Distinct API processes do NOT share this memory: production browser
-    automation remains disabled until durable centralized approval storage.
+    Replay protection is not a browser sandbox. Production remains disabled
+    until isolated network-egress restrictions are independently tested.
     """
     now = int(time.time())
     jti = plan["jti"]
+    if settings.BROWSER_APPROVAL_REDIS_ENABLED:
+        import redis
+        remaining = int(plan["expires_at"]) - now
+        if not 1 <= remaining <= PLAN_TTL_SECONDS:
+            raise BrowserAgentPlanError("Approval expired or invalid")
+        key = "aqlyra:browser:redeemed:v1:" + hashlib.sha256(
+            jti.encode("utf-8")
+        ).hexdigest()
+        try:
+            cache = redis.Redis.from_url(
+                settings.REDIS_URL, socket_connect_timeout=1,
+                socket_timeout=1, decode_responses=True,
+            )
+            used = cache.set(key, "1", nx=True, ex=remaining)
+        except redis.exceptions.RedisError as exc:
+            raise BrowserAgentUnavailable(
+                "Browser approval store unavailable"
+            ) from exc
+        if not used:
+            raise BrowserAgentPlanError(
+                "Browser approval has already been used"
+            )
+        return
     with _REDEEM_LOCK:
         expired = [
             key for key, expiry in _REDEEMED_PLANS.items()
