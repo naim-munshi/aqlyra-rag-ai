@@ -1,5 +1,6 @@
 """One-shot public model smoke; does not use any user documents."""
 from math import isclose
+import resource
 from .local_onnx_provider import LocalMultilingualE5Provider
 
 
@@ -20,6 +21,7 @@ def main() -> None:
     assert dot(en, docs[0]) > dot(en, docs[1])
     assert dot(ja, docs[2]) > dot(ja, docs[1])
     print("LOCAL_SEMANTIC_ONNX_PROBE=PASS dimensionality=384 languages=en,ja")
+    print(f"LOCAL_SEMANTIC_ONNX_PEAK_RSS_KB={resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
 
 
 if __name__ == "__main__":
