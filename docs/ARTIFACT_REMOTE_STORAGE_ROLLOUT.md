@@ -37,6 +37,38 @@ Keep `ARTIFACT_REMOTE_STORAGE_ENABLED=false` and `ARTIFACT_STORAGE_CANARY_ON_STA
 8. **Legacy handoff:** inventory any pre-existing `UPLOAD_DIR/artifact-workspace` data and reconcile every user-owned file before enabling the remote-only route. Preserve original files until a verified reversible migration and independent sign-off.
 9. **Release approval:** obtain independent review and owner approval, then promote only the accepted deployment commit with rollback and monitoring. Disable startup canaries after acceptance. No `main` merge, production migration or deploy is authorized by this guide.
 
+## Two-account API staging test (operator-operated only)
+
+Use **two independently verified, disposable test accounts** on an isolated
+backend staging service. In a secure shell/secret manager, provide all four
+variables without pasting their values into a command, ticket, chat or log:
+
+- \`AQLYRA_E2E_A_EMAIL\`, \`AQLYRA_E2E_A_PASSWORD\`
+- \`AQLYRA_E2E_B_EMAIL\`, \`AQLYRA_E2E_B_PASSWORD\`
+
+Then run (replace the example with the **staging backend API** origin):
+
+\`\`\`sh
+python3 scripts/ops/artifact_staging_e2e.py \
+  --base-url https://staging.example.com \
+  --ack-disposable-staging
+\`\`\`
+
+For an intentionally isolated localhost test only, add
+\`--allow-http-loopback\` and use \`http://127.0.0.1:PORT\`.
+The program blocks the known production hostnames and requires a
+staging-marked hostname, a consent flag and separate test credentials.
+**Never** run it against real user data or production, even by alias.
+Only five small synthetic artifacts created by this invocation are deleted;
+pre-existing user records or artifacts are not enumerated or removed.
+
+\`ARTIFACT_STAGING_E2E=PASS\` demonstrates API credential login, five file
+types, HTTP owner boundaries, file magic, private download headers and
+exact-ID cleanup. It **does not** prove true frontend chat/UI, semantic
+RAG quality, provider-backed generation, voice, process restarts or
+off-host backup/restore. Preserve the sanitized output with exact source
+and staging deployment SHAs. Failures must block the release.
+
 ## Failure and rollback
 
 On any FAIL: stop rollout and do not overwrite existing data. If reverting the remote flag after new artifacts were created, **back up and reconcile remote objects first**: switching back to local hides those artifacts until migrated. Keep both stores preserved, report only sanitized counts, and use a reviewed recovery plan. A successful local or mocked test is never a substitute for a real off-host restore or end-user acceptance.
