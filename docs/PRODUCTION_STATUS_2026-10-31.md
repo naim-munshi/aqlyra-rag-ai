@@ -54,6 +54,6 @@ Any demo outside the authenticated workspace must say **scripted sample** and mu
 - [Live vs scripted demo](PRODUCT_DEMO_AND_ACCEPTANCE.md)
 - [Architecture](ARCHITECTURE.md)
 - [Release gates](RELEASE_ACCEPTANCE.md)
-- [Keyless search](HYBRID_WEB_SEARCH_SEARXNG.md)
+- [Keyless search candidate (PR #62)](https://github.com/naim-munshi/aqlyra-rag-ai/pull/62)
 - [Browser Agent](BROWSER_AGENT.md)
 - [Voice worker](../backend/app/voice/worker.py)
