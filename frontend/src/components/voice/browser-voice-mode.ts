@@ -100,18 +100,9 @@ export async function startBrowserVoiceMode(
 
   const controller = new AbortController();
   let conversationId = options.conversationId;
-  if (!conversationId) {
-    const data = await fetchJson("/api/conversations", {
-      mode: options.mode,
-      title: "Voice conversation",
-    }, controller.signal);
-    if (typeof data.id !== "string") {
-      throw new Error("Unable to create a voice conversation.");
-    }
-    conversationId = data.id;
-    options.onConversationStarted?.(conversationId);
-  }
-
+  // Set up speech recognition before any network await. On iOS Safari,
+  // the first microphone activation must remain in the actual user tap.
+  // Conversation creation may finish while speech is being recognized.
   const recognition = new SpeechRecognition();
   recognition.lang = options.speechLocale && options.speechLocale !== "auto"
     ? options.speechLocale : (navigator.language || "en-US");
@@ -136,19 +127,27 @@ export async function startBrowserVoiceMode(
     options.onStopped();
   };
 
-  const listen = () => {
+  const beginRecognition = () => {
+    if (stopped || muted || busy) return;
+    try {
+      recognition.start();
+      options.onState("listening");
+    } catch {
+      options.onError("Unable to start microphone. Check browser permissions.");
+      stop();
+    }
+  };
+
+  const listen = (immediate = false) => {
     if (stopped || muted || busy || startScheduled) return;
+    if (immediate) {
+      beginRecognition();
+      return;
+    }
     startScheduled = true;
     timer = setTimeout(() => {
       startScheduled = false;
-      if (stopped || muted || busy) return;
-      try {
-        recognition.start();
-        options.onState("listening");
-      } catch {
-        options.onError("Unable to start microphone. Check browser permissions.");
-        stop();
-      }
+      beginRecognition();
     }, 150);
   };
 
@@ -170,6 +169,28 @@ export async function startBrowserVoiceMode(
     options.onState("speaking");
   };
 
+  const conversationReady: Promise<string> = conversationId
+    ? Promise.resolve(conversationId)
+    : fetchJson("/api/conversations", {
+      mode: options.mode,
+      title: "Voice conversation",
+    }, controller.signal).then((data) => {
+      if (typeof data.id !== "string" || !data.id) {
+        throw new Error("Unable to create a voice conversation.");
+      }
+      conversationId = data.id;
+      if (!stopped) options.onConversationStarted?.(conversationId);
+      return conversationId;
+    });
+  // Install a rejection observer even if no speech event arrives.
+  void conversationReady.catch((error) => {
+    if (stopped) return;
+    options.onError(
+      error instanceof Error ? error.message : "Unable to create voice conversation.",
+    );
+    stop();
+  });
+
   recognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const item = event.results[i];
@@ -182,8 +203,10 @@ export async function startBrowserVoiceMode(
       options.onState("thinking");
       void (async () => {
         try {
+          const activeConversationId = await conversationReady;
+          if (stopped) return;
           const data = await fetchJson(
-            `/api/conversations/${encodeURIComponent(conversationId!)}/messages`,
+            `/api/conversations/${encodeURIComponent(activeConversationId)}/messages`,
             { content: text, document_ids: options.documentIds },
             controller.signal,
           );
@@ -219,7 +242,7 @@ export async function startBrowserVoiceMode(
     stop();
   };
   recognition.onend = listen;
-  listen();
+  listen(true); // First call must be inside the user's direct click event.
   return { stop, setMuted(nextMuted: boolean) {
     muted = nextMuted;
     if (muted) {
