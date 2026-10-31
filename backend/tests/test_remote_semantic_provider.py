@@ -23,7 +23,7 @@ def test_remote_onnx_vectors_and_query_passage_modes():
         body = __import__("json").loads(req.content)
         modes.append(body["mode"])
         return httpx.Response(200, json={
-            "model": "multilingual-e5-small-int8-v1",
+            "model": "bekko-static-multilingual-int8-mrl384-v1",
             "dimension": 384,
             "vectors": [[0.0, 3.0, 4.0] + [0.0]*381 for _ in body["texts"]],
         })
