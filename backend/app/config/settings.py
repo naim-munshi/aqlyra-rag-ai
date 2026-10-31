@@ -163,6 +163,9 @@ class Settings(BaseSettings):
         "qwen/qwen3.8-27b"
     )
     HF_TOKEN: str = ""
+    REMOTE_SEMANTIC_URL: str = ""
+    REMOTE_SEMANTIC_TOKEN: str = ""
+    REMOTE_SEMANTIC_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0, le=180)
 
     # Opt-in live web research. Never use deterministic providers as real search.
     # Public browser automation MVP; deliberately off by default.
@@ -219,6 +222,7 @@ class Settings(BaseSettings):
     KNOWLEDGE_AUTO_INDEX_ENABLED: bool = False
     # Operator recovery for previously finalized cloud uploads; default OFF.
     KNOWLEDGE_BACKFILL_ON_STARTUP: bool = False
+    KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP: bool = False
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
     KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
     KNOWLEDGE_PDF_OCR_ENABLED: bool = False
@@ -321,11 +325,12 @@ class Settings(BaseSettings):
             "deterministic",
             "huggingface",
             "openai",
+            "remote_onnx",
         }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
                 "'deterministic', "
-                "'huggingface', or 'openai'"
+                "'huggingface', 'openai', or 'remote_onnx'"
             )
 
         return normalized
@@ -615,6 +620,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Personal memory chat requires a "
                 "semantic embedding provider"
+            )
+
+        if (
+            self.EMBEDDING_PROVIDER == "remote_onnx"
+            and (not self.REMOTE_SEMANTIC_URL.strip()
+                 or not self.REMOTE_SEMANTIC_TOKEN.strip())
+        ):
+            raise ValueError(
+                "Remote semantic endpoint and token required"
             )
 
         if (
