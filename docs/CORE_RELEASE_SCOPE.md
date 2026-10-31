@@ -16,8 +16,7 @@
   all security and release-gate fixes.
 - **No deletion or alteration of current production user data**, migrations,
   uploads, document schemas, embeddings or credentials.
-- **README.md is byte-for-byte identical** to the latest full candidate;
-  it remains a pre-production overview, not a live-service guarantee.
+- The original 2026-10-27 README was frozen for the initial candidate; it was later superseded by a 2026-10-31 production-beta README with explicitly bounded live verification. See [Production Status](PRODUCTION_STATUS_2026-10-31.md).
 
 Study Abroad is preserved on its feature/integration branches for a later
 separate review. Do not copy a mixed Study Abroad database migration into
