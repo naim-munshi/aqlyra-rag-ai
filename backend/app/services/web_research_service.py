@@ -386,7 +386,7 @@ def research_web(
             set(range(1, len(sources) + 1))
         ):
             return "invalid_citations"
-        for visible_url in re.findall(r"https?://[^\\s<>)\\]]+", answer):
+        for visible_url in re.findall(r"https?://[^\s<>)\]]+", answer):
             if visible_url.rstrip(".,;!?") not in approved_urls:
                 return "unapproved_generated_link"
         return None
@@ -400,8 +400,8 @@ def research_web(
             problem, len(sources),
         )
         repair = llm.generate(
-            instructions=WEB_INSTRUCTIONS + "\\nMode guidance: " + MODE_GUIDANCE[mode]
-            + "\\nRepair task: answer using only the supplied evidence; "
+            instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode]
+            + "\nRepair task: answer using only the supplied evidence; "
             "include valid [W1] style citations adjacent to factual claims; "
             "include no raw URLs; if evidence is insufficient explain uncertainty "
             "and cite the evidence you inspected. Do not invent facts.",
