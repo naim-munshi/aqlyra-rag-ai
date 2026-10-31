@@ -16,7 +16,7 @@ test("browser voice opt-in sends finalized transcript to owned chat and handles 
   let stopped = 0;
 
   class Recognition {
-    start() { microphone = this; }
+    start() { microphone = { lang: this.lang, onresult: (event) => this.onresult?.(event) }; }
     stop() {}
     abort() { stopped += 1; }
   }
