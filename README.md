@@ -1,396 +1,96 @@
 # Aqlyra RAG AI
 
-Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
+**A full-stack AI application for private-document Q&A and general conversation.**
 
-**Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
+Aqlyra combines document ingestion, hybrid retrieval, citation checks and user-scoped storage in a Next.js + FastAPI application. Knowledge mode answers from selected documents; Converse supports open-ended chat, history and turn-specific attachments.
 
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
+[Hosted application](https://aqlyra-ai.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Setup](docs/SETUP.md) · [Documentation](docs/README.md)
 
-It has two main modes:
+## Engineering highlights
 
-- **Converse** is the general chat experience. It supports streaming replies, conversation history, memory, file attachments, image understanding, and voice integration.
-- **Knowledge** is the document-grounded mode. It searches the user's selected documents, retrieves relevant evidence, generates an answer with citations, checks whether the citations are valid, and refuses when the evidence is not strong enough.
+| Problem | Implementation | Explore the code |
+|---|---|---|
+| Relevant passages can use different wording or exact keywords | Dense retrieval and PostgreSQL full-text search, combined with Reciprocal Rank Fusion | [Rank fusion](backend/app/retrieval/rank_fusion.py) |
+| Generated answers may cite missing or unsupported evidence | Bounded evidence context, citation validation, grounding checks, repair and refusal paths | [RAG components](backend/app/rag) |
+| Private documents must stay within account boundaries | Ownership checks for documents, conversations, memory and retrieval scopes | [Isolation tests](backend/tests/test_security_isolation_matrix.py) |
+| Authentication needs more than a login form | Email verification, Google ID-token validation and HttpOnly session cookies | [Security design](docs/SECURITY_TESTING.md) |
+| A working model call is only one part of a service | Docker deployment, Redis rate limits, readiness checks, structured logs and CI | [Workflows](.github/workflows) |
 
-The project keeps the main AI stages separate so they can be tested and debugged independently: ingestion, retrieval, evidence selection, generation, citation validation, grounding, persistence, and operations.
+## Product experience
 
-## Identity and sessions
+- **Knowledge:** ingest documents, select a document scope, ask questions and inspect cited sources.
+- **Converse:** stream general chat responses with history, memory and attachments.
+- **Optional integrations:** image understanding and LiveKit voice require configured providers and services.
+- **Scripted walkthrough:** the frontend's `/demo` route illustrates the experience without backend access. Its examples are labelled and do not execute real model inference.
 
-Aqlyra supports two verified sign-in paths:
+**Release context:** this README describes the checked-in source. The hosted application uses separate release branches, so it may differ from `main`. See [release context and limitations](docs/PROJECT_STATUS.md) before evaluating live features.
 
-- Email/password registration sends a six-digit verification code before the account can receive an authenticated session. Codes expire after 10 minutes, allow at most five failed attempts, and cannot be resent more often than once per minute by default.
-- Google sign-in accepts a Google Identity Services credential only after the backend validates its audience, issuer, stable subject, email address, and Google's `email_verified` claim.
-
-Email verification codes are generated with a cryptographically secure random source. The database stores an HMAC digest rather than the plaintext code, and issuing a new code consumes any older active code for the same user.
-
-After either path succeeds, the backend issues the same application access token. The Next.js server stores that token in an HttpOnly, SameSite cookie and uses it for authenticated backend requests.
-
-## Core capabilities
-
-- Next.js 16, React 19, and TypeScript frontend
-- FastAPI backend
-- Verified email/password authentication with expiring six-digit codes
-- Google sign-in with backend ID-token verification
-- HS256 JWT sessions held in HttpOnly browser cookies, with same-origin mutation checks
-- User-scoped documents, conversations, and memory
-- PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
-- OCR for PNG, JPG, JPEG, and WEBP images
-- Hugging Face IBM Granite multilingual embeddings (production config; deterministic test embeddings locally)
-- PostgreSQL with pgvector
-- PostgreSQL full-text search
-- Hybrid dense + lexical retrieval
-- Reciprocal Rank Fusion (RRF)
-- `[S1]`-style source citations
-- Citation validation
-- Semantic grounding checks
-- Answer repair and safe refusal
-- Streaming chat
-- Conversation history
-- Mode-specific projects with automatic first-chat creation and first-turn titles
-- Personal memory
-- Turn-scoped attachments
-- Multimodal image understanding
-- Voice integration
-- Redis-backed rate limiting for authentication, ingestion, retrieval, generation, and voice APIs
-- Structured JSON logs
-- Request IDs
-- Prometheus-compatible metrics
-- Health and readiness checks
-- Internal alerting
-- Backup, verification, and explicit restore tooling
-- Docker Compose deployment with non-root application containers
-- Caddy reverse proxy with HTTPS and request-body limits
-- GitHub Actions for tests, image builds, dependency audit, and startup checks
-
-## How the system is structured
+## Architecture
 
 ```mermaid
-flowchart LR
-    U[User] --> C[Caddy]
-    C --> F[Next.js]
-    F --> B[FastAPI]
-
-    B --> PG[(PostgreSQL + pgvector)]
-    B --> R[(Redis)]
-    B --> L[LLM Provider]
-    B --> E[Embedding Provider]
-
-    D[Documents / Images] --> P[Parsing + OCR]
-    P --> CH[Chunking]
-    CH --> E
-    E --> PG
-
-    Q[Knowledge Query] --> DR[Dense Retrieval]
-    Q --> LR[Lexical Retrieval]
-    DR --> RF[RRF]
-    LR --> RF
-    RF --> CTX[Evidence Context]
-    CTX --> L
-    L --> CV[Citation Validation]
-    CV --> GV[Grounding Check]
-    GV --> A[Answer]
+flowchart TD
+    UI["Next.js interface"] --> API["FastAPI"]
+    API --> AUTH["Identity and ownership checks"]
+    AUTH --> CHAT["Converse"]
+    AUTH --> RAG["Knowledge"]
+    RAG --> SEARCH["Dense and lexical retrieval"]
+    SEARCH <--> DB["PostgreSQL + pgvector"]
+    SEARCH --> RRF["Rank fusion and evidence context"]
+    RRF --> LLM["Model provider"]
+    CHAT --> LLM
+    LLM --> CHECK["Knowledge citation and grounding checks"]
+    CHECK --> RESULT["Answer, repair or refusal"]
+    API --> REDIS["Redis rate limits"]
 ```
 
-## Converse
+Document parsers and OCR feed chunking and embedding stages before retrieval. Provider adapters separate model services from application logic. [Detailed architecture](docs/ARCHITECTURE.md) · [RAG pipeline](docs/RAG_PIPELINE.md)
 
-Converse is the general chat path.
+## Stack
 
-It uses conversation history, saved memory, and any files attached to the current turn to build context for the model.
-
-It also supports image input and the voice worker.
-
-Converse is intentionally more flexible than Knowledge mode because it is not limited to document evidence.
-
-## Knowledge
-
-Knowledge is the strict RAG path.
-
-A Knowledge request goes through these steps:
-
-1. Check which documents the user is allowed to search.
-2. Run dense semantic retrieval.
-3. Run lexical full-text retrieval.
-4. Merge both rankings with RRF.
-5. Remove duplicates and build a bounded evidence set.
-6. Send the evidence to the LLM.
-7. Validate the returned citations.
-8. Check whether the cited evidence actually supports the claims.
-9. Repair the answer when possible.
-10. Refuse the answer when the evidence is not sufficient.
-
-The point of keeping these stages separate is simple: if an answer is wrong, it is possible to tell whether the problem came from retrieval, evidence selection, generation, citation handling, or grounding.
-
-## Retrieval and grounding
-
-The current embedding model is:
-
-```text
-ibm-granite/granite-embedding-97m-multilingual-r2
-```
-
-Embedding dimension:
-
-```text
-384
-```
-
-The current configuration keeps query rewriting and the general LLM reranker disabled:
-
-```text
-RAG_QUERY_REWRITE_ENABLED=false
-RAG_RERANKER_ENABLED=false
-```
-
-Both pieces still exist in the architecture, but they are not part of the default path.
-
-## Security and isolation
-
-Aqlyra checks ownership before returning user data.
-
-That applies to:
-
-- documents;
-- document content;
-- conversations;
-- messages;
-- memory;
-- projects;
-- Knowledge document scopes.
-
-Other controls include:
-
-- verified email/password and Google identity paths;
-- expiring, attempt-limited email codes stored only as HMAC digests;
-- HttpOnly, SameSite session and verification cookies;
-- same-origin protection for state-changing frontend API requests;
-- JWT token-type separation for access and verification tickets;
-- upload validation, including Office archive expansion limits;
-- owner-only permissions on new uploaded documents;
-- filename sanitization;
-- production CORS validation;
-- production secret validation;
-- Redis-backed rate limiting;
-- fail-closed behavior when the required rate-limit backend is unavailable;
-- log redaction;
-- generic responses for unhandled errors;
-- disabled OpenAPI/docs in production;
-- localhost-only backend and database bindings in the intended deployment layout;
-- non-root application containers with reduced Linux privileges;
-- production dependency scanning and commit-pinned GitHub Actions.
-
-See [Security and Testing](docs/SECURITY_TESTING.md).
-
-## Observability
-
-Operational endpoints:
-
-```text
-GET /api/v1/health
-GET /api/v1/readiness
-GET /api/v1/metrics
-```
-
-The backend records structured JSON logs with request IDs and timing data.
-
-The metrics endpoint exposes request counts, status codes, latency histograms, unhandled exception counts, rate-limit rejections, and rate-limit backend failures.
-
-The alert worker checks readiness and metrics and can report firing and resolved states for service failures, 5xx spikes, latency spikes, unhandled exceptions, Redis failures, and unusual rate-limit activity.
-
-## Technology stack
-
-| Layer | Technology |
+| Layer | Technologies |
 |---|---|
-| Frontend | Next.js 16, React 19, TypeScript |
-| Backend | FastAPI, Python |
-| Validation | Pydantic |
-| ORM | SQLAlchemy |
-| Database | PostgreSQL |
-| Vector search | pgvector |
-| Lexical retrieval | PostgreSQL full-text search |
-| Rank fusion | Reciprocal Rank Fusion |
-| Migrations | Alembic |
-| Rate limiting | Redis |
-| Embeddings | IBM Granite multilingual via Hugging Face |
-| LLM adapters | Groq / OpenAI-compatible providers |
-| OCR | Tesseract / pytesseract |
-| Voice | LiveKit architecture |
-| Reverse proxy | Caddy |
-| Containers | Docker Compose |
-| Tests | pytest, FastAPI TestClient |
-| CI | GitHub Actions |
+| Interface | Next.js 16, React 19, TypeScript |
+| API and data | FastAPI, Pydantic, SQLAlchemy, Alembic |
+| Retrieval | PostgreSQL, pgvector, full-text search, RRF |
+| AI integrations | Hugging Face embeddings, Groq / OpenAI-compatible adapters |
+| Operations | Redis, Docker Compose, Caddy, GitHub Actions |
+| Testing | pytest, FastAPI TestClient, Node test runner |
 
-## Repository structure
+## Run locally
 
-```text
-aqlyra-rag-ai/
-├── backend/
-│   ├── alembic/
-│   │   └── versions/              # database migrations
-│   ├── app/
-│   │   ├── alerting/              # alert checks and webhook delivery
-│   │   ├── api/                   # FastAPI routes
-│   │   ├── auth/                  # authentication and JWT handling
-│   │   ├── chunking/              # document chunking
-│   │   ├── config/                # application settings
-│   │   ├── core/                  # logging, monitoring, rate limiting
-│   │   ├── database/              # database engine and sessions
-│   │   ├── embeddings/            # embedding providers
-│   │   ├── llms/                  # LLM provider adapters
-│   │   ├── middleware/            # request middleware
-│   │   ├── models/                # ORM models
-│   │   ├── parsers/               # document parsing
-│   │   ├── product_identity/      # product identity settings
-│   │   ├── query_rewriting/       # optional query rewrite layer
-│   │   ├── rag/                   # context, citations, grounding
-│   │   ├── reranking/             # optional reranking layer
-│   │   ├── retrieval/             # retrieval and rank fusion
-│   │   ├── schemas/               # request/response models
-│   │   ├── services/              # application services
-│   │   ├── voice/                 # voice worker
-│   │   └── main.py                # FastAPI entry point
-│   ├── evaluation/                # controlled retrieval benchmark
-│   ├── tests/
-│   ├── Dockerfile
-│   ├── Dockerfile.voice
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── api/
-│   │   │   ├── login/
-│   │   │   ├── register/
-│   │   │   ├── verify-email/
-│   │   │   └── page.tsx
-│   │   └── proxy.ts           # cross-origin API security
-│   ├── Dockerfile
-│   └── package.json
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── RAG_PIPELINE.md
-│   ├── SECURITY_TESTING.md
-│   ├── SETUP.md
-│   └── STAGING.md
-├── scripts/
-│   └── ops/                      # preflight, smoke, backup, restore
-├── .github/workflows/            # CI and dependency audits
-├── Caddyfile
-├── docker-compose.yml
-├── LICENSE
-└── README.md
-```
-
-## Testing
-
-The `backend/evaluation/corpus/` Markdown files contain synthetic retrieval-test data, **not real operational policies**. The benchmark numbers in `backend/evaluation/BASELINE.md` are historical controlled measurements, not production semantic quality results.
-
-The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
-
-The tests cover:
-
-- password authentication and unverified-login rejection;
-- email verification expiry, attempts, resend controls, and delivery failures;
-- Google credential validation and account linking;
-- cross-user isolation;
-- document ingestion;
-- OCR;
-- chunking;
-- embeddings;
-- dense retrieval;
-- lexical retrieval;
-- hybrid retrieval;
-- RRF;
-- retrieval evaluation;
-- RAG context building;
-- citation validation;
-- semantic grounding edge cases;
-- provider failures;
-- streaming conversations;
-- memory;
-- project CRUD, ownership isolation, and conversation assignment;
-- voice session APIs;
-- production configuration;
-- rate limiting;
-- observability;
-- monitoring;
-- Redis readiness;
-- alerting.
-
-Tests use a separate PostgreSQL test database instead of the normal development database.
-
-## Run the actual software on your Mac
-
-For a one-command, loopback-only Docker deployment with actual
-PostgreSQL/pgvector, FastAPI, Next.js, Redis and a local email-OTP
-inbox, use the [Mac Local Software guide](docs/MAC_LOCAL_SOFTWARE.md):
+With Git, Python 3 and Docker Desktop / Compose v2 available on macOS:
 
 ```bash
+git clone https://github.com/naim-munshi/aqlyra-rag-ai.git
+cd aqlyra-rag-ai
 bash scripts/ops/mac_local_up.sh
 ```
 
-This tests real application authentication and persistence, but uses
-deterministic AI providers until you configure actual model credentials.
-It is **not** an Internet-ready production configuration.
+Open [the local app](http://127.0.0.1:3000/login) and [Mailpit](http://127.0.0.1:8025) to complete test email verification.
 
-## Local development
+The local stack runs real authentication and persistence with **deterministic AI defaults**. Configure model providers for genuine inference. It is bound to localhost; see the [local guide](docs/MAC_LOCAL_SOFTWARE.md) or [manual setup](docs/SETUP.md) for configuration.
 
-Create a local, untracked development configuration and start the required backend services:
+## Validation and limitations
 
-```bash
-cp -n backend/.env.example backend/.env
-docker compose --env-file backend/.env up -d --build postgres redis backend
-docker compose --env-file backend/.env ps
-```
+Tests cover retrieval, citations, grounding, authentication, ownership isolation, provider failures and operational configuration. [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) records results per branch and commit.
 
-Configure SMTP for verified registration; the optional voice worker requires LiveKit credentials and can be started separately. Development defaults use deterministic AI providers and do not indicate production answer quality.
+The [retrieval baseline](backend/evaluation/BASELINE.md) uses 10 synthetic documents and 20 labelled queries with deterministic embeddings. It validates retrieval plumbing and ranking; it is **not a production semantic-quality benchmark**. Query rewriting and LLM reranking are optional and disabled by default on this baseline.
 
-Check the backend:
+Real-provider quality, live multi-user acceptance, load behaviour and independent backup restoration need their own evidence. Passing unit tests does not establish those results.
 
-```bash
-curl -fsS http://127.0.0.1:8000/api/v1/health
-curl -fsS http://127.0.0.1:8000/api/v1/readiness
-```
+## Explore the repository
 
-Run the frontend:
+| Directory | Purpose |
+|---|---|
+| [backend/app](backend/app) | API, ingestion, retrieval, generation and persistence |
+| [backend/tests](backend/tests) | Backend regression and integration tests |
+| [backend/evaluation](backend/evaluation) | Controlled retrieval experiments |
+| [frontend/src](frontend/src) | Interface, session handling and API proxy |
+| [scripts/ops](scripts/ops) | Startup, health, backup and restore tools |
+| [docs](docs/README.md) | Engineering guides and deployment procedures |
 
-```bash
-cd frontend
-npm ci
-cp -n .env.example .env.local
-npm run dev
-```
+For a short technical review, start with rank fusion, citation validation and the isolation tests linked above. Use [Setup](docs/SETUP.md) for test commands and [Staging](docs/STAGING.md) for release checks.
 
-Email-code verification requires SMTP settings in `backend/.env`.
-Google sign-in requires matching public Web Client IDs in backend and frontend configuration. Local secret
-files are ignored by Git; see the setup guide for the required values.
+## Author and license
 
-Run backend tests from `backend/`:
-
-```bash
-TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5433/aqlyra_rag_ai_test' python -m pytest -q
-```
-
-Run frontend checks:
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
-
-For the full setup, see [docs/SETUP.md](docs/SETUP.md).
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [RAG Pipeline](docs/RAG_PIPELINE.md)
-- [Security and Testing](docs/SECURITY_TESTING.md)
-- [Setup](docs/SETUP.md)
-- [Staging and Release Gate](docs/STAGING.md)
-- [Oracle Always Free Deployment](docs/ORACLE_ALWAYS_FREE.md)
-- [Free Vercel Portfolio Demo](docs/VERCEL_PORTFOLIO_DEMO.md)
-- [Staging Performance Baseline](docs/PERFORMANCE_BASELINE.md)
-- [Retrieval Baseline](backend/evaluation/BASELINE.md)
-- [Frontend Development](frontend/README.md)
-
-## License
-
-See [LICENSE](LICENSE).
+Built by [Md Naim](https://github.com/naim-munshi). See [LICENSE](LICENSE) for usage terms.
