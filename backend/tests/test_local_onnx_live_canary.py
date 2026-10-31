@@ -1,8 +1,11 @@
 """One-shot real model / cross-language semantic embedding acceptance."""
+import os
+import pytest
 from math import isclose
 from app.embeddings.local_onnx_provider import LocalMultilingualE5Provider
 
 
+@pytest.mark.skipif(os.environ.get("AQLYRA_REAL_ONNX_TEST") != "1", reason="Real model downloads run only in dedicated CI")
 def test_real_multilingual_e5_semantic_retrieval():
     p = LocalMultilingualE5Provider(max_batch_size=4)
     texts = [
