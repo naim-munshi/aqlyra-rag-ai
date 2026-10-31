@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     WEB_RESEARCH_CANARY_ON_STARTUP: bool = False
     TAVILY_API_KEY: str = ""
     TAVILY_KEYLESS_ENABLED: bool = False
+    # Keyless search is staged only; Tavily remains default until live acceptance.
+    WEB_SEARCH_PROVIDER: str = "tavily"  # tavily | auto | searxng
+    SEARXNG_BASE_URL: str = ""
+    SEARXNG_SERVICE_TOKEN: str = ""
+    SEARXNG_READ_PAGES_ENABLED: bool = False
 
     # Real-time voice must stay disabled until a LiveKit worker and
     # real STT/TTS providers have passed the owner-controlled E2E gate.
