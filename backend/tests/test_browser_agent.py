@@ -367,3 +367,59 @@ def test_dns_pin_rejects_ipv6_only_until_safe_pinning_is_available(monkeypatch):
     )
     with pytest.raises(BrowserAgentPlanError, match="IPv4"):
         asyncio.run(agent._validate_public_dns(HOST))
+
+
+
+def test_browser_redis_approval_is_shared_and_single_use(monkeypatch):
+    import redis
+    monkeypatch.setattr(settings, "BROWSER_APPROVAL_REDIS_ENABLED", True)
+    called = {}
+    seen = set()
+
+    class SharedRedis:
+        def set(self, key, value, *, nx, ex):
+            assert key.startswith("aqlyra:browser:redeemed:v1:")
+            assert nx is True and 1 <= ex <= agent.PLAN_TTL_SECONDS
+            called["key"] = key
+            if key in seen:
+                return None
+            seen.add(key)
+            return True
+
+    monkeypatch.setattr(
+        redis.Redis, "from_url",
+        lambda *args, **kwargs: SharedRedis(),
+    )
+    plan = create_browser_plan(
+        "Read official release notes", SITE, "redis-owner",
+    )
+    verified = verify_browser_plan(plan.plan_token, "redis-owner")
+    agent._redeem_browser_plan(verified)
+    assert "redis-owner" not in called["key"]
+    assert verified["jti"] not in called["key"]
+    with pytest.raises(BrowserAgentPlanError, match="already been used"):
+        agent._redeem_browser_plan(verified)
+
+
+def test_browser_redis_outage_fails_closed_and_keeps_no_local_fallback(monkeypatch):
+    import redis
+    monkeypatch.setattr(settings, "BROWSER_APPROVAL_REDIS_ENABLED", True)
+    monkeypatch.setattr(
+        redis.Redis, "from_url",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            redis.exceptions.ConnectionError("private redis address"),
+        ),
+    )
+    plan = create_browser_plan(
+        "Read public documentation", SITE, "redis-outage-owner",
+    )
+    verified = verify_browser_plan(plan.plan_token, "redis-outage-owner")
+    with pytest.raises(BrowserAgentUnavailable, match="approval store unavailable"):
+        agent._redeem_browser_plan(verified)
+
+
+def test_browser_redis_approval_expiry_enforced_locally(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSER_APPROVAL_REDIS_ENABLED", True)
+    plan = {"jti": "user-random-jti", "expires_at": 1}
+    with pytest.raises(BrowserAgentPlanError, match="expired"):
+        agent._redeem_browser_plan(plan)

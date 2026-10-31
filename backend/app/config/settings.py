@@ -170,6 +170,9 @@ class Settings(BaseSettings):
     # Opt-in live web research. Never use deterministic providers as real search.
     # Public browser automation MVP; deliberately off by default.
     BROWSER_AGENT_ENABLED: bool = False
+    # Optional Redis SET NX replay ledger for cross-instance approved plans.
+    # Local test mode still uses the process guard; production browser stays OFF.
+    BROWSER_APPROVAL_REDIS_ENABLED: bool = False
     BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
     # Temporary one-shot operator-only E2E check; OFF after validation.
