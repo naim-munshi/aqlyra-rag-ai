@@ -17,7 +17,7 @@ from app.embeddings.validation import (
     validate_text_batch, validate_embedding_vector, normalize_vector,
 )
 
-MODEL = "multilingual-e5-small-int8-v1"
+MODEL = "bekko-static-multilingual-int8-mrl384-v1"
 
 
 class RemoteSemanticEmbeddingProvider:
