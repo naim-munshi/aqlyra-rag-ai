@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.memory import Memory
 from app.services.memory_retrieval_service import MemoryRetrievalHit
 
-_WORDS = re.compile(r"[^\\W_]+", re.UNICODE)
+_WORDS = re.compile(r"[^\W_]+", re.UNICODE)
 _STOP = frozenset({
     "what", "when", "where", "who", "the", "that", "this", "how",
     "about", "please", "tell", "give", "your", "you", "have",
