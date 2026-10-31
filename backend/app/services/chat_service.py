@@ -52,6 +52,9 @@ from app.services.memory_retrieval_service import (
     MemoryRetrievalHit,
     retrieve_memories_for_user,
 )
+from app.services.memory_lexical_retrieval import (
+    retrieve_lexical_memories_for_user,
+)
 from app.services.rag_answer_service import (
     answer_question,
 )
@@ -241,6 +244,13 @@ Rules:
   mechanics unless the user explicitly asks about memory behavior.
 - Personal memory is not document evidence and must never be represented
   as an Aqlyra document citation.
+- When memory is relevant, use it carefully without repeating unrelated
+  or sensitive details. If no relevant memory is supplied, do not claim
+  to recall details from earlier conversations.
+- For multi-step reasoning, identify necessary assumptions, compare options,
+  verify constraints and present a clear conclusion. Give the work product
+  rather than generic advice. Do not expose hidden reasoning traces.
+- Do not present rough guesses as computed or externally verified results.
 - Do not claim to have searched live websites unless web evidence was actually supplied.
 - If the user needs current information but no web tool was used, say that it was not verified.
 - Current officeholders and other changing facts require verified live
@@ -327,6 +337,14 @@ def _retrieve_normal_chat_memories(
     if not settings.MEMORY_CHAT_ENABLED:
         return ()
 
+    if (
+        settings.EMBEDDING_PROVIDER == "deterministic"
+        and settings.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED
+    ):
+        return _retrieve_lexical_chat_memories(
+            db=db, user_id=user_id, message=message,
+        )
+
     try:
         hits = retrieve_memories_for_user(
             db=db,
@@ -344,13 +362,41 @@ def _retrieve_normal_chat_memories(
 
         logger.warning(
             "normal_chat_memory_retrieval_failed "
-            "fallback=no_memory "
+            "fallback=%s "
             "error_type=%s",
+            "lexical" if settings.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED else "no_memory",
+            type(exc).__name__,
+        )
+        if settings.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED:
+            return _retrieve_lexical_chat_memories(
+                db=db, user_id=user_id, message=message,
+            )
+        return ()
+
+    if not hits and settings.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED:
+        # Existing memories may predate semantic indexing.
+        return _retrieve_lexical_chat_memories(
+            db=db, user_id=user_id, message=message,
+        )
+    return tuple(hits)
+
+
+def _retrieve_lexical_chat_memories(
+    *, db: Session, user_id: str, message: str,
+) -> tuple[MemoryRetrievalHit, ...]:
+    try:
+        return tuple(retrieve_lexical_memories_for_user(
+            db=db, user_id=user_id,
+            query_text=message,
+            top_k=settings.MEMORY_CHAT_TOP_K,
+        ))
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "normal_chat_lexical_memory_failed error_type=%s",
             type(exc).__name__,
         )
         return ()
-
-    return tuple(hits)
 
 
 def _knowledge_context_input(
