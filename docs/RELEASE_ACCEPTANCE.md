@@ -32,7 +32,7 @@ python3 scripts/ops/release_gate.py --json
 The release script verifies that (1) `main` reports protected,
 (2) an **active enforced ruleset targeting main** requires PR review,
 all 11 expected job check contexts, and non-fast-forward/deletion
-restrictions, and (3) the latest attempts of all seven required workflows
+restrictions, and (3) the latest attempts of all eight required workflows (including the isolated semantic worker)
 passed against the **exact** current release branch HEAD. It does
 not deploy or approve production, and always reports
 `production_approved=false`.

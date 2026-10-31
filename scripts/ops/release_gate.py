@@ -25,6 +25,7 @@ REQUIRED = frozenset({
     "Documentation Consistency",
     "Always-on Merge Gate",
     "Static Security Analysis",
+    "Isolated Semantic Worker Acceptance",
 })
 
 
