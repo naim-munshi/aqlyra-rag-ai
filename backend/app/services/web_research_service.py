@@ -634,7 +634,19 @@ def research_web(
     has_tavily = bool(settings.TAVILY_API_KEY.strip()) or (
         settings.TAVILY_KEYLESS_ENABLED and not settings.is_production
     )
-    if option in ("auto", "searxng") and configured_searxng_url():
+    # A search snippet is NOT sufficient to establish a changing incumbent.
+    # Until the DNS-pinned full page reader is explicitly enabled, retain the
+    # proven Tavily full-evidence path for sensitive current officeholders.
+    from app.services.public_office_guard import is_public_officeholder_question
+    needs_current_primary_page = (
+        is_public_officeholder_question(question)
+        and not settings.SEARXNG_READ_PAGES_ENABLED
+    )
+    if (
+        option in ("auto", "searxng")
+        and configured_searxng_url()
+        and not (option == "auto" and has_tavily and needs_current_primary_page)
+    ):
         try:
             return _research_web_searxng(question, max_sources, **kwargs)
         except (WebResearchUnavailable, WebResearchEvidenceError):
