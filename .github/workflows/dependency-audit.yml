@@ -2,16 +2,9 @@ name: Dependency Security Audit
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "backend/requirements*.txt"
-      - "frontend/package.json"
-      - "frontend/package-lock.json"
-      - ".github/workflows/dependency-audit.yml"
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
-  schedule:
-    - cron: "17 4 * * 1"
+    branches: [main, 'release/**']
   workflow_dispatch:
 
 permissions:

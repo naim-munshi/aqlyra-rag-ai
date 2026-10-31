@@ -106,6 +106,13 @@ def start_knowledge_index_worker() -> None:
             name="aqlyra-browser-html-canary",
             daemon=True,
         ).start()
+    if settings.ARTIFACT_STORAGE_CANARY_ON_STARTUP:
+        from threading import Thread
+        from app.services.artifact_storage_canary import run_artifact_storage_canary
+        Thread(
+            target=run_artifact_storage_canary,
+            name="aqlyra-artifact-storage-canary", daemon=True,
+        ).start()
     if settings.WEB_KEYLESS_CANARY_ON_STARTUP:
         from threading import Thread
         from app.services.keyless_web_canary import run_keyless_web_canary
