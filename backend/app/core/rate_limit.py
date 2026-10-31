@@ -82,6 +82,30 @@ def _rate_limit_key(
     )
 
 
+def _request_from_trusted_proxy(request: Request) -> bool:
+    """Only a configured direct proxy peer can set a trusted client IP.
+
+    Never trust public Render ingress headers: clients can submit the same
+    X-Aqlyra-Client-IP value directly to the publicly reachable API.
+    """
+    if not request.client or not request.client.host:
+        return False
+    raw_allowlist = settings.RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS
+    if not raw_allowlist.strip():
+        return False
+    try:
+        peer = ipaddress.ip_address(request.client.host.strip())
+        trusted = {
+            ipaddress.ip_address(value.strip())
+            for value in raw_allowlist.split(",")
+            if value.strip()
+        }
+        return peer in trusted
+    except ValueError:
+        # Badly configured allowlist always fails closed.
+        return False
+
+
 def _resolve_client_ip(
     request: Request,
 ) -> str:
@@ -91,7 +115,10 @@ def _resolve_client_ip(
         .strip()
     )
 
-    if configured_header:
+    if configured_header and (
+        not settings.is_production
+        or _request_from_trusted_proxy(request)
+    ):
         forwarded_value = (
             request.headers.get(
                 configured_header
@@ -220,7 +247,9 @@ def enforce_rate_limit(
             )
         )
 
-    except RedisError:
+    except (RedisError, ValueError):
+        # Redis.from_url rejects HTTP REST URLs and other invalid schemes.
+        # Never bypass rate limits or leak a constructor error to clients.
         _raise_unavailable(
             bucket=bucket
         )
@@ -513,4 +542,12 @@ def limit_voice_request(
             settings
             .RATE_LIMIT_VOICE_USER_WINDOW_SECONDS
         ),
+    )
+
+def limit_password_reset_request(request: Request) -> None:
+    _enforce_ip_limit(
+        request=request,
+        bucket="password-reset-ip",
+        limit=settings.RATE_LIMIT_RESET_IP_LIMIT,
+        window_seconds=settings.RATE_LIMIT_RESET_IP_WINDOW_SECONDS,
     )

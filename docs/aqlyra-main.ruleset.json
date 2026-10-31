@@ -1,0 +1,74 @@
+{
+  "name": "aqlyra-main-production-gate",
+  "target": "branch",
+  "source_type": "Repository",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "require_code_owner_review": false,
+        "require_last_push_approval": true,
+        "dismiss_stale_reviews_on_push": true,
+        "required_approving_review_count": 1,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "required_status_checks": [
+          {
+            "context": "Python 3.13 / PostgreSQL 16"
+          },
+          {
+            "context": "Frontend lint, typecheck and build"
+          },
+          {
+            "context": "Validate staging smoke contracts"
+          },
+          {
+            "context": "Validate production Compose configuration"
+          },
+          {
+            "context": "Build production Docker images"
+          },
+          {
+            "context": "Native ARM64 builds + real local reverse-proxy smoke"
+          },
+          {
+            "context": "npm security audit"
+          },
+          {
+            "context": "Python security audit"
+          },
+          {
+            "context": "Check Markdown links and code fences"
+          },
+          {
+            "context": "Always-on Merge Gate"
+          },
+          {
+            "context": "High-severity Python SAST"
+          }
+        ],
+        "strict_required_status_checks_policy": true
+      }
+    }
+  ],
+  "bypass_actors": []
+}

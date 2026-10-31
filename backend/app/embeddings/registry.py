@@ -4,6 +4,7 @@ from app.config.settings import settings
 from app.embeddings.deterministic import (
     DeterministicHashEmbeddingProvider,
 )
+from app.embeddings.remote_semantic_provider import RemoteSemanticEmbeddingProvider
 from app.embeddings.openai_provider import (
     OpenAIEmbeddingProvider,
 )
@@ -28,6 +29,8 @@ def create_embedding_provider(
     timeout_seconds: float = 30.0,
     max_retries: int = 3,
     client: Any | None = None,
+    remote_url: str = "",
+    remote_token: str = "",
 ) -> EmbeddingProvider:
     normalized_name = (
         provider_name
@@ -54,6 +57,13 @@ def create_embedding_provider(
             max_batch_size=max_batch_size,
             timeout_seconds=timeout_seconds,
             client=client,
+        )
+
+    if normalized_name == "remote_onnx":
+        return RemoteSemanticEmbeddingProvider(
+            base_url=remote_url, api_token=remote_token,
+            dimension=dimension, max_batch_size=min(max_batch_size, 8),
+            timeout_seconds=timeout_seconds, client=client,
         )
 
     if normalized_name == "openai":
@@ -93,8 +103,12 @@ def create_configured_embedding_provider(
         ),
         api_key=settings.OPENAI_API_KEY,
         hf_token=settings.HF_TOKEN,
+        remote_url=settings.REMOTE_SEMANTIC_URL,
+        remote_token=settings.REMOTE_SEMANTIC_TOKEN,
         timeout_seconds=(
-            settings.EMBEDDING_TIMEOUT_SECONDS
+            settings.REMOTE_SEMANTIC_TIMEOUT_SECONDS
+            if settings.EMBEDDING_PROVIDER == "remote_onnx"
+            else settings.EMBEDDING_TIMEOUT_SECONDS
         ),
         max_retries=(
             settings.EMBEDDING_MAX_RETRIES

@@ -1,7 +1,11 @@
 from pathlib import Path
+import re
+from urllib.parse import urlsplit
+from uuid import UUID
 from typing import Self
 
 from pydantic import (
+    Field,
     field_validator,
     model_validator,
 )
@@ -35,12 +39,23 @@ class Settings(BaseSettings):
         int
     ) = 30
 
+    # Admin monitoring is disabled unless explicitly assigned to verified
+    # immutable user UUIDs. Never use emails/usernames as admin identities.
+    ADMIN_USER_IDS: str = ""
+
     # Verified identity
     EMAIL_VERIFICATION_REQUIRED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
     EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
     EMAIL_VERIFICATION_RESEND_SECONDS: int = 60
 
+    EMAIL_DELIVERY_PROVIDER: str = "smtp"
+    RESEND_API_KEY: str = ""
+    # Gmail HTTPS OAuth transport is optional until the mailbox owner grants
+    # its gmail.send permission and securely configures the Render service.
+    GMAIL_OAUTH_CLIENT_ID: str = ""
+    GMAIL_OAUTH_CLIENT_SECRET: str = ""
+    GMAIL_OAUTH_REFRESH_TOKEN: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 465
     SMTP_USERNAME: str = ""
@@ -53,8 +68,18 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
 
+    PASSWORD_RESET_CODE_TTL_MINUTES: int = 10
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_COOLDOWN_SECONDS: int = 60
+    RATE_LIMIT_RESET_IP_LIMIT: int = 10
+    RATE_LIMIT_RESET_IP_WINDOW_SECONDS: int = 3600
+
     # Database
     DATABASE_URL: str
+    DATABASE_POOL_SIZE: int = Field(default=5, ge=1, le=32)
+    DATABASE_MAX_OVERFLOW: int = Field(default=10, ge=0, le=32)
+    DATABASE_POOL_TIMEOUT_SECONDS: float = Field(default=30, gt=0, le=60)
+    DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60, le=7200)
 
     # Redis
     REDIS_URL: str = (
@@ -66,6 +91,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_CLIENT_IP_HEADER: str = (
         "X-Aqlyra-Client-IP"
     )
+    # Public Render ingress must never trust caller-controlled IP headers.
+    # Only explicitly listed, directly connected private proxy socket IPs
+    # may supply this header in production. Leave empty on public Render.
+    RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS: str = ""
     RATE_LIMIT_REDIS_TIMEOUT_SECONDS: float = 1.0
 
     RATE_LIMIT_REGISTER_IP_LIMIT: int = 5
@@ -131,17 +160,44 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     CONVERSE_VISION_MODEL: str = (
-        "qwen/qwen3.6-27b"
+        "qwen/qwen3.8-27b"
     )
     HF_TOKEN: str = ""
+    REMOTE_SEMANTIC_URL: str = ""
+    REMOTE_SEMANTIC_TOKEN: str = ""
+    REMOTE_SEMANTIC_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0, le=180)
 
-    # Realtime voice
+    # Opt-in live web research. Never use deterministic providers as real search.
+    # Public browser automation MVP; deliberately off by default.
+    BROWSER_AGENT_ENABLED: bool = False
+    # Optional Redis SET NX replay ledger for cross-instance approved plans.
+    # Local test mode still uses the process guard; production browser stays OFF.
+    BROWSER_APPROVAL_REDIS_ENABLED: bool = False
+    # Safer public HTML navigation without a Chromium process; default OFF.
+    BROWSER_AGENT_HTML_ONLY_PRODUCTION_ENABLED: bool = False
+    BROWSER_AGENT_HTML_CANARY_ON_STARTUP: bool = False
+    BROWSER_AGENT_ALLOWED_HOSTS: str = ""
+    WEB_RESEARCH_ENABLED: bool = False
+    # Temporary one-shot operator-only E2E check; OFF after validation.
+    WEB_RESEARCH_CANARY_ON_STARTUP: bool = False
+    WEB_KEYLESS_CANARY_ON_STARTUP: bool = False
+    TAVILY_API_KEY: str = ""
+    TAVILY_KEYLESS_ENABLED: bool = False
+    # Keyless search is staged only; Tavily remains default until live acceptance.
+    WEB_SEARCH_PROVIDER: str = "tavily"  # tavily | auto | searxng
+    SEARXNG_BASE_URL: str = ""
+    SEARXNG_SERVICE_TOKEN: str = ""
+    SEARXNG_READ_PAGES_ENABLED: bool = False
+
+    # Real-time voice must stay disabled until a LiveKit worker and
+    # real STT/TTS providers have passed the owner-controlled E2E gate.
+    VOICE_AGENT_READY: bool = False
     LIVEKIT_URL: str = ""
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
     VOICE_AGENT_NAME: str = "aqlyra-voice"
     VOICE_STT_MODEL: str = "whisper-large-v3"
-    VOICE_TTS_MODEL: str = "cartesia/sonic-3.5"
+    VOICE_TTS_MODEL: str = "cartesia/sonic-3"
     VOICE_TTS_VOICE: str = (
         "a5136bf9-224c-4d76-b823-52bd5efcffcc"
     )
@@ -173,6 +229,18 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 2
     LLM_REASONING_EFFORT: str = ""
 
+    # Durable Knowledge indexing. Disabled by default for legacy/staging.
+    # Store queue state in existing Document.status (no schema migration).
+    KNOWLEDGE_AUTO_INDEX_ENABLED: bool = False
+    # Operator recovery for previously finalized cloud uploads; default OFF.
+    KNOWLEDGE_BACKFILL_ON_STARTUP: bool = False
+    KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP: bool = False
+    KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
+    KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
+    KNOWLEDGE_PDF_OCR_ENABLED: bool = False
+    KNOWLEDGE_PDF_OCR_MAX_PAGES: int = Field(default=20, ge=1, le=50)
+    KNOWLEDGE_PDF_OCR_PAGE_TIMEOUT_SECONDS: int = Field(default=15, ge=5, le=45)
+
     # RAG reranking
     RAG_GROUNDING_VERIFIER_ENABLED: bool = False
     RAG_RERANKER_ENABLED: bool = False
@@ -195,8 +263,25 @@ class Settings(BaseSettings):
 
     # Personal memory chat context
     MEMORY_CHAT_ENABLED: bool = False
+    MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED: bool = False
     MEMORY_CHAT_TOP_K: int = 5
     MEMORY_CHAT_MIN_SIMILARITY: float = 0.35
+
+    # Private Neon branch-scoped S3-compatible storage (opt-in; not routed
+    # to browser uploads until durable finalization and deletion are tested).
+    PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
+    # Keep browser direct-upload API off until staging security acceptance.
+    CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
+    # Small authenticated browser-proxy uploads; no S3 browser CORS needed.
+    CLOUD_UPLOAD_PROXY_ENABLED: bool = False
+    OBJECT_STORAGE_BUCKET: str = ""
+    AWS_ENDPOINT_URL_S3: str = ""
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-2"
+
+    # Do not persist new user files to ephemeral production disks.
+    LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED: bool = False
 
     # Document uploads
     UPLOAD_DIR: Path = Path(
@@ -223,6 +308,19 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_postgresql_driver(
+        cls,
+        value: str,
+    ) -> str:
+        # Neon and libpq return postgresql:// by default, while Aqlyra
+        # intentionally installs psycopg v3 rather than psycopg2.
+        # Change only the SQLAlchemy driver selector, never credentials.
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+psycopg://" + value[len("postgresql://"):]
+        return value
+
     @field_validator(
         "EMBEDDING_PROVIDER"
     )
@@ -239,11 +337,12 @@ class Settings(BaseSettings):
             "deterministic",
             "huggingface",
             "openai",
+            "remote_onnx",
         }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
                 "'deterministic', "
-                "'huggingface', or 'openai'"
+                "'huggingface', 'openai', or 'remote_onnx'"
             )
 
         return normalized
@@ -374,6 +473,11 @@ class Settings(BaseSettings):
         "EMAIL_VERIFICATION_MAX_ATTEMPTS",
         "EMAIL_VERIFICATION_RESEND_SECONDS",
         "SMTP_PORT",
+        "PASSWORD_RESET_CODE_TTL_MINUTES",
+        "PASSWORD_RESET_MAX_ATTEMPTS",
+        "PASSWORD_RESET_COOLDOWN_SECONDS",
+        "RATE_LIMIT_RESET_IP_LIMIT",
+        "RATE_LIMIT_RESET_IP_WINDOW_SECONDS",
     )
     @classmethod
     def validate_positive_integer(
@@ -429,6 +533,7 @@ class Settings(BaseSettings):
         # Production always requires an encrypted SMTP transport.
         if (
             self.APP_ENV.strip().lower() == "production"
+            and self.EMAIL_DELIVERY_PROVIDER == "smtp"
             and not (self.SMTP_USE_SSL or self.SMTP_STARTTLS)
         ):
             raise ValueError(
@@ -522,10 +627,20 @@ class Settings(BaseSettings):
             self.MEMORY_CHAT_ENABLED
             and self.EMBEDDING_PROVIDER
             == "deterministic"
+            and not self.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED
         ):
             raise ValueError(
                 "Personal memory chat requires a "
                 "semantic embedding provider"
+            )
+
+        if (
+            self.EMBEDDING_PROVIDER == "remote_onnx"
+            and (not self.REMOTE_SEMANTIC_URL.strip()
+                 or not self.REMOTE_SEMANTIC_TOKEN.strip())
+        ):
+            raise ValueError(
+                "Remote semantic endpoint and token required"
             )
 
         if (
@@ -666,6 +781,65 @@ class Settings(BaseSettings):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_cloud_upload_gate(self) -> Self:
+        if (self.CLOUD_UPLOAD_PUBLIC_ENABLED or self.CLOUD_UPLOAD_PROXY_ENABLED) and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise ValueError("Cloud upload requires private object storage")
+        return self
+
+    @model_validator(mode="after")
+    def validate_private_object_storage(self) -> Self:
+        if not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+            return self
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", self.OBJECT_STORAGE_BUCKET):
+            raise ValueError("OBJECT_STORAGE_BUCKET must be a DNS-safe private bucket")
+        if not all((self.AWS_ACCESS_KEY_ID, self.AWS_SECRET_ACCESS_KEY)):
+            raise ValueError("Neon private object storage credentials are required")
+        if self.AWS_REGION not in {
+            "us-east-1", "us-east-2", "eu-central-1", "ap-southeast-1"
+        }:
+            raise ValueError("Unsupported Neon private storage region")
+        endpoint = urlsplit(self.AWS_ENDPOINT_URL_S3)
+        if (
+            endpoint.scheme != "https"
+            or not (endpoint.hostname or "").endswith(".aws.neon.tech")
+            or endpoint.username or endpoint.password
+            or endpoint.path not in ("", "/") or endpoint.query
+            or endpoint.fragment
+        ):
+            raise ValueError("AWS_ENDPOINT_URL_S3 must be a Neon HTTPS storage endpoint")
+        try:
+            if endpoint.port is not None:
+                raise ValueError("Neon private storage does not use custom ports")
+        except ValueError as exc:
+            raise ValueError("Neon private storage does not use custom ports") from exc
+        return self
+
+    @field_validator("ADMIN_USER_IDS")
+    @classmethod
+    def validate_admin_ids(cls, value: str) -> str:
+        ids = [entry.strip().lower() for entry in value.split(",") if entry.strip()]
+        if len(ids) > 5 or len(ids) != len(set(ids)):
+            raise ValueError("ADMIN_USER_IDS must contain up to 5 unique UUIDs")
+        for entry in ids:
+            try:
+                parsed = UUID(entry)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("ADMIN_USER_IDS accepts UUIDs only") from exc
+            if str(parsed) != entry:
+                raise ValueError("ADMIN_USER_IDS requires canonical UUIDs")
+        return ",".join(ids)
+
+    @field_validator("EMAIL_DELIVERY_PROVIDER")
+    @classmethod
+    def validate_email_delivery_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"smtp", "resend", "gmail_api"}:
+            raise ValueError(
+                "EMAIL_DELIVERY_PROVIDER must be smtp, resend, or gmail_api"
+            )
+        return normalized
+
     @field_validator("APP_ENV")
     @classmethod
     def validate_app_env(
@@ -717,6 +891,12 @@ class Settings(BaseSettings):
                 "deterministic in production"
             )
 
+        if self.EMBEDDING_PROVIDER == "deterministic":
+            raise ValueError(
+                "EMBEDDING_PROVIDER must not be "
+                "deterministic in production"
+            )
+
         if self.DEBUG:
             raise ValueError(
                 "DEBUG must be false in production"
@@ -728,14 +908,24 @@ class Settings(BaseSettings):
                 "true in production"
             )
 
-        smtp_values = {
-            "SMTP_USERNAME": self.SMTP_USERNAME,
-            "SMTP_PASSWORD": self.SMTP_PASSWORD,
+        email_values = {
             "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
             "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
         }
-
-        for setting_name, setting_value in smtp_values.items():
+        if self.EMAIL_DELIVERY_PROVIDER == "smtp":
+            email_values.update({
+                "SMTP_USERNAME": self.SMTP_USERNAME,
+                "SMTP_PASSWORD": self.SMTP_PASSWORD,
+            })
+        elif self.EMAIL_DELIVERY_PROVIDER == "resend":
+            email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
+        elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
+            email_values.update({
+                "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
+                "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
+                "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
+            })
+        for setting_name, setting_value in email_values.items():
             if not setting_value.strip():
                 raise ValueError(
                     f"{setting_name} is required in production"

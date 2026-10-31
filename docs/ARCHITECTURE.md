@@ -1,3 +1,5 @@
+> **Deployment note (31 October 2026):** The mermaid diagrams below describe the original Docker Compose/Caddy reference layout. The **live beta deployment** is Vercel Next.js → Render FastAPI → Neon Postgres/pgvector, Redis, private cloud object storage, Groq/Tavily and a separate authenticated compact multilingual semantic worker on Render. Browser Agent execution is disabled. See [production status](PRODUCTION_STATUS_2026-10-31.md) for the distinction between implemented code and production acceptance.
+
 # Architecture
 
 ## Overview

@@ -17,7 +17,7 @@ from app.core.rate_limit import (
     limit_chat_request,
 )
 from app.database.connection import get_db
-from app.embeddings import EmbeddingError
+from app.embeddings import EmbeddingError, EmbeddingProviderQuotaError
 from app.llms import (
     LLMProviderRequestError,
     LLMProviderResponseError,
@@ -40,9 +40,15 @@ from app.schemas.conversation import (
     ConversationUpdate,
     MessageResponse,
 )
+from app.services.smart_web_router import route_web_request
+from app.services.web_research_service import (
+    WebResearchUnavailable,
+    WebResearchEvidenceError,
+)
 from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
+    resolve_public_office_followup,
     stream_normal_chat_reply,
 )
 from app.services.memory_extraction_service import (
@@ -228,7 +234,13 @@ def create_message_endpoint(
                 .effective_document_ids
             ),
             top_k=request.top_k,
+            web_mode=request.web_mode,
         )
+
+    except WebResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Web research provider unavailable or unconfigured") from exc
+    except WebResearchEvidenceError as exc:
+        raise HTTPException(status_code=422, detail="Web research could not verify the cited sources") from exc
 
     except (
         RetrievalValidationError,
@@ -261,6 +273,20 @@ def create_message_endpoint(
             detail=(
                 "Conversation provider "
                 "configuration failed"
+            ),
+        ) from exc
+
+    except EmbeddingProviderQuotaError as exc:
+        app_logger.warning(
+            "knowledge_embedding_quota_exhausted conversation_id=%s",
+            conversation.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Document search is temporarily unavailable because "
+                "the embedding service quota was exhausted. "
+                "Use Normal chat for general questions or try again later."
             ),
         ) from exc
 
@@ -436,15 +462,44 @@ def create_message_stream_endpoint(
         try:
             generation = None
 
-            if request.document_ids:
+            # Streaming must enforce the exact same owner/status contract
+            # as the JSON endpoint before any LLM or cloud object access.
+            # In particular an uploaded, unindexed PHOTO may be inspected
+            # in Converse; an unindexed PDF or another owner's photo may not.
+            document_scope = resolve_conversation_document_scope(
+                db=db,
+                conversation=conversation,
+                requested_document_ids=tuple(request.document_ids),
+            )
+
+            # Reconstruct only a public country follow-up after our exact
+            # country clarification; never include private chat history
+            # or personal memories in outgoing web research.
+            public_question = (
+                resolve_public_office_followup(
+                    db=db, conversation=conversation, message=user_content,
+                )
+                if not request.document_ids else user_content
+            )
+            selected_web = (
+                route_web_request(public_question, request.web_mode)
+                if not request.document_ids
+                else None
+            )
+            if selected_web is not None:
+                yield _encode_stream_event(
+                    "tool_status",
+                    {"tool": "web", "status": "searching", "mode": selected_web},
+                )
+            if request.document_ids or selected_web is not None:
                 result = execute_chat_turn(
                     db=db,
                     conversation=conversation,
-                    message=user_content,
-                    document_ids=tuple(
-                        request.document_ids
-                    ),
+                    message=public_question,
+                    document_ids=document_scope.effective_document_ids,
                     top_k=request.top_k,
+                    web_mode=request.web_mode,
+                    routed_web_mode=selected_web or "",
                 )
 
                 if result.content:
@@ -535,7 +590,7 @@ def create_message_stream_endpoint(
             for event in stream_normal_chat_reply(
                 db=db,
                 conversation=conversation,
-                message=user_content,
+                message=public_question,
             ):
                 if (
                     event.event_type
@@ -634,7 +689,17 @@ def create_message_stream_endpoint(
                 ),
             )
 
-        except ChatValidationError as exc:
+        except (WebResearchUnavailable, WebResearchEvidenceError) as exc:
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 503 if isinstance(exc, WebResearchUnavailable) else 422,
+                    "code": "web_research_unavailable" if isinstance(exc, WebResearchUnavailable) else "web_research_evidence_error",
+                    "detail": "Web research could not be completed with verified sources. Try again or select Web off.",
+                },
+            )
+
+        except (ChatValidationError, ConversationDocumentScopeError) as exc:
             app_logger.info(
                 "Conversation attachment "
                 "validation failed: "
@@ -671,6 +736,24 @@ def create_message_stream_endpoint(
                     "detail": (
                         "Conversation provider "
                         "configuration failed"
+                    ),
+                },
+            )
+
+        except EmbeddingProviderQuotaError:
+            app_logger.warning(
+                "conversation_stream_embedding_quota_exhausted conversation_id=%s",
+                conversation.id,
+            )
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 503,
+                    "code": "embedding_quota_exhausted",
+                    "detail": (
+                        "Document search is temporarily unavailable because "
+                        "the embedding service quota was exhausted. "
+                        "Use Normal chat or try again later."
                     ),
                 },
             )
