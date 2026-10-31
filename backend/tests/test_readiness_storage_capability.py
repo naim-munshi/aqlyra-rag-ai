@@ -20,6 +20,7 @@ def test_readiness_reports_write_disabled_without_probing_ephemeral_disk(
     assert response.json()["checks"]["storage"] == "writes_disabled"
     assert response.json()["checks"]["artifact_storage"] == "writes_disabled"
     assert response.json()["checks"]["cloud_uploads"] == "disabled"
+    assert response.json()["checks"]["knowledge_embedding_provider_check"] == "not_performed"
 
 
 def test_readiness_reports_verified_local_write_capability(

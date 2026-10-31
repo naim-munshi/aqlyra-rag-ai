@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # immutable user UUIDs. Never use emails/usernames as admin identities.
     ADMIN_USER_IDS: str = ""
 
+    # Anonymous general chat is disabled until signed Next proxy + Redis
+    # abuse budgets are in place. No documents or private memory.
+    GUEST_CHAT_ENABLED: bool = False
+    GUEST_PROXY_SECRET: str = ""
+    GUEST_CHAT_HOURLY_IP_LIMIT: int = Field(default=5, ge=1, le=60)
+    GUEST_CHAT_DAILY_IP_LIMIT: int = Field(default=20, ge=1, le=200)
+    GUEST_CHAT_GLOBAL_DAILY_LIMIT: int = Field(default=1000, ge=1, le=100000)
+
     # Verified identity
     EMAIL_VERIFICATION_REQUIRED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
@@ -249,6 +257,8 @@ class Settings(BaseSettings):
     # Private Neon branch-scoped S3-compatible storage (opt-in; not routed
     # to browser uploads until durable finalization and deletion are tested).
     PRIVATE_OBJECT_STORAGE_ENABLED: bool = False
+    ARTIFACT_REMOTE_STORAGE_ENABLED: bool = False
+    ARTIFACT_METADATA_HMAC_KEY: str = ""
     # Keep browser direct-upload API off until staging security acceptance.
     CLOUD_UPLOAD_PUBLIC_ENABLED: bool = False
     # Small authenticated browser-proxy uploads; no S3 browser CORS needed.
@@ -751,6 +761,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cloud_upload_gate(self) -> Self:
+        if self.GUEST_CHAT_ENABLED and (
+            len(self.GUEST_PROXY_SECRET.strip()) < 32 or not self.RATE_LIMIT_ENABLED
+        ):
+            raise ValueError("Guest chat requires signing and rate limiting")
+        if self.ARTIFACT_REMOTE_STORAGE_ENABLED and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
+            raise ValueError("Remote artifacts require private object storage")
+        if self.ARTIFACT_REMOTE_STORAGE_ENABLED and len(self.ARTIFACT_METADATA_HMAC_KEY.strip()) < 32:
+            raise ValueError("Remote artifacts require a stable metadata signing key")
         if (self.CLOUD_UPLOAD_PUBLIC_ENABLED or self.CLOUD_UPLOAD_PROXY_ENABLED) and not self.PRIVATE_OBJECT_STORAGE_ENABLED:
             raise ValueError("Cloud upload requires private object storage")
         return self

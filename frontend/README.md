@@ -1,59 +1,51 @@
-# Aqlyra Frontend
+# Aqlyra frontend
 
-Next.js 16, React 19, and TypeScript web application for the Aqlyra AI knowledge platform. The frontend provides verified authentication, Converse and Knowledge workspaces, conversations, document workflows, and optional voice sessions.
+The **actual production-beta Next.js application** for the Aqlyra AI platform, plus a deliberately *scripted* portfolio walkthrough.
 
-The browser uses same-origin Next.js API routes. Server-side route handlers forward authenticated requests to FastAPI using the HttpOnly session cookie. The backend access token is not exposed to browser JavaScript.
+- **Real software:** https://aqlyra-ai.vercel.app (authenticated Converse, Knowledge, Web Research and supported voice fallback)
+- **Public product walkthrough:** https://aqlyra-ai.vercel.app/demo (scripted scenarios and architecture, **no LLM inference, document upload or model calls on this page**)
+- **Backend:** FastAPI on Render; sessions, data ownership, database and AI providers remain on the server side
+- **Git deployment branch:** `release/unified-core-frontend-rag-20261031` (not the Core backend branch). Always compare its HEAD with the deployed Vercel commit before claiming a change is live.
 
-## Requirements
+## Features and limits
 
-- Node.js 24 and npm
-- A running Aqlyra backend with PostgreSQL (and Redis when rate limiting is enabled)
-- SMTP credentials for email-code verification, or a configured Google Web Client ID for Google sign-in
+| Surface | Runtime behavior |
+| --- | --- |
+| Converse | Server-proxied authenticated AI messages, history, selected attachments, memory |
+| Knowledge | Selected private documents, semantic/lexical retrieval, source citation display |
+| Web | Tavily production provider; own keyless SearXNG is a limited independent canary |
+| Voice | LiveKit when a real agent is configured; optional browser STT/TTS fallback depends on browser permissions and vendor support |
+| Browser Agent | Safety-gated and **disabled** in production pending isolated sandbox |
+| `/demo` | Public **SIMULATED CONTENT** only, safe for portfolio review, no account or private backend call |
 
-## Local development
+## Local setup
 
-Start the backend services from the repository root using the [setup guide](../docs/SETUP.md), then run:
+Node.js 24 and npm are recommended. Use a separate local backend and disposable test database.
 
-```bash
+~~~bash
 cd frontend
 npm ci
-cp .env.example .env.local
+cp -n .env.example .env.local
 npm run dev
-```
+~~~
 
-Configure `frontend/.env.local`:
+Configure `BACKEND_API_URL` as a server-only local FastAPI address and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` as the public Google Web Client ID if used. Never put API keys, backend JWTs, database URLs or service credentials in `NEXT_PUBLIC_*` values. Real production routes use Next.js server-side proxy handlers with HttpOnly session cookies.
 
-```dotenv
-BACKEND_API_URL=http://127.0.0.1:8000/api/v1
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=
-```
+## Verification
 
-To use Google sign-in, set the public Client ID to the same value as `GOOGLE_CLIENT_ID` in `backend/.env`. It is not an OAuth client secret.
-
-Open [http://localhost:3000](http://localhost:3000). Unauthenticated users are redirected to `/login`. The development backend uses deterministic LLM/embedding defaults unless real model providers are configured.
-
-## Quality and security checks
-
-From `frontend/`:
-
-```bash
+~~~bash
 npm run lint
 npx tsc --noEmit
 node --experimental-strip-types --test tests/*.test.mjs
 npm run build
-```
+~~~
 
-The tests check same-origin state-changing API request protection in `src/proxy.ts` and `src/lib/security/origin.ts`. The production app uses HttpOnly, Secure and SameSite session cookies; FastAPI independently enforces ownership and JWT validation.
+Check `/demo` anonymously, verify its labels are scripted, and confirm `/login` still works as the separate real application entry. Cross-browser tests, actual authenticated voice and two-user file isolation require explicit manual acceptance; CI does not replace them.
 
-## Deployment
+## Production deployment
 
-The supported full-stack deployment uses Docker Compose and Caddy with HTTPS termination. The Next.js runtime container uses an unprivileged user. The public `NEXT_PUBLIC_GOOGLE_CLIENT_ID` must be supplied at **image build time**, while `BACKEND_API_URL` points to the internal FastAPI address.
+The real frontend is a Vercel Next.js project called `aqlyra`. It is not the separate `aqlyrax` project and not the backend Render service. Release only reviewed commits into `release/unified-core-frontend-rag-20261031`, verify exact-head CI and inspect the deployed commit/alias before saying the new UI is live.
 
-The frontend image alone does not include PostgreSQL, Redis, the voice worker, SMTP delivery or hosted AI model services. For actual rollout procedures, see [Staging and Release Gate](../docs/STAGING.md) and [Setup](../docs/SETUP.md). Do not deploy with example secrets.
+Production `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` should be `false` or unset so the root route remains the actual app/login. The explicit `/demo` route stays accessible as a scripted showcase regardless of that flag. In an isolated portfolio-only build, set it to `true` to redirect anonymous root traffic to the demo.
 
-## Documentation
-
-- [Project overview](../README.md)
-- [Architecture](../docs/ARCHITECTURE.md)
-- [Security and Testing](../docs/SECURITY_TESTING.md)
-- [RAG Pipeline](../docs/RAG_PIPELINE.md)
+See [Production status](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCTION_STATUS_2026-10-31.md), [Demo and acceptance](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) and [Release acceptance](../docs/RELEASE_ACCEPTANCE.md).

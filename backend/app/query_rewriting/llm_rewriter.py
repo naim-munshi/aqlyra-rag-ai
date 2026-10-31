@@ -111,11 +111,13 @@ def _validate_rewrite(
             "Rewritten query exceeds maximum length"
         )
 
-    # Negation flips and dropped exact quotations can silently invert
-    # answers, even when numbers and identifiers are preserved.
-    if bool(_NEGATION_PATTERN.search(original)) != bool(
-        _NEGATION_PATTERN.search(normalized)
-    ):
+    # Preserve the number of negated/excluded clauses. Presence alone
+    # misses rewrites that silently drop "not B" from "not A and not B".
+    # We allow synonyms (e.g. "not" -> "without"), but when a model
+    # collapses/introduces exclusions we safely use the original query.
+    original_negations = sum(1 for _ in _NEGATION_PATTERN.finditer(original))
+    rewritten_negations = sum(1 for _ in _NEGATION_PATTERN.finditer(normalized))
+    if original_negations != rewritten_negations:
         raise QueryRewriteValidationError(
             "Rewritten query changed exclusion or negation intent"
         )

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.api.guest import recent_guest_traffic
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.core.monitoring import admin_http_snapshot
@@ -29,6 +30,17 @@ def get_current_admin(
     if user.email_verified_at is None:
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
+
+
+@router.get("/guest-traffic")
+def admin_guest_traffic(
+    _admin: User = Depends(get_current_admin),
+) -> JSONResponse:
+    """Only verified UUID-allowlisted admins can inspect 24h guest IPs."""
+    return JSONResponse(
+        {"entries": recent_guest_traffic(), "retention_hours": 24},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.get("/overview")

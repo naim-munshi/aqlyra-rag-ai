@@ -21,7 +21,9 @@ test("new upload feature stays OFF without the server-only opt-in", () => {
 
 test("UI does not claim provider indexing succeeded after secure upload", () => {
   assert.match(panel, /NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED/);
-  assert.match(panel, /File saved in private storage/);
+  assert.match(panel, /File securely saved\. Knowledge indexing is running in the background/);
+  assert.match(panel, /Automatic indexing is not available on this upload route/);
+  assert.match(panel, /uploadedDocument\.status === "queued"/);
   assert.match(workspace, /NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED/);
   assert.match(workspace, /AI indexing is not yet available/);
 });
@@ -30,6 +32,6 @@ test("production frontend limits proxy mode to 3MB before forwarding", () => {
   if (route.includes("readBoundedBodyBytes")) {
     assert.match(route, /MAX_PROXY_FILE_BYTES = 3 \* 1024 \* 1024/);
     assert.match(route, /MAX_PROXY_FILE_BYTES \+ 128 \* 1024/);
-    assert.match(route, /readBoundedBodyBytes\(request, maxBodyBytes\)/);
+    assert.match(route, /readBoundedBodyBytes\(request, MAX_MULTIPART_BYTES\)/);
   }
 });

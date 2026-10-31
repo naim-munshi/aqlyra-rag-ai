@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Activity, ArrowLeft, Database, FileText, RefreshCcw, Shield, Users } from "lucide-react";
+import { GuestTrafficPanel } from "@/components/admin/guest-traffic-panel";
 import type { AdminOverview } from "@/types/admin";
 
 const integer = new Intl.NumberFormat("en-US");
@@ -105,6 +106,8 @@ export function AdminMonitor({ initialData }: { initialData: AdminOverview }) {
             <StatCard label="Rate-limit hits" value={integer.format(data.traffic.rate_limit_exceeded)} description="Requests rejected by limits" />
           </div>
         </section>
+
+        <GuestTrafficPanel />
 
         <section className="mt-9" aria-label="Account overview">
           <div className="mb-4 flex items-center gap-2"><Users size={18} className="text-cyan-300" /><h2 className="text-lg font-semibold">Users and content</h2></div>

@@ -191,6 +191,37 @@ def test_rewriter_rejects_negation_drift(
         ).rewrite(original)
 
 
+@pytest.mark.parametrize(
+    ("original", "rewritten"),
+    [
+        (
+            "Show policies not approved and not renewed in 2026",
+            "Show policies not approved and renewed in 2026",
+        ),
+        (
+            "Show policies not approved in 2026",
+            "Show policies not approved and not renewed in 2026",
+        ),
+        (
+            "যারা ভর্তি না এবং টাকা জমা দেয় না তাদের দেখাও",
+            "যারা ভর্তি না এবং টাকা জমা দেয় তাদের দেখাও",
+        ),
+        (
+            "提出しないで保存しない場合",
+            "提出しないで保存する場合",
+        ),
+    ],
+)
+def test_rewriter_rejects_dropped_or_added_negated_clauses(
+    original: str, rewritten: str,
+) -> None:
+    """A single remaining negator must not conceal a lost exclusion."""
+    with pytest.raises(QueryRewriteValidationError, match="negation"):
+        LLMQueryRewriter(
+            provider=FakeLLMProvider(rewritten)
+        ).rewrite(original)
+
+
 def test_rewriter_allows_synonymous_negation() -> None:
     assert LLMQueryRewriter(
         provider=FakeLLMProvider("plans without approval requirement")

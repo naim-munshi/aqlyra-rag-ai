@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  FileUp, Files, FilePlus2, Globe2, MousePointer2,
+  FileUp, Files, Globe2, MousePointer2,
   Plus, BookOpen, MessageSquareText, X,
 } from "lucide-react";
 
@@ -21,19 +21,23 @@ type Props = {
   onUpload: () => void;
   onOpenDocuments: () => void;
   onSwitchMode: () => void;
+  webMode: "auto" | "off" | "on" | "deep";
+  onSetWebMode: (value: "auto" | "off" | "on" | "deep") => void;
 };
 
 const icons = {
   upload: FileUp,
   web: Globe2,
+  "web-deep": Globe2,
+  "web-off": Globe2,
   browser: MousePointer2,
   knowledge: BookOpen,
   documents: Files,
-  artifacts: FilePlus2,
 } as const;
 
 export function ChatToolsMenu({
   mode, disabled, onUpload, onOpenDocuments, onSwitchMode,
+  webMode, onSetWebMode,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -134,6 +138,13 @@ export function ChatToolsMenu({
       onOpenDocuments();
     } else if (id === "knowledge") {
       onSwitchMode();
+    } else if (id === "web" || id === "web-deep" || id === "web-off") {
+      // In-place choice only: no /web navigation, history or window.
+      onSetWebMode(id === "web"
+        ? (webMode === "on" ? "auto" : "on")
+        : id === "web-deep"
+          ? (webMode === "deep" ? "auto" : "deep")
+          : (webMode === "off" ? "auto" : "off"));
     } else if (href) {
       router.push(href);
     }
@@ -174,7 +185,7 @@ export function ChatToolsMenu({
           <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--aq-muted)]">
             Tools
           </p>
-          {tools.map((tool) => {
+          {tools.filter((tool) => mode === "normal" || !["web", "web-deep", "web-off"].includes(tool.id)).map((tool) => {
             const Icon = tool.id === "knowledge" && mode === "knowledge"
               ? MessageSquareText
               : icons[tool.id];
@@ -185,6 +196,7 @@ export function ChatToolsMenu({
                 role="menuitem"
                 title={tool.description}
                 aria-label={tool.label + ". " + tool.description}
+                aria-pressed={tool.id === "web" ? webMode === "on" : tool.id === "web-deep" ? webMode === "deep" : tool.id === "web-off" ? webMode === "off" : undefined}
                 onClick={() => selectTool(tool.id, tool.href)}
                 className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition hover:bg-[var(--aq-card)] focus-visible:bg-[var(--aq-card)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)]"
               >
@@ -192,7 +204,13 @@ export function ChatToolsMenu({
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[13px] font-medium text-[var(--aq-text)]">
-                  {tool.label}
+                  {tool.id === "web" && webMode === "on"
+                    ? "Stop web search"
+                    : tool.id === "web-deep" && webMode === "deep"
+                      ? "Stop deep research"
+                      : tool.id === "web-off" && webMode === "off"
+                        ? "Return to automatic web search"
+                        : tool.label}
                 </span>
               </button>
             );

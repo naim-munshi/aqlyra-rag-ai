@@ -4,6 +4,7 @@ import { backendUrl, readJson } from "@/lib/api/backend";
 import { forwardedBackendHeaders } from "@/lib/api/response-headers";
 import { getAccessToken } from "@/lib/auth/session";
 import { hasTrustedRequestOrigin } from "@/lib/security/origin";
+import { readBoundedBodyText, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 export async function artifactJsonProxy(
   request: Request,
@@ -20,13 +21,14 @@ export async function artifactJsonProxy(
   let payload: string | undefined;
   if (method === "POST") {
     try {
-      const raw = await request.text();
-      if (raw.length > 35_000) {
-        return NextResponse.json({ detail: "Request too large" }, { status: 413 });
-      }
+      // A declared length is not trustworthy; limit streamed bytes too.
+      const raw = await readBoundedBodyText(request, 35_000);
       JSON.parse(raw);
       payload = raw;
-    } catch {
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return NextResponse.json({ detail: "Request too large" }, { status: 413 });
+      }
       return NextResponse.json({ detail: "Invalid JSON body" }, { status: 400 });
     }
   }
