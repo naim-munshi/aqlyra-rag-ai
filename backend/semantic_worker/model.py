@@ -42,6 +42,13 @@ class Encoder:
         options = ort.SessionOptions()
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
+        # Bound startup memory: avoid CPU allocator arenas, graph optimizer
+        # workspace duplication, pre-packed weights and persistent patterns.
+        options.enable_cpu_mem_arena = False
+        options.enable_mem_pattern = False
+        options.enable_mem_reuse = False
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        options.add_session_config_entry("session.disable_prepacking", "1")
         self.session = ort.InferenceSession(
             str(weights), sess_options=options, providers=["CPUExecutionProvider"],
         )
