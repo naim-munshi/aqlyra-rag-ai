@@ -79,7 +79,7 @@ The semantic worker is separate from the main API because a larger contextual E5
 | [backend/semantic_worker/](backend/semantic_worker/) | CPU-only, token-protected pretrained multilingual semantic encoder |
 | [backend/app/retrieval/](backend/app/retrieval/) | Dense + lexical retrieval and rank fusion |
 | [backend/app/rag/](backend/app/rag/) | Context, citations and grounding checks |
-| [ops/searxng/](ops/searxng/) | Optional keyless metasearch gateway and bounded fallback |
+| [ops/searxng/](https://github.com/naim-munshi/aqlyra-rag-ai/tree/feat/hybrid-searxng-web-research-20261031/ops/searxng) | Optional keyless metasearch gateway and bounded fallback |
 | [.github/workflows/](.github/workflows/) | Python/PostgreSQL, Node/Next.js, security, dependency, Docker, ARM64 and model acceptance |
 | [docs/](docs/) | Setup, architecture, production acceptance and handoff |
 
