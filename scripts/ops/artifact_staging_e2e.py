@@ -152,10 +152,13 @@ def run(client: Client, account_a: tuple[str, str], account_b: tuple[str, str]) 
             created.append(artifact_id)
             if item.get("format") != fmt:
                 raise SmokeFailure("Created format mismatch")
-            for operation in ("GET", "DELETE"):
-                suffix = "/download" if operation == "GET" else ""
-                status, _, _ = client.request(operation, path + "/" + artifact_id + suffix, token=beta)
-                expect(status, 404, "cross-account " + operation)
+            for operation, suffix in (
+                ("GET", ""), ("GET", "/download"), ("DELETE", ""),
+            ):
+                status, _, _ = client.request(
+                    operation, path + "/" + artifact_id + suffix, token=beta,
+                )
+                expect(status, 404, "cross-account " + operation + suffix)
 
             status, headers, downloaded = client.request(
                 "GET", path + "/" + artifact_id + "/download", token=alpha,
