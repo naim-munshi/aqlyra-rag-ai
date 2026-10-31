@@ -232,7 +232,8 @@ def research_web(
                 queries.append(plan_second_query(question, planning_provider))
             seen: set[str] = set()
             limit = min(10, max_sources + 5) if mode in ("compare", "deep") else max_sources
-            per_search = min(6, max_sources + 1) if len(queries) > 1 else min(10, max_sources + 5)
+            # Do not request expensive raw pages for results we cannot use.
+            per_search = min(6, max_sources + 1)
             for research_query in queries:
                 search = _tavily_json(
                     client=active_client,
@@ -305,27 +306,34 @@ def research_web(
                     covered.add(hostname)
             candidates = (diversified + remaining)[:max_sources]
 
-        try:
-            extracted = _tavily_json(
-                client=active_client,
-                endpoint=TAVILY_EXTRACT,
-                api_key=key,
-                data={
-                    "urls": [item["url"] for item in candidates],
-                    "extract_depth": "advanced" if mode == "deep" else "basic",
-                    "include_images": False,
-                },
-            )
-        except WebResearchUnavailable:
-            # Search raw_content is an independently returned page extraction,
-            # unlike snippets. URL mode has no search extraction to fall back to.
-            if not any(item["url"] in search_raw_pages for item in candidates):
-                raise
-            logger.warning(
-                "web_research_extract_failed fallback=search_raw sources=%s",
-                len(search_raw_pages),
-            )
+        missing_raw_urls = [
+            item["url"] for item in candidates
+            if item["url"] not in search_raw_pages
+        ]
+        if not missing_raw_urls:
             extracted = {"results": []}
+        else:
+            try:
+                extracted = _tavily_json(
+                    client=active_client,
+                    endpoint=TAVILY_EXTRACT,
+                    api_key=key,
+                    data={
+                        "urls": missing_raw_urls,
+                        "extract_depth": "advanced" if mode == "deep" else "basic",
+                        "include_images": False,
+                    },
+                )
+            except WebResearchUnavailable:
+                # Search raw_content is verified page text, unlike snippets.
+                # URL mode cannot fall back without the search response.
+                if not any(item["url"] in search_raw_pages for item in candidates):
+                    raise
+                logger.warning(
+                    "web_research_extract_failed fallback=search_raw sources=%s",
+                    len(search_raw_pages),
+                )
+                extracted = {"results": []}
     finally:
         if managed:
             active_client.close()
