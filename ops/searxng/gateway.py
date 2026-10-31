@@ -16,7 +16,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, quote
 
 MAX_BYTES = 800_000
 ALLOWED_KEYS = {"q", "format", "safesearch", "language", "pageno", "time_range"}
@@ -116,6 +116,65 @@ def wikipedia_public_search(query: str, *, limit: int = 5) -> list[dict[str, str
             connection.close()
 
 
+def wikipedia_rest_public_search(
+    query: str, *, limit: int = 5,
+) -> list[dict[str, str]]:
+    """Use a second documented fixed Wikimedia HTTPS endpoint only.
+
+    No arbitrary URLs, redirects, guessed pages or saved private content.
+    """
+    if not 3 <= len(query) <= 600 or not 1 <= limit <= 5:
+        return []
+    connection = None
+    try:
+        connection = http.client.HTTPSConnection(
+            "en.wikipedia.org", 443, timeout=3,
+        )
+        connection.request(
+            "GET", "/w/rest.php/v1/search/page?" + urlencode({
+                "q": query, "limit": limit,
+            }),
+            headers={
+                "User-Agent": "AqlyraPublicSearch/1.0 (noncommercial; source-linked)",
+                "Accept": "application/json",
+            },
+        )
+        response = connection.getresponse()
+        if response.status != 200 or not response.getheader(
+            "Content-Type", "",
+        ).lower().startswith("application/json"):
+            return []
+        raw = response.read(180001)
+        if len(raw) > 180000:
+            return []
+        payload = json.loads(raw)
+        pages = payload.get("pages") if isinstance(payload, dict) else None
+        if not isinstance(pages, list):
+            return []
+        results: list[dict[str, str]] = []
+        for page in pages[:limit]:
+            if not isinstance(page, dict):
+                continue
+            key = page.get("key")
+            title = page.get("title")
+            if not isinstance(key, str) or not isinstance(title, str) or len(key) > 180:
+                continue
+            snippet = page.get("excerpt", "")
+            plain = html.unescape(re.sub(r"<[^>]*>", " ", snippet)) if isinstance(snippet, str) else ""
+            results.append({
+                "url": "https://en.wikipedia.org/wiki/" + quote(key, safe=""),
+                "title": title[:180],
+                "content": " ".join(plain.split())[:1200],
+                "engine": "wikipedia-rest",
+            })
+        return results
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Never log search queries or token-bearing request headers.
@@ -181,6 +240,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not payload["results"]:
                     query = parse_qs(urlsplit(path).query).get("q", [""])[0]
                     fallback = wikipedia_public_search(query)
+                    if not fallback:
+                        fallback = wikipedia_rest_public_search(query)
+                    print(
+                        "SEARXNG_GATEWAY_FALLBACK="
+                        + ("PASS" if fallback else "DEGRADED"),
+                        flush=True,
+                    )
                     if fallback:
                         payload["results"] = fallback
                         content = json.dumps(payload, ensure_ascii=False).encode()
