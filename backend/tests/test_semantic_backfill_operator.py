@@ -64,7 +64,7 @@ def test_reindexes_only_owner_linked_ready_cloud_knowledge(db_session, monkeypat
         mod, "create_configured_embedding_provider",
         lambda: SimpleNamespace(info=SimpleNamespace(
             provider_name="remote_onnx",
-            model_name="multilingual-e5-small-int8-v1",
+            model_name="bekko-static-multilingual-int8-mrl384-v1",
             dimension=384,
         )),
     )
