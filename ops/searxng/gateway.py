@@ -67,10 +67,11 @@ def wikipedia_public_search(query: str, *, limit: int = 5) -> list[dict[str, str
     """
     if not 3 <= len(query) <= 600 or not 1 <= limit <= 5:
         return []
-    connection = http.client.HTTPSConnection(
-        "en.wikipedia.org", 443, timeout=3.0,
-    )
+    connection = None
     try:
+        connection = http.client.HTTPSConnection(
+            "en.wikipedia.org", 443, timeout=3.0,
+        )
         path = "/w/api.php?" + urlencode({
             "action": "query", "list": "search", "srsearch": query,
             "srlimit": str(limit), "format": "json", "formatversion": "2",
@@ -111,7 +112,8 @@ def wikipedia_public_search(query: str, *, limit: int = 5) -> list[dict[str, str
     except (OSError, ValueError, TypeError, KeyError):
         return []
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 class Handler(BaseHTTPRequestHandler):
