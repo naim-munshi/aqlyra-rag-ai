@@ -610,6 +610,7 @@ class Settings(BaseSettings):
             self.MEMORY_CHAT_ENABLED
             and self.EMBEDDING_PROVIDER
             == "deterministic"
+            and not self.MEMORY_CHAT_LEXICAL_FALLBACK_ENABLED
         ):
             raise ValueError(
                 "Personal memory chat requires a "
