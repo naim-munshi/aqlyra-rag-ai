@@ -98,6 +98,14 @@ def start_knowledge_index_worker() -> None:
             target=run_semantic_backfill,
             name="aqlyra-semantic-backfill", daemon=True,
         ).start()
+    if settings.BROWSER_AGENT_HTML_CANARY_ON_STARTUP:
+        from threading import Thread
+        from app.services.browser_html_canary import run_browser_html_canary
+        Thread(
+            target=run_browser_html_canary,
+            name="aqlyra-browser-html-canary",
+            daemon=True,
+        ).start()
     if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
         # Daemon keeps live startup/health independent of upstream latency.
         from threading import Thread
