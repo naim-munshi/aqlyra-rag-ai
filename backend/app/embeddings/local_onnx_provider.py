@@ -25,6 +25,8 @@ _MODEL_FILE = "onnx/model_quantized.onnx"
 _MODEL_NAME = "multilingual-e5-small-int8-v1"
 _MODEL_DIM = 384
 _DEFAULT_BATCH = 8
+_ENCODER_LOCK = Lock()
+_SHARED_ENCODER: Any | None = None
 
 
 class _LocalE5Encoder:
@@ -100,23 +102,26 @@ class LocalMultilingualE5Provider:
             max_batch_size=max_batch_size,
         )
         self._encoder = client
-        self._lock = Lock()
 
     @property
     def info(self) -> EmbeddingProviderInfo:
         return self._info
 
     def _ensure_encoder(self):
-        if self._encoder is None:
-            with self._lock:
-                if self._encoder is None:
-                    try:
-                        self._encoder = _LocalE5Encoder()
-                    except Exception as exc:
-                        raise EmbeddingProviderRequestError(
-                            "Local E5 model download or initialization failed"
-                        ) from exc
-        return self._encoder
+        global _SHARED_ENCODER
+        if self._encoder is not None:
+            return self._encoder
+        # All request-scoped provider objects reuse one bounded model.
+        # Avoid costly repeated downloads/initialization after cold start.
+        with _ENCODER_LOCK:
+            if _SHARED_ENCODER is None:
+                try:
+                    _SHARED_ENCODER = _LocalE5Encoder()
+                except Exception as exc:
+                    raise EmbeddingProviderRequestError(
+                        "Local E5 model download or initialization failed"
+                    ) from exc
+            return _SHARED_ENCODER
 
     def _embed(self, texts: Sequence[str], mode: str) -> list[list[float]]:
         validated = validate_text_batch(
