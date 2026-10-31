@@ -408,6 +408,7 @@ def research_web(
             input_text=json.dumps(body, ensure_ascii=False),
         )
         text = repair.text.strip()
+        generation = repair
         problem = validation_error(text)
     if problem is not None:
         logger.warning(
