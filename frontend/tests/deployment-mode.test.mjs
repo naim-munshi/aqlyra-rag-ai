@@ -19,11 +19,17 @@ test("unexpected values do not accidentally enable demo-only mode", () => {
 });
 
 
-test("real production never serves the scripted demo page", () => {
+test("explicit public /demo is scripted while real root still requires sign-in", () => {
   const source = readFileSync(
     new URL("../src/app/demo/page.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /NEXT_PUBLIC_AQLYRA_DEMO_ONLY !== "true"/);
-  assert.match(source, /redirect\("\/login"\)/);
+  const experience = readFileSync(
+    new URL("../src/app/demo/demo-experience.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /return <DemoExperience \/>/);
+  assert.doesNotMatch(source, /redirect\("\/login"\)/);
+  assert.match(experience, /SIMULATED CONTENT/);
+  assert.equal(unauthenticatedLanding("false"), "/login");
 });
