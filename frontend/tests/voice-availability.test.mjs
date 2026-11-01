@@ -9,7 +9,7 @@ test("unavailable voice calls show user-visible error and cannot request microph
   assert.match(source, /availability\?\.available/);
   assert.match(source, /if \(!availability\?\.available\)/);
   assert.match(source, /role="alert"/);
-  assert.match(source, /Checking voice availability/);
+  assert.match(source, /Aqlyra real-time voice is unavailable/);
   assert.match(source, /navigator\.mediaDevices\?\.getUserMedia/);
 });
 
@@ -30,7 +30,7 @@ test("Safari microphone and sound need direct user actions", () => {
 
 test("voice agent timeout ends abandoned call and mobile sheet fits viewport", () => {
   const source = read("components/voice/voice-call-button.tsx");
-  assert.match(source, /The AI voice agent did not join/);
+  assert.match(source, /Real-time voice could not connect to Aqlyra/);
   assert.match(source, /void room\.disconnect\(\)/);
   assert.match(source, /w-\[min\(300px,calc\(100vw-24px\)\)\]/);
 });
