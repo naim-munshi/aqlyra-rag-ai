@@ -122,6 +122,9 @@ def test_authenticated_user_can_create_voice_session(
     )
     assert payload["conversation_id"]
     assert payload["mode"] == "normal"
+    # Session JWTs are private capabilities and must never be cached.
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
 
 
 def test_voice_session_fails_cleanly_without_config(
