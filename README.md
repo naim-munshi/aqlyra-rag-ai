@@ -91,6 +91,10 @@ Real-provider quality, live multi-user acceptance, load behaviour and independen
 
 For a short technical review, start with rank fusion, citation validation and the isolation tests linked above. Use [Setup](docs/SETUP.md) for test commands and [Staging](docs/STAGING.md) for release checks.
 
+## Engineering collaboration
+
+Aqlyra changes are organized by coherent workstream, tested against the current release, and described in independent product terminology. See [Engineering practices](docs/ENGINEERING_PRACTICES.md) for pull request, commit, safety and release-review standards.
+
 ## Author and license
 
 Built by [Md Naim](https://github.com/naim-munshi). See [LICENSE](LICENSE) for usage terms.
