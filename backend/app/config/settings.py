@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 from uuid import UUID
-from typing import Self
+from typing import Self, Literal
 
 from pydantic import (
     Field,
@@ -21,6 +21,8 @@ from sqlalchemy.engine import make_url
 class Settings(BaseSettings):
     # Project
     APP_ENV: str = "development"
+    # Non-HTTP voice worker skips only HTTP-specific OAuth/email/CORS checks.
+    AQLYRA_PROCESS_ROLE: Literal["api", "voice_worker"] = "api"
     PROJECT_NAME: str = (
         "Aqlyra RAG AI"
     )
@@ -894,62 +896,64 @@ class Settings(BaseSettings):
                 "true in production"
             )
 
-        email_values = {
-            "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
-            "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
-        }
-        if self.EMAIL_DELIVERY_PROVIDER == "smtp":
-            email_values.update({
-                "SMTP_USERNAME": self.SMTP_USERNAME,
-                "SMTP_PASSWORD": self.SMTP_PASSWORD,
-            })
-        elif self.EMAIL_DELIVERY_PROVIDER == "resend":
-            email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
-        elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
-            email_values.update({
-                "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
-                "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
-                "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
-            })
-        for setting_name, setting_value in email_values.items():
-            if not setting_value.strip():
+        if self.AQLYRA_PROCESS_ROLE == "api":
+            # Never duplicate Google or email secrets into a headless worker.
+            email_values = {
+                "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
+                "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
+            }
+            if self.EMAIL_DELIVERY_PROVIDER == "smtp":
+                email_values.update({
+                    "SMTP_USERNAME": self.SMTP_USERNAME,
+                    "SMTP_PASSWORD": self.SMTP_PASSWORD,
+                })
+            elif self.EMAIL_DELIVERY_PROVIDER == "resend":
+                email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
+            elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
+                email_values.update({
+                    "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
+                    "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
+                    "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
+                })
+            for setting_name, setting_value in email_values.items():
+                if not setting_value.strip():
+                    raise ValueError(
+                        f"{setting_name} is required in production"
+                    )
+
+            origins = {
+                origin.strip()
+                for origin
+                in self.CORS_ORIGINS.split(",")
+                if origin.strip()
+            }
+
+            if not origins:
                 raise ValueError(
-                    f"{setting_name} is required in production"
+                    "CORS_ORIGINS must be configured "
+                    "in production"
                 )
 
-        origins = {
-            origin.strip()
-            for origin
-            in self.CORS_ORIGINS.split(",")
-            if origin.strip()
-        }
-
-        if not origins:
-            raise ValueError(
-                "CORS_ORIGINS must be configured "
-                "in production"
+            unsafe_origins = (
+                "*",
+                "localhost",
+                "127.0.0.1",
+                "0.0.0.0",
+                "::1",
             )
 
-        unsafe_origins = (
-            "*",
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "::1",
-        )
+            for origin in origins:
+                lowered = origin.casefold()
 
-        for origin in origins:
-            lowered = origin.casefold()
-
-            if any(
-                unsafe in lowered
-                for unsafe in unsafe_origins
-            ):
-                raise ValueError(
-                    "Production CORS_ORIGINS "
-                    "cannot contain wildcard or "
-                    "localhost origins"
-                )
+                if any(
+                    unsafe in lowered
+                    for unsafe in unsafe_origins
+                ):
+                    raise ValueError(
+                        "Production CORS_ORIGINS "
+                        "cannot contain wildcard or "
+                        "localhost origins"
+                    )
 
         secret = self.SECRET_KEY.strip()
         lowered_secret = secret.casefold()
