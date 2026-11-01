@@ -68,14 +68,14 @@ def validate_voice_worker_environment(values: Mapping[str, str]) -> None:
         ):
             raise ValueError
         try:
-            if not ipaddress.ip_address(normalized).is_global:
-                raise ValueError
-        except ValueError as exc:
-            if "is_global" in str(exc):
-                raise
-            # Non-IP DNS host: the public FQDN must include a dot.
+            ip = ipaddress.ip_address(normalized)
+        except ValueError:
+            # Non-IP DNS host: require a public FQDN, not a single-label name.
             if "." not in normalized:
-                raise ValueError from exc
+                raise ValueError from None
+        else:
+            if not ip.is_global:
+                raise ValueError
     except (ValueError, TypeError):
         raise VoiceWorkerPreflightError(
             "LIVEKIT_URL must be a public wss endpoint with no path or secrets"
