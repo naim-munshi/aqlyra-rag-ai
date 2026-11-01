@@ -15,6 +15,14 @@ class LLMProviderRequestError(LLMError):
     """Raised when an external LLM request fails."""
 
 
+class LLMProviderRateLimitError(LLMProviderRequestError):
+    """Provider request was throttled (HTTP 429)."""
+
+
+class LLMProviderPayloadTooLargeError(LLMProviderRequestError):
+    """Provider rejected oversized input (HTTP 413)."""
+
+
 class LLMProviderResponseError(LLMError):
     """Raised when an LLM response is invalid."""
 
