@@ -15,6 +15,7 @@ from app.services.auto_web_research_service import (
     cited_web_answer,
 )
 from app.services.web_research_service import research_web
+from app.services.safe_calculation_service import exact_calculation_reply
 from app.services.smart_web_router import route_web_request
 from app.services.public_office_guard import (
     PublicFactGuardProvider,
@@ -1158,6 +1159,25 @@ def execute_chat_turn(
         )
 
     if conversation.mode == "normal":
+        if not document_ids:
+            # Direct arithmetic needs an exact bounded calculator, not
+            # model guessing or a public web request. This also serves
+            # the existing LiveKit voice interface automatically.
+            computed = exact_calculation_reply(cleaned)
+            if computed is not None:
+                return ChatExecutionResult(
+                    content=computed,
+                    mode="normal",
+                    provider_name="aqlyra-exact-calculation",
+                    model_name="bounded-decimal-ast-v1",
+                    response_id=None,
+                    citations=(),
+                    is_refusal=False,
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    evidence_tokens=None,
+                )
         if document_ids:
             return (
                 generate_normal_document_chat_reply(
