@@ -250,10 +250,33 @@ export function VoiceCallButton({
 
   useEffect(() => {
     const controller = new AbortController();
-    void refreshVoiceAvailability(controller.signal);
+    void fetch("/api/voice/status", {
+      cache: "no-store",
+      signal: controller.signal,
+    }).then(async response => {
+      if (response.status === 401) {
+        if (!controller.signal.aborted) setAvailability({
+          available: false,
+          detail: "Sign in to use voice calls.",
+          requiresAuth: true,
+        });
+        return;
+      }
+      if (!response.ok) throw new Error("Voice status unavailable");
+      const data = (await response.json()) as VoiceAvailability;
+      if (typeof data.available !== "boolean") {
+        throw new Error("Invalid voice status");
+      }
+      if (!controller.signal.aborted) setAvailability(data);
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setAvailability({
+          available: false,
+          detail: "Voice calling is temporarily unavailable. Please use text chat.",
+        });
+      }
+    });
     return () => controller.abort();
-    // Retry is initiated explicitly; avoid refetching on state updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
