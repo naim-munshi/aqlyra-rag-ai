@@ -173,6 +173,10 @@ class Settings(BaseSettings):
         "qwen/qwen3.8-27b"
     )
     HF_TOKEN: str = ""
+    # Match the already-deployed Render semantic worker, not a new model.
+    REMOTE_SEMANTIC_URL: str = ""
+    REMOTE_SEMANTIC_TOKEN: str = ""
+    REMOTE_SEMANTIC_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0, le=180)
 
     # Opt-in live web research. Never use deterministic providers as real search.
     # Public browser automation MVP; deliberately off by default.
@@ -334,11 +338,12 @@ class Settings(BaseSettings):
             "deterministic",
             "huggingface",
             "openai",
+            "remote_onnx",
         }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
                 "'deterministic', "
-                "'huggingface', or 'openai'"
+                "'huggingface', 'openai', or 'remote_onnx'"
             )
 
         return normalized
@@ -628,6 +633,13 @@ class Settings(BaseSettings):
                 "Personal memory chat requires a "
                 "semantic embedding provider"
             )
+
+        if (
+            self.EMBEDDING_PROVIDER == "remote_onnx"
+            and (not self.REMOTE_SEMANTIC_URL.strip()
+                 or not self.REMOTE_SEMANTIC_TOKEN.strip())
+        ):
+            raise ValueError("Remote semantic endpoint and token required")
 
         if (
             self.EMBEDDING_PROVIDER
