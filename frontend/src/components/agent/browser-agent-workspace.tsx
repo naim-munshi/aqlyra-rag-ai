@@ -46,7 +46,7 @@ function exportBrowserReport(report: Report) {
     ...report.visited.flatMap((source) => [
       source.citation + " [" + source.title + "](" + source.url + ")",
       "",
-      "> " + source.excerpt.slice(0, 650).replaceAll("\\n", " "),
+      "> " + source.excerpt.slice(0, 650).replace(/\s+/g, " "),
       "",
     ]),
     "",
