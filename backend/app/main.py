@@ -62,6 +62,22 @@ def start_knowledge_index_worker() -> None:
     logging.getLogger(__name__).info(
         "public_web_research_configuration=%s", public_web_research_status(),
     )
+    # Startup records *only* sanitized configuration state. A running
+    # LiveKit Worker cannot accept browser calls if Render lacks credentials.
+    from app.services.voice_session_service import (
+        voice_is_ready,
+        missing_voice_configuration_keys,
+    )
+    voice_configured = voice_is_ready()
+    logging.getLogger(__name__).info(
+        "voice_api_startup_ready=%s",
+        "true" if voice_configured else "false",
+    )
+    if not voice_configured:
+        logging.getLogger(__name__).warning(
+            "voice_api_startup_missing_keys=%s",
+            ",".join(missing_voice_configuration_keys()) or "other",
+        )
     if settings.KNOWLEDGE_BACKFILL_ON_STARTUP:
         # Bounded, owner-linked recovery of legacy 'uploaded' cloud docs.
         # Errors do not take down the chat backend.
