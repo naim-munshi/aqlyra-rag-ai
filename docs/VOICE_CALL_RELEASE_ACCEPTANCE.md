@@ -39,7 +39,9 @@
    Its runtime entrypoint is `python -m app.voice.worker start`.
 2. Privately configure the worker with same LiveKit project URL/API key/secret
    as backend, `SECRET_KEY`, an approved PostgreSQL `DATABASE_URL`, provider
-   `GROQ_API_KEY` for STT/generation, and working TTS model/voice capacity.
+   the LiveKit Inference STT/TTS models and speech capacity. The existing
+   Aqlyra brain uses its selected LLM/embedding provider credentials; Groq
+   is not required for LiveKit Inference speech.
    Provision required Redis and other app dependencies through private
    provider dashboards. Never paste or log secret values.
 3. Confirm the worker registers exactly the same `VOICE_AGENT_NAME`
@@ -76,7 +78,7 @@ migration or service creation is implied by this document.
 
 ## Voice worker startup preflight (2026-11-01)
 
-The existing `backend/Dockerfile.voice` now runs `python -m app.voice.preflight` before registering a LiveKit agent. It checks **presence only** of APP_ENV, SECRET_KEY, DATABASE_URL, REDIS_URL, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VOICE_AGENT_NAME, GROQ_API_KEY, VOICE_STT_MODEL, VOICE_TTS_MODEL and VOICE_TTS_VOICE, validates production environment, transport syntax and minimum secret length, and logs **no secret values**. This is not proof that the external providers are reachable or have working quotas.
+The existing `backend/Dockerfile.voice` now runs `python -m app.voice.preflight` before registering a LiveKit agent. It validates APP_ENV, SECRET_KEY, DATABASE_URL, REDIS_URL, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VOICE_AGENT_NAME, selected STT/session model providers and TTS model/voice. Provider credentials are required **only for selected providers** (Groq is optional); it validates production mode, transport syntax and minimum secret length, and logs **no secret values**. This is not proof that the external providers are reachable or have working quotas.
 
 For an isolated new Railway voice worker, use repository `naim-munshi/aqlyra-rag-ai`, build context/root directory `backend`, Dockerfile `Dockerfile.voice`, default Docker CMD (no HTTP port/public URL), continuous worker and private production-like staging variables (stored only in the provider secret dashboard). Use a separate LiveKit project and disposable test database for staging. **Do not commit the existing Railway staging patch** (56 old unrelated service/database changes) just to start the voice worker. A separately deployed, reviewed worker with approved billing and secrets is required before `VOICE_AGENT_READY=true` on the actual API.
 
@@ -96,10 +98,12 @@ verified email policy and `DEBUG=false`.
 Configure in the worker provider's secret UI, never in Git:
 `APP_ENV=production`, `DATABASE_URL`, `SECRET_KEY`, `REDIS_URL`,
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
-`VOICE_AGENT_NAME` (same as API), `GROQ_API_KEY`, `VOICE_STT_MODEL`,
-`VOICE_TTS_MODEL`, `VOICE_TTS_VOICE`, `RATE_LIMIT_ENABLED=true`,
-`RAG_GROUNDING_VERIFIER_ENABLED=true`, `LLM_PROVIDER=groq`,
-`LLM_MODEL` (an actual Groq-supported model), and a non-deterministic
+`VOICE_AGENT_NAME` (same as API), `VOICE_STT_PROVIDER=livekit`,
+`VOICE_STT_MODEL=deepgram/nova-3`, `VOICE_STT_LANGUAGE=multi`,
+`VOICE_SESSION_LLM_PROVIDER=livekit`, `VOICE_SESSION_LLM_MODEL=openai/gpt-oss-120b`,
+`VOICE_TTS_MODEL=cartesia/sonic-3`, `VOICE_TTS_VOICE`,
+`RATE_LIMIT_ENABLED=true`, `RAG_GROUNDING_VERIFIER_ENABLED=true`,
+`LLM_PROVIDER` plus its matching model/credential, and a non-deterministic
 `EMBEDDING_PROVIDER` with its corresponding credential (for example
 the Hugging Face `HF_TOKEN` or OpenAI `OPENAI_API_KEY`).
 
@@ -108,3 +112,23 @@ LiveKit worker registration, quotas or real audio. The connected Railway
 staging voice service still has zero deployments and missing provider
 variables. Leave API-side `VOICE_AGENT_READY=false` until worker
 registration and real speech E2E tests pass.
+
+
+## Hybrid Voice: LiveKit Speech and the existing Aqlyra AI Brain (2026-11-02)
+
+The speech path is LiveKit WebRTC -> LiveKit Inference Deepgram Nova-3
+multilingual transcription -> AqlyraVoiceAgent.llm_node -> existing
+execute_chat_turn() with RAG, citations, conversation scope and memory ->
+LiveKit Inference Cartesia Sonic 3 speech. No new chat brain is introduced.
+
+By default VOICE_STT_PROVIDER=livekit and VOICE_SESSION_LLM_PROVIDER=livekit.
+The session model fulfils LiveKit AgentSession's interface; all actual
+answers come from execute_chat_turn(). Direct Groq STT/session models are
+optional opt-ins and then require GROQ_API_KEY. If the Aqlyra brain itself
+uses LLM_PROVIDER=groq, it still needs the Groq key; use a configured
+LLM_PROVIDER=openai with OPENAI_API_KEY to run without Groq entirely.
+
+LiveKit Cloud quotas/billing and a running worker are still required.
+Language recognition and speech must be tested by real Bengali, Japanese
+and English speakers; service registration is not yet verified.
+Never set VOICE_AGENT_READY=true before mobile RTC owner acceptance.
