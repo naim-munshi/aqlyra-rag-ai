@@ -82,6 +82,38 @@ def validate_voice_worker_environment(values: Mapping[str, str]) -> None:
         raise VoiceWorkerPreflightError("GROQ_API_KEY required for selected provider")
     if values["EMBEDDING_PROVIDER"].strip().lower() == "deterministic":
         raise VoiceWorkerPreflightError("Real embeddings are required")
+    if values["EMBEDDING_PROVIDER"].strip().lower() == "remote_onnx":
+        required_remote = (
+            "REMOTE_SEMANTIC_URL", "REMOTE_SEMANTIC_TOKEN",
+            "EMBEDDING_MODEL", "EMBEDDING_DIMENSION",
+        )
+        absent = [key for key in required_remote if not values.get(key, "").strip()]
+        if absent:
+            raise VoiceWorkerPreflightError(
+                "Missing remote semantic configuration keys: " + ", ".join(absent)
+            )
+        if (values["EMBEDDING_MODEL"].strip()
+                != "bekko-static-multilingual-int8-mrl384-v1"
+                or values["EMBEDDING_DIMENSION"].strip() != "384"):
+            raise VoiceWorkerPreflightError(
+                "Remote semantic model identity/dimension must match production"
+            )
+        if len(values["REMOTE_SEMANTIC_TOKEN"].strip()) < 32:
+            raise VoiceWorkerPreflightError("REMOTE_SEMANTIC_TOKEN is too short")
+        try:
+            remote = urlsplit(values["REMOTE_SEMANTIC_URL"].strip())
+            if (remote.scheme != "https"
+                    or remote.hostname != "aqlyra-semantic-worker.onrender.com"
+                    or remote.port not in (None, 443)
+                    or remote.path not in ("", "/")
+                    or remote.username is not None
+                    or remote.password is not None
+                    or remote.query or remote.fragment):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise VoiceWorkerPreflightError(
+                "REMOTE_SEMANTIC_URL must identify the existing trusted HTTPS worker"
+            ) from None
     if (
         values["EMBEDDING_PROVIDER"].strip().lower() == "huggingface"
         and not values.get("HF_TOKEN", "").strip()
