@@ -23,6 +23,8 @@ Detailed, single-path setup: [VOICE_FREE_TIER_SETUP.md](VOICE_FREE_TIER_SETUP.md
 - English, বাংলা and 日本語: microphone transcripts preserve the actual spoken language. Do not inject voice-language hints into the user's stored question.
 - Stop speaking: "stop", "থামো", "止めて" should promptly interrupt **LiveKit** speech, not generate a reply. Browser Voice exposes a **Stop reply** button because iOS browser STT cannot reliably listen while synthesizing.
 - Browser fallback selects matching installed OS voices when available and offers a recognition-language selector. If the OS has no native-language voice, accent quality remains device-dependent.
+- LiveKit Nova-3 `multi` can optionally bias recognition toward Bengali/Japanese/English/Hindi using `VOICE_STT_LANGUAGE_HINTS=bn,ja,en,hi`; this is not a language lock. The final response script (including genuine English answers to Bengali questions) selects the TTS language. Romanized Bengali with multiple Banglish markers retains Bengali routing.
+- Accurate *native accents* still require provider-verified regional voice profiles and listening tests; correct language selection alone cannot guarantee natural speech.
 - LiveKit Sonic 3 supports Bangla and Japanese (unlike Sonic 3.5 for Bangla). Optional verified `VOICE_TTS_VOICE_BN`, `VOICE_TTS_VOICE_JA`, `VOICE_TTS_VOICE_HI` provider-specific voice IDs can improve accents; **do not invent IDs**, and an empty value preserves the existing voice.
 - Test sustained conversation, silence (no self-echo turns), interruption during long AI speech, repeated turns, code-switching, mute, hangup and restart on real devices.
 
