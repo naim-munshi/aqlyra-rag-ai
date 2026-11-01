@@ -22,6 +22,9 @@
 - Browser audio must fire speech synthesis `onstart` before the UI claims
   the agent is speaking; absent start or stalled playback recovers with
   a visible error and resumes listening. Full response text remains in chat.
+- On iPhone Safari when automatic browser speech is blocked, the call UI
+  offers **Tap to hear reply**. Replaying the latest response starts directly
+  from the user's button press and remains disabled when muted or hung up.
 - Logged-out HTTP 401 on the voice status check cannot trigger an
   unauthenticated microphone prompt, even when browser speech is supported.
 - Immediate microphone permission failure invalidates pending startup state.
