@@ -104,3 +104,46 @@ def test_openai_embeddings_need_own_provider_key():
     data["EMBEDDING_PROVIDER"] = "openai"
     with pytest.raises(VoiceWorkerPreflightError, match="OPENAI_API_KEY"):
         validate_voice_worker_environment(data)
+
+
+def remote_onnx_voice_env():
+    data = valid_env()
+    data.update({
+        "EMBEDDING_PROVIDER": "remote_onnx",
+        "EMBEDDING_MODEL": "bekko-static-multilingual-int8-mrl384-v1",
+        "EMBEDDING_DIMENSION": "384",
+        "REMOTE_SEMANTIC_URL": "https://aqlyra-semantic-worker.onrender.com",
+        "REMOTE_SEMANTIC_TOKEN": "synthetic-nonproduction-token-for-tests-12345",
+    })
+    data.pop("HF_TOKEN", None)
+    return data
+
+
+def test_voice_remote_semantic_production_compatible():
+    validate_voice_worker_environment(remote_onnx_voice_env())
+
+
+@pytest.mark.parametrize("key", [
+    "REMOTE_SEMANTIC_URL", "REMOTE_SEMANTIC_TOKEN",
+    "EMBEDDING_MODEL", "EMBEDDING_DIMENSION",
+])
+def test_remote_semantic_missing_keys_fail_closed(key):
+    data = remote_onnx_voice_env()
+    data[key] = ""
+    with pytest.raises(VoiceWorkerPreflightError, match=key):
+        validate_voice_worker_environment(data)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("EMBEDDING_MODEL", "deterministic-sha256-v1"),
+    ("EMBEDDING_DIMENSION", "768"),
+    ("REMOTE_SEMANTIC_URL", "http://aqlyra-semantic-worker.onrender.com"),
+    ("REMOTE_SEMANTIC_URL", "https://wrong-worker.onrender.com"),
+    ("REMOTE_SEMANTIC_URL", "https://aqlyra-semantic-worker.onrender.com@evil.com"),
+    ("REMOTE_SEMANTIC_TOKEN", "short"),
+])
+def test_remote_semantic_voice_rejects_untrusted_runtime(key, value):
+    data = remote_onnx_voice_env()
+    data[key] = value
+    with pytest.raises(VoiceWorkerPreflightError):
+        validate_voice_worker_environment(data)
