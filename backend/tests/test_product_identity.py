@@ -246,3 +246,13 @@ def test_self_description_never_hijacks_founder_or_other_subject():
     assert resolve_product_identity_answer("Tell me about your recommendation") is None
     assert resolve_product_identity_answer("What can you do about climate change?") is None
     assert resolve_product_identity_answer("Tell me about your CEO") is not None
+
+
+def test_production_self_intro_is_not_creator_metadata():
+    for question in ("Tell me about you!", "Introduce yourself", "What can you do?"):
+        answer = resolve_product_identity_answer(question)
+        assert answer is not None
+        assert "AI assistant" in answer
+        assert "Md Naim" not in answer
+    # Explicitly asking about the founder must remain supported.
+    assert "Md Naim" in resolve_product_identity_answer("Who founded Aqlyra?")
