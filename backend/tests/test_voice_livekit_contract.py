@@ -19,8 +19,13 @@ def _configure(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://voice.test.invalid")
     monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "voice-test-key")
     monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", "voice-test-secret-do-not-use")
-    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-only-groq-voice-key")
-    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "whisper-large-v3")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "VOICE_STT_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "deepgram/nova-3")
+    monkeypatch.setattr(settings, "VOICE_STT_LANGUAGE", "multi")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setattr(settings, "VOICE_TTS_MODEL", "cartesia/sonic-3")
     monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
@@ -37,7 +42,7 @@ def _jwt_claims(token: str) -> dict:
 @pytest.mark.parametrize(
     "missing", [
         "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
-        "GROQ_API_KEY", "VOICE_STT_MODEL", "VOICE_TTS_MODEL",
+        "VOICE_STT_MODEL", "VOICE_STT_LANGUAGE", "VOICE_TTS_MODEL",
         "VOICE_TTS_VOICE",
     ]
 )
@@ -174,3 +179,12 @@ def test_anonymous_browser_cannot_request_voice_room(client):
     )
     assert response.status_code == 401
     assert "participant_token" not in response.text
+
+@pytest.mark.parametrize("provider_setting", [
+    "VOICE_STT_PROVIDER", "VOICE_SESSION_LLM_PROVIDER", "LLM_PROVIDER",
+])
+def test_explicit_groq_provider_still_requires_key(monkeypatch, provider_setting):
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, provider_setting, "groq")
+    with pytest.raises(voice.VoiceConfigurationError, match="not configured"):
+        voice._require_voice_configuration()
