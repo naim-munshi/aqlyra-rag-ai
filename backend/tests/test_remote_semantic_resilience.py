@@ -135,3 +135,11 @@ def test_circuit_registry_reuses_process_state_without_plaintext_secrets():
     assert first is not different
     from app.embeddings.remote_semantic_provider import _BREAKER_REGISTRY
     assert token not in str(tuple(_BREAKER_REGISTRY.keys()))
+
+
+def test_production_embedding_http_pool_is_shared_without_sharing_credentials():
+    first = RemoteSemanticEmbeddingProvider(base_url=URL, api_token=TOKEN)
+    second = RemoteSemanticEmbeddingProvider(base_url=URL, api_token=TOKEN + "z")
+    assert first._client is second._client
+    assert first._circuit is not second._circuit
+    assert first._client.follow_redirects is False
