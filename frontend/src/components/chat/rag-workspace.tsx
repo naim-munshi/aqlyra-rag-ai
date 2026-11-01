@@ -2446,11 +2446,6 @@ export function RAGWorkspace({
                   : "Upload a document or ask a grounded question across your processed knowledge sources."}
               </p>
 
-              <div className="mt-7 w-full">
-                {renderComposer(
-                  true,
-                )}
-              </div>
             </div>
           </div>
         ) : (
@@ -2657,15 +2652,20 @@ export function RAGWorkspace({
               </div>
             </div>
 
-            <div className="min-w-0 shrink-0 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5">
-              <div className="mx-auto max-w-[900px]">
-                {renderComposer(
-                  false,
-                )}
-              </div>
-            </div>
           </>
         )}
+
+        {/* Keep the LiveKit component mounted while voice history turns
+            transition from the empty welcome screen to the chat stream.
+            Moving the same composer between conditional branches used to
+            unmount VoiceCallButton, whose cleanup disconnects the RTC room. */}
+        <div className="min-w-0 shrink-0 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5">
+          <div className="mx-auto max-w-[900px]">
+            {renderComposer(
+              !hasConversation,
+            )}
+          </div>
+        </div>
       </section>
 
       {documentDrawerOpen && (
