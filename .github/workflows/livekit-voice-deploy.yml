@@ -1,71 +1,180 @@
-name: Deploy Aqlyra voice to LiveKit Cloud
+name: Aqlyra Voice - verify and controlled LiveKit Cloud deploy
 
 on:
+  push:
+    branches:
+      - fix/voice-call-reliability-20261101
+    paths:
+      - .github/workflows/livekit-voice-deploy.yml
+      - backend/Dockerfile.voice
+      - backend/requirements.txt
+      - backend/requirements-voice.txt
+      - backend/app/voice/**
+      - backend/scripts/prepare_livekit_context.py
+      - backend/tests/test_voice_worker_preflight.py
+      - backend/tests/test_voice_cloud_packaging.py
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Verify only, create a new Cloud agent, or deploy an existing agent
+        required: true
+        type: choice
+        default: verify
+        options:
+          - verify
+          - create
+          - deploy
+      region:
+        description: Required on create; select a region supported by the LiveKit project
+        required: false
+        type: string
+      agent_id:
+        description: Required on deploy; existing LiveKit Cloud agent ID
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: aqlyra-livekit-voice-deploy
+  group: aqlyra-livekit-voice-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  verify:
     if: github.ref_name == 'fix/voice-call-reliability-20261101'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check voice sources and syntax
+        run: |
+          test -f Dockerfile.voice
+          test -f app/voice/worker.py
+          test -f app/voice/preflight.py
+          test -f requirements-voice.txt
+          python -m compileall -q app/voice scripts/prepare_livekit_context.py
+      - name: Run offline voice preflight and packaging tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_voice_worker_preflight.py tests/test_voice_cloud_packaging.py
+      - name: Verify isolated LiveKit build context
+        run: |
+          python scripts/prepare_livekit_context.py "$RUNNER_TEMP/aqlyra-livekit-voice"
+          test -s "$RUNNER_TEMP/aqlyra-livekit-voice/Dockerfile"
+          test -f "$RUNNER_TEMP/aqlyra-livekit-voice/app/voice/worker.py"
+          test ! -e "$RUNNER_TEMP/aqlyra-livekit-voice/Dockerfile.voice"
+          test ! -e "$RUNNER_TEMP/aqlyra-livekit-voice/.env"
+
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref_name == 'fix/voice-call-reliability-20261101' &&
+      inputs.operation != 'verify'
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: livekit-voice-staging
     defaults:
       run:
         working-directory: backend
+    env:
+      APP_ENV: production
+      AQLYRA_PROCESS_ROLE: voice_worker
+      RATE_LIMIT_ENABLED: 'true'
+      RAG_GROUNDING_VERIFIER_ENABLED: 'true'
+      EMAIL_VERIFICATION_REQUIRED: 'true'
+      LLM_PROVIDER: groq
+      LLM_MODEL: openai/gpt-oss-20b
+      EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER }}
+      EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+      EMBEDDING_DIMENSION: ${{ vars.EMBEDDING_DIMENSION }}
+      LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+      LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+      LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      VOICE_AGENT_NAME: aqlyra-voice
+      VOICE_STT_PROVIDER: livekit
+      VOICE_STT_MODEL: deepgram/nova-3
+      VOICE_STT_LANGUAGE: multi
+      VOICE_SESSION_LLM_PROVIDER: livekit
+      VOICE_SESSION_LLM_MODEL: openai/gpt-oss-120b
+      VOICE_TTS_MODEL: cartesia/sonic-3
+      VOICE_TTS_VOICE: ${{ vars.VOICE_TTS_VOICE }}
+      VOICE_TTS_DEFAULT_LANGUAGE: en
     steps:
       - uses: actions/checkout@v4
-      - name: Verify expected voice sources
-        run: |
-          test -f Dockerfile.voice
-          test -f livekit.yaml
-          test -f app/voice/preflight.py
-          test -f app/voice/worker.py
-          test -f requirements-voice.txt
-      - name: Validate deployment credentials and configuration
+      - name: Check operation and backend dependencies without printing secrets
         env:
-          APP_ENV: production
-          AQLYRA_PROCESS_ROLE: voice_worker
-          RATE_LIMIT_ENABLED: 'true'
-          RAG_GROUNDING_VERIFIER_ENABLED: 'true'
-          LLM_PROVIDER: groq
-          LLM_MODEL: openai/gpt-oss-20b
-          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER }}
-          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
-          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
-          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          VOICE_AGENT_NAME: aqlyra-voice
-          VOICE_STT_PROVIDER: livekit
-          VOICE_STT_MODEL: deepgram/nova-3
-          VOICE_STT_LANGUAGE: multi
-          VOICE_SESSION_LLM_PROVIDER: livekit
-          VOICE_SESSION_LLM_MODEL: openai/gpt-oss-120b
-          VOICE_TTS_MODEL: cartesia/sonic-3
-          VOICE_TTS_VOICE: ${{ vars.VOICE_TTS_VOICE }}
+          DEPLOY_OPERATION: ${{ inputs.operation }}
+          DEPLOY_REGION: ${{ inputs.region }}
+          DEPLOY_AGENT_ID: ${{ inputs.agent_id }}
         run: |
+          case "$DEPLOY_OPERATION" in
+            create) test -n "$DEPLOY_REGION" || { echo 'LiveKit agent region is required'; exit 1; } ;;
+            deploy) test -n "$DEPLOY_AGENT_ID" || { echo 'Existing LiveKit agent ID is required'; exit 1; } ;;
+            *) echo 'Unsupported deployment operation'; exit 1 ;;
+          esac
+          test -n "$EMBEDDING_MODEL" || { echo 'EMBEDDING_MODEL must match the existing API'; exit 1; }
+          test -n "$EMBEDDING_DIMENSION" || { echo 'EMBEDDING_DIMENSION must match the existing API'; exit 1; }
           python -m app.voice.preflight
+      - name: Prepare dedicated voice container context
+        run: |
+          python scripts/prepare_livekit_context.py "$RUNNER_TEMP/aqlyra-livekit-voice"
       - name: Install LiveKit CLI
         run: |
           curl -fsSL https://get.livekit.io/cli | bash
           lk --version
-      - name: Deploy existing voice agent
+      - name: Provision Cloud runtime secrets and deploy
         env:
-          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
-          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
-          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          DEPLOY_OPERATION: ${{ inputs.operation }}
+          DEPLOY_REGION: ${{ inputs.region }}
+          DEPLOY_AGENT_ID: ${{ inputs.agent_id }}
         run: |
-          lk agent create --help
-          echo 'Preflight complete. Agent deploy requires runtime secrets to be provisioned in LiveKit Cloud.'
-          exit 1
+          set -eu
+          umask 077
+          SECRETS_FILE="$(mktemp "$RUNNER_TEMP/aqlyra-voice-secrets.XXXXXX")"
+          trap 'rm -f "$SECRETS_FILE"' EXIT
+          export SECRETS_FILE
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          # LiveKit Cloud injects LIVEKIT_URL/API_KEY/API_SECRET at runtime.
+          keys = (
+              'APP_ENV', 'AQLYRA_PROCESS_ROLE', 'RATE_LIMIT_ENABLED',
+              'RAG_GROUNDING_VERIFIER_ENABLED', 'EMAIL_VERIFICATION_REQUIRED',
+              'LLM_PROVIDER', 'LLM_MODEL', 'EMBEDDING_PROVIDER',
+              'EMBEDDING_MODEL', 'EMBEDDING_DIMENSION', 'DATABASE_URL',
+              'REDIS_URL', 'SECRET_KEY', 'GROQ_API_KEY', 'HF_TOKEN',
+              'OPENAI_API_KEY', 'VOICE_AGENT_NAME', 'VOICE_STT_PROVIDER',
+              'VOICE_STT_MODEL', 'VOICE_STT_LANGUAGE',
+              'VOICE_SESSION_LLM_PROVIDER', 'VOICE_SESSION_LLM_MODEL',
+              'VOICE_TTS_MODEL', 'VOICE_TTS_VOICE',
+              'VOICE_TTS_DEFAULT_LANGUAGE',
+          )
+          lines = []
+          for key in keys:
+              value = os.environ.get(key, '')
+              if not value:
+                  continue
+              if '\n' in value or '\r' in value:
+                  raise SystemExit(f'{key} cannot contain newlines in the LiveKit secrets file')
+              lines.append(f'{key}={value}')
+          Path(os.environ['SECRETS_FILE']).write_text('\n'.join(lines) + '\n')
+          PY
+          cd "$RUNNER_TEMP/aqlyra-livekit-voice"
+          if [ "$DEPLOY_OPERATION" = create ]; then
+            lk agent create --region "$DEPLOY_REGION" --secrets-file "$SECRETS_FILE"
+          else
+            lk agent deploy --id "$DEPLOY_AGENT_ID" --secrets-file "$SECRETS_FILE"
+          fi
+          lk agent list
