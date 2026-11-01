@@ -36,6 +36,12 @@ type ApiError = {
   detail?: unknown;
 };
 
+// A LiveKit room JWT is a short-lived bearer capability, never cacheable.
+const PRIVATE_VOICE_HEADERS = {
+  "Cache-Control": "private, no-store",
+  Pragma: "no-cache",
+};
+
 
 export async function POST(
   request: Request,
@@ -45,7 +51,7 @@ export async function POST(
   if (!hasTrustedRequestOrigin(request)) {
     return NextResponse.json(
       { detail: "Untrusted request origin" },
-      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+      { status: 403, headers: PRIVATE_VOICE_HEADERS },
     );
   }
 
@@ -60,6 +66,7 @@ export async function POST(
       },
       {
         status: 401,
+        headers: PRIVATE_VOICE_HEADERS,
       },
     );
   }
@@ -72,7 +79,7 @@ export async function POST(
         VoiceSessionRequest;
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
-      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413, headers: PRIVATE_VOICE_HEADERS });
     }
     return NextResponse.json(
       {
@@ -81,6 +88,7 @@ export async function POST(
       },
       {
         status: 400,
+        headers: PRIVATE_VOICE_HEADERS,
       },
     );
   }
@@ -96,6 +104,7 @@ export async function POST(
       },
       {
         status: 400,
+        headers: PRIVATE_VOICE_HEADERS,
       },
     );
   }
@@ -168,10 +177,10 @@ export async function POST(
       },
       {
         status: response.status,
-        headers:
-          forwardedBackendHeaders(
-            response,
-          ),
+        headers: {
+          ...forwardedBackendHeaders(response),
+          ...PRIVATE_VOICE_HEADERS,
+        },
       },
     );
   } catch (error) {
@@ -189,6 +198,7 @@ export async function POST(
       },
       {
         status: 502,
+        headers: PRIVATE_VOICE_HEADERS,
       },
     );
   }
