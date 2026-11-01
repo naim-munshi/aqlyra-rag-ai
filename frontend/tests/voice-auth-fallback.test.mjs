@@ -30,3 +30,12 @@ test("LiveKit direct-gesture capture and timeout fail-closed remain intact", () 
   assert.match(voice, /room\.startAudio\(\)/);
   assert.match(voice, /The AI voice agent did not join/);
 });
+
+test("a missing LiveKit worker does not trap users in endless real-time retries", () => {
+  assert.match(voice, /preferBrowserSpeechRef = useRef\(false\)/);
+  assert.match(voice, /preferBrowserSpeechRef\.current = hasBrowserFallback/);
+  assert.match(voice, /Tap the microphone again to use Browser Voice/);
+  assert.match(voice, /preferBrowserSpeechRef\.current && browserSpeechIsSupported\(\)/);
+  assert.match(voice, /&& !availability\?\.requiresAuth/);
+  assert.match(voice, /void startBrowserSpeech\(\)/);
+});
