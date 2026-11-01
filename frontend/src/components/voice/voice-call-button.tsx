@@ -48,6 +48,7 @@ type VoiceApiError = {
 type VoiceAvailability = {
   available: boolean;
   detail: string;
+  requiresAuth?: boolean;
 };
 
 type VoiceCallButtonProps = {
@@ -220,6 +221,14 @@ export function VoiceCallButton({
         cache: "no-store",
         signal,
       });
+      if (response.status === 401) {
+        if (!signal?.aborted) setAvailability({
+          available: false,
+          detail: "Sign in to use voice calls.",
+          requiresAuth: true,
+        });
+        return;
+      }
       if (!response.ok) throw new Error("Voice status unavailable");
       const data = (await response.json()) as VoiceAvailability;
       if (typeof data.available !== "boolean") {
@@ -241,25 +250,10 @@ export function VoiceCallButton({
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/voice/status", {
-      cache: "no-store",
-      signal: controller.signal,
-    }).then(async response => {
-      if (!response.ok) throw new Error("Voice status unavailable");
-      const data = (await response.json()) as VoiceAvailability;
-      if (typeof data.available !== "boolean") {
-        throw new Error("Invalid voice status");
-      }
-      if (!controller.signal.aborted) setAvailability(data);
-    }).catch(() => {
-      if (!controller.signal.aborted) {
-        setAvailability({
-          available: false,
-          detail: "Voice calling is temporarily unavailable. Please use text chat.",
-        });
-      }
-    });
+    void refreshVoiceAvailability(controller.signal);
     return () => controller.abort();
+    // Retry is initiated explicitly; avoid refetching on state updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -400,10 +394,13 @@ export function VoiceCallButton({
           onError?.(message);
         },
         onStopped: () => {
+          // Recognition may fail immediately, before its controller resolves.
+          if (callAttemptRef.current === attempt) callAttemptRef.current += 1;
           browserVoiceRef.current = null;
           setBrowserMode(false);
           setActive(false);
           setStarting(false);
+          setMuted(false);
           startingRef.current = false;
           setAgentState("idle");
         },
@@ -441,6 +438,12 @@ export function VoiceCallButton({
     }
 
     if (!availability?.available) {
+      // A 401 must never trigger a microphone prompt or unauthenticated chat.
+      if (availability?.requiresAuth) {
+        setError(availability.detail);
+        onError?.(availability.detail);
+        return;
+      }
       if (availability?.available === false && browserSpeechIsSupported()) {
         // Start public browser speech mode only from the explicit user click.
         void startBrowserSpeech();
@@ -867,7 +870,7 @@ export function VoiceCallButton({
           type="button"
           disabled={disabled}
           aria-label="Start voice conversation"
-          title={availability?.available === false ? "Voice service unavailable" : "Start voice conversation"}
+          title={availability?.requiresAuth ? "Sign in to use voice calls" : availability?.available === false && browserSpeechIsSupported() ? "Start browser voice conversation" : availability?.available === false ? "Voice service unavailable" : "Start voice conversation"}
           onClick={() => {
             void startCall();
           }}
