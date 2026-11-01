@@ -27,3 +27,15 @@ def test_voice_model_and_language_remain_configurable():
     assert "VOICE_STT_LANGUAGE" in fields
     assert "VOICE_SESSION_LLM_PROVIDER" in fields
     assert "VOICE_SESSION_LLM_MODEL" in fields
+
+
+def test_optional_native_tts_voices_keep_current_voice_as_fallback():
+    # Product can select verified provider-specific voice IDs later.
+    # Until configured, the current voice stays unchanged.
+    fields = Settings.model_fields
+    for name in ("VOICE_TTS_VOICE_BN", "VOICE_TTS_VOICE_JA", "VOICE_TTS_VOICE_HI"):
+        assert name in fields
+        assert fields[name].default == ""
+    worker = (Path(__file__).parents[1] / "app" / "voice" / "worker.py").read_text()
+    assert "native_voice or settings.VOICE_TTS_VOICE" in worker
+    assert "language=language," in worker
