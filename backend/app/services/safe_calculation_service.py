@@ -21,23 +21,23 @@ _SPOKEN_NUMBERS = {
     "eighteen": "18", "nineteen": "19", "twenty": "20",
 }
 _OPERATORS = [
-    (r"\\bdivided by\\b|\\bover\\b|ভাগ|わる|割る", "/"),
-    (r"\\bmultiplied by\\b|\\btimes\\b|গুণ|かける|掛ける", "*"),
-    (r"\\bplus\\b|যোগ|たす|足す", "+"),
-    (r"\\bminus\\b|বিয়োগ|বিয়োগ|ひく|引く", "-"),
+    (r"\bdivided by\b|\bover\b|ভাগ|わる|割る", "/"),
+    (r"\bmultiplied by\b|\btimes\b|গুণ|かける|掛ける", "*"),
+    (r"\bplus\b|যোগ|たす|足す", "+"),
+    (r"\bminus\b|বিয়োগ|বিয়োগ|ひく|引く", "-"),
 ]
 _PREFIX = re.compile(
     r"^(?:what(?:'s| is)|calculate|compute|how much is|"
     r"please calculate|work out|please work out|"
-    r"কত হবে|হিসাব করো|কত|計算して|いくらですか)\\s*",
+    r"কত হবে|হিসাব করো|কত|計算して|いくらですか)\s*",
     re.IGNORECASE,
 )
 _SUFFIX = re.compile(
-    r"\\s*(?:equals?|equal to|কত|কত হবে|"
-    r"হিসাব করো|はいくつ|は何|ですか|は|?)\\s*$",
+    r"\s*(?:equals?|equal to|কত|কত হবে|"
+    r"হিসাব করো|はいくつ|は何|ですか|は)\s*$",
     re.IGNORECASE,
 )
-_SAFE_CHARACTERS = re.compile(r"[0-9.+\\-*/()% \\t]+\\Z")
+_SAFE_CHARACTERS = re.compile(r"[0-9.+\\-*/()% \t]+\Z")
 _LIMIT = Decimal("1000000000000")
 
 
@@ -96,15 +96,15 @@ def exact_calculation_reply(message: str) -> str | None:
     for pattern, operator in _OPERATORS:
         text = re.sub(pattern, f" {operator} ", text, flags=re.IGNORECASE)
     for word, numeral in _SPOKEN_NUMBERS.items():
-        text = re.sub(rf"\\b{word}\\b", numeral, text)
+        text = re.sub(rf"\b{word}\b", numeral, text)
     text = text.replace("×", "*").replace("÷", "/").replace("−", "-")
     # Many speech transcripts say "2 to the power of 3".
-    text = re.sub(r"\\bto the power of\\b", " ** ", text)
+    text = re.sub(r"\bto the power of\b", " ** ", text)
     if not _SAFE_CHARACTERS.fullmatch(text):
         return None
-    if not re.search(r"[+*/%\\-]", text) or not re.search(r"\\d", text):
+    if not re.search(r"[+*/%\\-]", text) or not re.search(r"\d", text):
         return None
-    if len(text) > 100 or re.search(r"\\*{3,}|/{2,}", text):
+    if len(text) > 100 or re.search(r"\*{3,}|/{2,}", text):
         return None
     try:
         with localcontext() as ctx:
@@ -115,8 +115,8 @@ def exact_calculation_reply(message: str) -> str | None:
     number = format(value.normalize(), "f")
     if len(number) > 45:
         return None
-    if any("\\u0980" <= ch <= "\\u09ff" for ch in original):
+    if any("\u0980" <= ch <= "\u09ff" for ch in original):
         return f"উত্তর: {number}।"
-    if any("\\u3040" <= ch <= "\\u30ff" or "\\u3400" <= ch <= "\\u9fff" for ch in original):
+    if any("\u3040" <= ch <= "\u30ff" or "\u3400" <= ch <= "\u9fff" for ch in original):
         return f"答えは{number}です。"
     return f"The answer is {number}."
