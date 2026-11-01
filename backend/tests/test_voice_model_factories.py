@@ -57,3 +57,32 @@ def test_unknown_provider_rejected(field):
             build_voice_stt(prompt="", cfg=cfg)
         else:
             build_session_llm(cfg=cfg)
+
+
+def test_deepgram_multilingual_hints_bias_bengali_and_japanese_not_lock_language():
+    cfg = config(VOICE_STT_LANGUAGE_HINTS="bn,ja,en,hi")
+    actual = build_voice_stt(
+        prompt="Preserve native script", cfg=cfg, inference_factory=lambda **x: x
+    )
+    assert actual == {
+        "model": "deepgram/nova-3",
+        "language": "multi",
+        "extra_kwargs": {"language_hint": ["bn", "ja", "en", "hi"]},
+    }
+
+
+@pytest.mark.parametrize("hints", [
+    "invalid", "bn,bn", "bn,ja,en,hi,ar,zh,fr", "bn,,ja",
+])
+def test_deepgram_hints_fail_closed_on_invalid_values(hints):
+    cfg = config(VOICE_STT_LANGUAGE_HINTS=hints)
+    with pytest.raises(ValueError, match="VOICE_STT_LANGUAGE_HINTS"):
+        build_voice_stt(prompt="", cfg=cfg, inference_factory=lambda **x: x)
+
+
+def test_language_hints_do_not_leak_into_other_stt_models():
+    cfg = config(VOICE_STT_MODEL="assemblyai/universal-streaming", VOICE_STT_LANGUAGE_HINTS="bn")
+    actual = build_voice_stt(prompt="", cfg=cfg, inference_factory=lambda **x: x)
+    assert actual == {
+        "model": "assemblyai/universal-streaming", "language": "multi",
+    }
