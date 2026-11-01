@@ -168,6 +168,8 @@ export function VoiceCallButton({
     useRef<Room | null>(null);
   const browserVoiceRef = useRef<BrowserVoiceController | null>(null);
   const [browserMode, setBrowserMode] = useState(false);
+  const [speechLocale, setSpeechLocale] = useState("auto");
+  const remoteAudioSuppressedRef = useRef(false);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
   // Avoid repeatedly sending the user to a LiveKit worker that never joined.
@@ -339,7 +341,34 @@ export function VoiceCallButton({
     microphoneTrackRef.current = null;
   }
 
+  function restoreAgentAudio() {
+    if (!remoteAudioSuppressedRef.current) return;
+    remoteAudioSuppressedRef.current = false;
+    audioContainerRef.current
+      ?.querySelectorAll("audio")
+      .forEach((element) => { element.muted = false; });
+  }
+
+  // The button cuts speaker output immediately. LiveKit also supports
+  // speech barge-in on the worker; client output muting is its fallback.
+  function stopAgentReply() {
+    if (browserVoiceRef.current) {
+      if (browserVoiceRef.current.interruptSpeech()) {
+        setNeedsAudioUnlock(false);
+        setAgentState("listening");
+      }
+      return;
+    }
+    if (!roomRef.current) return;
+    remoteAudioSuppressedRef.current = true;
+    audioContainerRef.current
+      ?.querySelectorAll("audio")
+      .forEach((element) => { element.muted = true; });
+    setAgentState("listening");
+  }
+
   function clearAudioElements() {
+    remoteAudioSuppressedRef.current = false;
     const container =
       audioContainerRef.current;
 
@@ -410,6 +439,7 @@ export function VoiceCallButton({
         mode,
         conversationId,
         documentIds,
+        speechLocale,
         onConversationStarted,
         onUserTranscript: (text, isFinal) => {
           setLiveUserText(text);
@@ -662,6 +692,7 @@ export function VoiceCallButton({
             track.attach();
 
           element.autoplay = true;
+          element.muted = remoteAudioSuppressedRef.current;
 
           audioContainerRef
             .current
@@ -728,6 +759,9 @@ export function VoiceCallButton({
             );
 
           if (state) {
+            if (state === "listening" || state === "thinking") {
+              restoreAgentAudio();
+            }
             setAgentState(state);
           }
         },
@@ -1049,6 +1083,28 @@ export function VoiceCallButton({
             ) : null}
           </div>
 
+          {browserMode && (
+            <label className="mt-3 flex w-full items-center justify-between gap-2 text-[11px] text-[var(--aq-muted)]">
+              Recognition language
+              <select
+                aria-label="Voice recognition language"
+                value={speechLocale}
+                onChange={(event) => {
+                  const nextLocale = event.target.value;
+                  setSpeechLocale(nextLocale);
+                  browserVoiceRef.current?.setSpeechLocale(nextLocale);
+                }}
+                className="min-h-10 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-2 text-xs text-[var(--aq-text)]"
+              >
+                <option value="auto">Device / Auto</option>
+                <option value="bn-BD">বাংলা</option>
+                <option value="ja-JP">日本語</option>
+                <option value="en-US">English</option>
+                <option value="hi-IN">हिन्दी</option>
+              </select>
+            </label>
+          )}
+
           {error ? (
             <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
               {error}
@@ -1066,6 +1122,16 @@ export function VoiceCallButton({
           )}
 
           <div className="mt-4 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={starting || agentState !== "speaking"}
+              aria-label="Stop speaking"
+              title="Stop the current voice reply"
+              onClick={stopAgentReply}
+              className="min-h-11 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-xs font-semibold text-[var(--aq-text)] disabled:opacity-40"
+            >
+              Stop reply
+            </button>
             <button
               type="button"
               disabled={starting}
