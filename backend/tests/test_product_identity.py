@@ -90,7 +90,9 @@ def test_self_identity_does_not_leak_creator() -> None:
     )
 
     assert answer == (
-        "I'm Aqlyra, an AI assistant."
+        "I'm Aqlyra, an AI assistant. "
+        "I help answer questions, explain topics, "
+        "and work with documents you share."
     )
 
     assert "Md Naim" not in answer
@@ -207,3 +209,40 @@ def test_identity_provider_stream_contract() -> None:
         events[1].generation.text
         == "Aqlyra identity answer."
     )
+
+
+def test_self_description_matches_question_and_does_not_promote_founder():
+    questions = (
+        "Tell me about you",
+        "Tell me about yourself",
+        "Tell me about yourself, please!",
+        "Introduce yourself",
+        "What can you do?",
+        "How can you help me?",
+    )
+    for question in questions:
+        answer = resolve_product_identity_answer(question)
+        assert answer is not None, question
+        assert answer.startswith("I'm Aqlyra")
+        assert "answer questions" in answer
+        assert "Md Naim" not in answer
+        assert "founder" not in answer.casefold()
+
+
+def test_short_name_questions_avoid_unrequested_capability_blurb():
+    assert resolve_product_identity_answer("What is your name?") == "I'm Aqlyra."
+    assert resolve_product_identity_answer("Tomar nam ki?") == "আমার নাম Aqlyra।"
+
+
+def test_bengali_self_description_is_concise_and_not_about_creator():
+    answer = resolve_product_identity_answer("তোমার সম্পর্কে বলো")
+    assert answer is not None
+    assert "AI সহকারী" in answer
+    assert "Md Naim" not in answer
+
+
+def test_self_description_never_hijacks_founder_or_other_subject():
+    assert resolve_product_identity_answer("Tell me about your founder") is None
+    assert resolve_product_identity_answer("Tell me about your recommendation") is None
+    assert resolve_product_identity_answer("What can you do about climate change?") is None
+    assert resolve_product_identity_answer("Tell me about your CEO") is not None
