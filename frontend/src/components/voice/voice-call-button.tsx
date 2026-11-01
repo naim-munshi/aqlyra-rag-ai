@@ -397,6 +397,7 @@ export function VoiceCallButton({
     setLiveUserText("");
     setLiveAgentText("");
     setAgentState("connecting");
+    setNeedsAudioUnlock(false);
     try {
       const controller = await startBrowserVoiceMode({
         mode,
@@ -412,6 +413,8 @@ export function VoiceCallButton({
           onAgentTranscript?.(text, isFinal);
         },
         onState: setAgentState,
+        onAudioBlocked: () => setNeedsAudioUnlock(true),
+        onAudioStarted: () => setNeedsAudioUnlock(false),
         onError: (message) => {
           setError(message);
           onError?.(message);
@@ -424,6 +427,7 @@ export function VoiceCallButton({
           setActive(false);
           setStarting(false);
           setMuted(false);
+          setNeedsAudioUnlock(false);
           startingRef.current = false;
           setAgentState("idle");
         },
@@ -815,6 +819,14 @@ export function VoiceCallButton({
 
 
   async function enableAudio() {
+    if (browserVoiceRef.current) {
+      // Direct click invokes speechSynthesis.speak synchronously on Safari.
+      if (browserVoiceRef.current.retryAudio()) {
+        setError("");
+        setNeedsAudioUnlock(false);
+      }
+      return;
+    }
     const room = roomRef.current;
     if (!room) return;
     try {
@@ -1032,7 +1044,7 @@ export function VoiceCallButton({
               onClick={() => { void enableAudio(); }}
               className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
             >
-              Enable sound
+              {browserMode ? "Tap to hear reply" : "Enable sound"}
             </button>
           )}
 
