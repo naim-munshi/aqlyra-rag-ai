@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import {
   backendUrl,
@@ -111,6 +112,14 @@ export async function GET() {
 export async function POST(
   request: Request,
 ) {
+  // Browser Voice uses this endpoint: reject cross-site cookie-authenticated writes.
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const accessToken =
     await getAccessToken();
 
