@@ -26,12 +26,6 @@ import {
 import type {
   ConversationMode,
 } from "@/types/conversation";
-import {
-  browserSpeechIsSupported,
-  startBrowserVoiceMode,
-  type BrowserVoiceController,
-} from "@/components/voice/browser-voice-mode";
-
 
 type VoiceSessionResponse = {
   server_url: string;
@@ -166,15 +160,8 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
-  const browserVoiceRef = useRef<BrowserVoiceController | null>(null);
-  const [browserMode, setBrowserMode] = useState(false);
-  const [speechLocale, setSpeechLocale] = useState("auto");
-  const remoteAudioSuppressedRef = useRef(false);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
-  // Avoid repeatedly sending the user to a LiveKit worker that never joined.
-  // A new real-time attempt remains possible after remount/reload.
-  const preferBrowserSpeechRef = useRef(false);
   const startingRef = useRef(false);
   const sessionRequestControllerRef = useRef<AbortController | null>(null);
   const agentJoinTimerRef =
@@ -317,11 +304,7 @@ export function VoiceCallButton({
         roomRef.current !== room ||
         hasVoiceAgent(room)
       ) return;
-      const hasBrowserFallback = browserSpeechIsSupported();
-      preferBrowserSpeechRef.current = hasBrowserFallback;
-      const message = hasBrowserFallback
-        ? "The real-time voice agent did not join. Tap the microphone again to use Browser Voice."
-        : "The AI voice agent did not join. Please retry when the service is online.";
+      const message = "Real-time voice could not connect to Aqlyra. Please try again or use text chat.";
       roomRef.current = null;
       stopMicrophoneTrack();
       void room.disconnect().catch(() => {
@@ -341,34 +324,7 @@ export function VoiceCallButton({
     microphoneTrackRef.current = null;
   }
 
-  function restoreAgentAudio() {
-    if (!remoteAudioSuppressedRef.current) return;
-    remoteAudioSuppressedRef.current = false;
-    audioContainerRef.current
-      ?.querySelectorAll("audio")
-      .forEach((element) => { element.muted = false; });
-  }
-
-  // The button cuts speaker output immediately. LiveKit also supports
-  // speech barge-in on the worker; client output muting is its fallback.
-  function stopAgentReply() {
-    if (browserVoiceRef.current) {
-      if (browserVoiceRef.current.interruptSpeech()) {
-        setNeedsAudioUnlock(false);
-        setAgentState("listening");
-      }
-      return;
-    }
-    if (!roomRef.current) return;
-    remoteAudioSuppressedRef.current = true;
-    audioContainerRef.current
-      ?.querySelectorAll("audio")
-      .forEach((element) => { element.muted = true; });
-    setAgentState("listening");
-  }
-
   function clearAudioElements() {
-    remoteAudioSuppressedRef.current = false;
     const container =
       audioContainerRef.current;
 
@@ -385,9 +341,6 @@ export function VoiceCallButton({
 
 
   async function endCall() {
-    browserVoiceRef.current?.stop();
-    browserVoiceRef.current = null;
-    setBrowserMode(false);
     callAttemptRef.current += 1;
     sessionRequestControllerRef.current?.abort();
     sessionRequestControllerRef.current = null;
@@ -418,79 +371,6 @@ export function VoiceCallButton({
   }
 
 
-  async function startBrowserSpeech() {
-    if (!browserSpeechIsSupported()) {
-      const message = "Browser speech recognition is not supported on this device.";
-      setError(message);
-      onError?.(message);
-      return;
-    }
-    clearAgentJoinTimer();
-    startingRef.current = true;
-    const attempt = ++callAttemptRef.current;
-    setStarting(true);
-    setError("");
-    setLiveUserText("");
-    setLiveAgentText("");
-    setAgentState("connecting");
-    setNeedsAudioUnlock(false);
-    try {
-      const controller = await startBrowserVoiceMode({
-        mode,
-        conversationId,
-        documentIds,
-        speechLocale,
-        onConversationStarted,
-        onUserTranscript: (text, isFinal) => {
-          setLiveUserText(text);
-          onUserTranscript?.(text, isFinal);
-        },
-        onAgentTranscript: (text, isFinal) => {
-          setLiveAgentText(text);
-          onAgentTranscript?.(text, isFinal);
-        },
-        onState: setAgentState,
-        onAudioBlocked: () => setNeedsAudioUnlock(true),
-        onAudioStarted: () => setNeedsAudioUnlock(false),
-        onError: (message) => {
-          setError(message);
-          onError?.(message);
-        },
-        onStopped: () => {
-          // Recognition may fail immediately, before its controller resolves.
-          if (callAttemptRef.current === attempt) callAttemptRef.current += 1;
-          browserVoiceRef.current = null;
-          setBrowserMode(false);
-          setActive(false);
-          setStarting(false);
-          setMuted(false);
-          setNeedsAudioUnlock(false);
-          startingRef.current = false;
-          setAgentState("idle");
-        },
-      });
-      if (callAttemptRef.current !== attempt) {
-        controller.stop();
-        return;
-      }
-      browserVoiceRef.current = controller;
-      startingRef.current = false;
-      setBrowserMode(true);
-      setMuted(false);
-      setActive(true);
-      setStarting(false);
-    } catch (error) {
-      if (callAttemptRef.current !== attempt) return;
-      startingRef.current = false;
-      const message = error instanceof Error
-        ? error.message : "Browser speech mode is unavailable.";
-      setError(message);
-      setAgentState("error");
-      setStarting(false);
-      onError?.(message);
-    }
-  }
-
   async function startCall() {
     if (
       disabled ||
@@ -501,28 +381,11 @@ export function VoiceCallButton({
       return;
     }
 
-    // A real-time worker may advertise configured-but-not-joined availability.
-    // After its join timeout, retry browser speech only on a fresh user tap.
-    if (preferBrowserSpeechRef.current && browserSpeechIsSupported()
-        && !availability?.requiresAuth) {
-      void startBrowserSpeech();
-      return;
-    }
-
+    // Never silently downgrade full-duplex voice to browser speech/TTS.
+    // That fallback cannot hear interruption while speaking on mobile.
     if (!availability?.available) {
-      // A 401 must never trigger a microphone prompt or unauthenticated chat.
-      if (availability?.requiresAuth) {
-        setError(availability.detail);
-        onError?.(availability.detail);
-        return;
-      }
-      if (availability?.available === false && browserSpeechIsSupported()) {
-        // Start public browser speech mode only from the explicit user click.
-        void startBrowserSpeech();
-        return;
-      }
-      const message = availability?.detail ??
-        "Checking voice availability. Please try again shortly.";
+      const message = availability?.detail ||
+        "Aqlyra real-time voice is unavailable. Sign in or retry."; 
       setError(message);
       onError?.(message);
       return;
@@ -692,7 +555,7 @@ export function VoiceCallButton({
             track.attach();
 
           element.autoplay = true;
-          element.muted = remoteAudioSuppressedRef.current;
+          element.muted = false;
 
           audioContainerRef
             .current
@@ -759,9 +622,6 @@ export function VoiceCallButton({
             );
 
           if (state) {
-            if (state === "listening" || state === "thinking") {
-              restoreAgentAudio();
-            }
             setAgentState(state);
           }
         },
@@ -868,14 +728,6 @@ export function VoiceCallButton({
 
 
   async function enableAudio() {
-    if (browserVoiceRef.current) {
-      // Direct click invokes speechSynthesis.speak synchronously on Safari.
-      if (browserVoiceRef.current.retryAudio()) {
-        setError("");
-        setNeedsAudioUnlock(false);
-      }
-      return;
-    }
     const room = roomRef.current;
     if (!room) return;
     try {
@@ -890,12 +742,6 @@ export function VoiceCallButton({
   }
 
   async function toggleMute() {
-    if (browserVoiceRef.current) {
-      const next = !muted;
-      browserVoiceRef.current.setMuted(next);
-      setMuted(next);
-      return;
-    }
     const room =
       roomRef.current;
 
@@ -927,8 +773,6 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
-      browserVoiceRef.current?.stop();
-      browserVoiceRef.current = null;
       callAttemptRef.current += 1;
       sessionRequestControllerRef.current?.abort();
       sessionRequestControllerRef.current = null;
@@ -956,7 +800,7 @@ export function VoiceCallButton({
           type="button"
           disabled={disabled}
           aria-label="Start voice conversation"
-          title={availability?.requiresAuth ? "Sign in to use voice calls" : availability?.available === false && browserSpeechIsSupported() ? "Start browser voice conversation" : availability?.available === false ? "Voice service unavailable" : "Start voice conversation"}
+          title={availability?.requiresAuth ? "Sign in to use voice calls" : availability?.available === false ? "Real-time voice unavailable" : "Start natural voice conversation"}
           onClick={() => {
             void startCall();
           }}
@@ -1015,7 +859,7 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              {browserMode ? "Aqlyra Browser Voice" : "Aqlyra Voice"}
+              Aqlyra Voice
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -1076,34 +920,10 @@ export function VoiceCallButton({
                   ? "Waiting for the AI voice agent to join..."
                   : agentState === "error"
                     ? "The AI voice agent is unavailable."
-                    : browserMode
-                    ? "Speech recognition may use your browser provider; only approved text is sent to Aqlyra."
                     : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>
-
-          {browserMode && (
-            <label className="mt-3 flex w-full items-center justify-between gap-2 text-[11px] text-[var(--aq-muted)]">
-              Recognition language
-              <select
-                aria-label="Voice recognition language"
-                value={speechLocale}
-                onChange={(event) => {
-                  const nextLocale = event.target.value;
-                  setSpeechLocale(nextLocale);
-                  browserVoiceRef.current?.setSpeechLocale(nextLocale);
-                }}
-                className="min-h-10 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-2 text-xs text-[var(--aq-text)]"
-              >
-                <option value="auto">Device / Auto</option>
-                <option value="bn-BD">বাংলা</option>
-                <option value="ja-JP">日本語</option>
-                <option value="en-US">English</option>
-                <option value="hi-IN">हिन्दी</option>
-              </select>
-            </label>
-          )}
 
           {error ? (
             <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
@@ -1117,21 +937,11 @@ export function VoiceCallButton({
               onClick={() => { void enableAudio(); }}
               className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
             >
-              {browserMode ? "Tap to hear reply" : "Enable sound"}
+              Enable sound
             </button>
           )}
 
           <div className="mt-4 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              disabled={starting || agentState !== "speaking"}
-              aria-label="Stop speaking"
-              title="Stop the current voice reply"
-              onClick={stopAgentReply}
-              className="min-h-11 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-xs font-semibold text-[var(--aq-text)] disabled:opacity-40"
-            >
-              Stop reply
-            </button>
             <button
               type="button"
               disabled={starting}
