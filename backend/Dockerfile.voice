@@ -65,4 +65,6 @@ RUN mkdir -p /app/uploads \
 
 USER appuser
 
-CMD ["python", "-m", "app.voice.worker", "start"]
+# Fail closed before connecting to LiveKit or allocating paid STT/TTS.
+# The preflight prints variable NAMES only and never logs secret values.
+CMD ["/bin/sh", "-c", "python -m app.voice.preflight && exec python -m app.voice.worker start"]

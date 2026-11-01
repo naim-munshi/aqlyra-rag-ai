@@ -73,3 +73,9 @@ unfinished changes until exact-head CI, required review, worker/provider
 acceptance and the owner's release approval pass. Preserve existing user
 accounts, files, conversation history and database schema. No live data
 migration or service creation is implied by this document.
+
+## Voice worker startup preflight (2026-11-01)
+
+The existing `backend/Dockerfile.voice` now runs `python -m app.voice.preflight` before registering a LiveKit agent. It checks **presence only** of APP_ENV, SECRET_KEY, DATABASE_URL, REDIS_URL, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VOICE_AGENT_NAME, GROQ_API_KEY, VOICE_STT_MODEL, VOICE_TTS_MODEL and VOICE_TTS_VOICE, validates production environment, transport syntax and minimum secret length, and logs **no secret values**. This is not proof that the external providers are reachable or have working quotas.
+
+For an isolated new Railway voice worker, use repository `naim-munshi/aqlyra-rag-ai`, build context/root directory `backend`, Dockerfile `Dockerfile.voice`, default Docker CMD (no HTTP port/public URL), continuous worker and private production-like staging variables (stored only in the provider secret dashboard). Use a separate LiveKit project and disposable test database for staging. **Do not commit the existing Railway staging patch** (56 old unrelated service/database changes) just to start the voice worker. A separately deployed, reviewed worker with approved billing and secrets is required before `VOICE_AGENT_READY=true` on the actual API.
