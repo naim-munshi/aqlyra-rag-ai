@@ -19,6 +19,10 @@ def _configure(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://voice.test.invalid")
     monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "voice-test-key")
     monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", "voice-test-secret-do-not-use")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-only-groq-voice-key")
+    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "whisper-large-v3")
+    monkeypatch.setattr(settings, "VOICE_TTS_MODEL", "cartesia/sonic-3")
+    monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_READY", True)
 
@@ -31,7 +35,11 @@ def _jwt_claims(token: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    "missing", ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+    "missing", [
+        "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+        "GROQ_API_KEY", "VOICE_STT_MODEL", "VOICE_TTS_MODEL",
+        "VOICE_TTS_VOICE",
+    ]
 )
 def test_missing_voice_provider_credentials_fail_closed(monkeypatch, missing):
     _configure(monkeypatch)
