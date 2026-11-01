@@ -25,3 +25,12 @@ def test_language_selection_is_bounded_and_does_not_require_network():
         answer="English explanation " * 10000,
         fallback="en",
     ) == "en"
+
+
+def test_real_agent_uses_reply_language_for_tts_not_just_user_transcript():
+    from pathlib import Path
+    source = (Path(__file__).parents[1] / "app" / "voice" / "worker.py").read_text()
+    assert "select_reply_tts_language(" in source
+    assert "answer=generated.result.content," in source
+    assert "self._tts_model.update_options(" in source
+    assert "session.interrupt(force=True)" in source
