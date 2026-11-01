@@ -450,7 +450,9 @@ async def _run_browser(
 
     visited: list[BrowserPageEvidence] = []
     steps: list[str] = []
-    next_url = start_url
+    next_url = _canonical_public_url(start_url, host)
+    if next_url is None:
+        raise BrowserAgentPlanError("Starting public URL is not approved")
     visited_urls: set[str] = set()
     frontier: list[dict[str, str]] = []
 
@@ -546,7 +548,7 @@ async def _run_browser(
                         frontier = _merge_link_frontier(
                             frontier, raw_links, current, host, visited_urls,
                         )
-                        options = frontier[:MAX_LINKS]
+                        options = _rank_link_frontier(frontier, task)[:MAX_LINKS]
                         if not options:
                             break
                         selection = await asyncio.to_thread(
