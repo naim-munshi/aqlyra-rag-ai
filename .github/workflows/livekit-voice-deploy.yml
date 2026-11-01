@@ -1,0 +1,68 @@
+name: Deploy Aqlyra voice to LiveKit Cloud
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aqlyra-livekit-voice-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref_name == 'fix/voice-call-reliability-20261101'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: livekit-voice-staging
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify expected voice sources
+        run: |
+          test -f Dockerfile.voice
+          test -f app/voice/preflight.py
+          test -f app/voice/worker.py
+          test -f requirements-voice.txt
+      - name: Validate deployment credentials
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          required = ('LIVEKIT_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET','GROQ_API_KEY','DATABASE_URL','REDIS_URL','SECRET_KEY')
+          missing = [key for key in required if not os.getenv(key)]
+          if missing:
+              print('Missing secret names: '+', '.join(missing))
+              sys.exit(1)
+          if not os.environ['LIVEKIT_URL'].startswith('wss://'):
+              print('LIVEKIT_URL must use wss://')
+              sys.exit(1)
+          print('Required secret names present. Values not printed.')
+          PY
+      - name: Install LiveKit CLI
+        run: |
+          curl -fsSL https://get.livekit.io/cli | bash
+          lk --version
+      - name: Deploy existing voice agent
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          echo 'Deployment requires an approved LiveKit agent config and compatible embedding secrets.'
+          echo 'No agent will be created until the deployment manifest is reviewed.'
+          exit 1
