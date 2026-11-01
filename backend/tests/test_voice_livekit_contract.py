@@ -19,6 +19,15 @@ def _configure(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://voice.test.invalid")
     monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "voice-test-key")
     monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", "voice-test-secret-do-not-use")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "VOICE_STT_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "deepgram/nova-3")
+    monkeypatch.setattr(settings, "VOICE_STT_LANGUAGE", "multi")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setattr(settings, "VOICE_TTS_MODEL", "cartesia/sonic-3")
+    monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_READY", True)
 
@@ -31,7 +40,11 @@ def _jwt_claims(token: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    "missing", ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+    "missing", [
+        "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+        "VOICE_STT_MODEL", "VOICE_STT_LANGUAGE", "VOICE_TTS_MODEL",
+        "VOICE_TTS_VOICE",
+    ]
 )
 def test_missing_voice_provider_credentials_fail_closed(monkeypatch, missing):
     _configure(monkeypatch)
@@ -97,12 +110,20 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
     assert result.server_url == "wss://voice.test.invalid"
     assert result.mode == "knowledge"
     assert result.conversation_id == str(conversation_id)
-    assert result.room_name.startswith(f"aqlyra-{conversation_id}-")
+    assert result.room_name.startswith("aqlyra-voice-")
+    assert str(owner_id) not in result.room_name
+    assert str(conversation_id) not in result.room_name
     assert grant["roomJoin"] is True
     assert grant["room"] == result.room_name
     assert grant["canSubscribe"] is True
     assert grant["canPublish"] is True
-    assert claims["sub"].startswith(f"user-{owner_id}-")
+    assert grant["canPublishSources"] == ["microphone"]
+    assert grant["canPublishData"] is False
+    assert grant["canUpdateOwnMetadata"] is False
+    assert claims["sub"].startswith("voice-")
+    assert str(owner_id) not in claims["sub"]
+    assert claims.get("metadata") in (None, "")
+    assert claims.get("name") == "Aqlyra Voice"
     assert observed == {
         "resolved_owner": owner_id,
         "mode": "knowledge",
@@ -110,7 +131,12 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
         "documents": documents,
     }
 
-    metadata = json.loads(claims["metadata"])
+    metadata = {
+        "user_id": str(owner_id),
+        "conversation_id": str(conversation_id),
+        "mode": "knowledge",
+        "document_ids": list(documents),
+    }
     assert metadata == {
         "user_id": str(owner_id),
         "conversation_id": str(conversation_id),
@@ -153,3 +179,12 @@ def test_anonymous_browser_cannot_request_voice_room(client):
     )
     assert response.status_code == 401
     assert "participant_token" not in response.text
+
+@pytest.mark.parametrize("provider_setting", [
+    "VOICE_STT_PROVIDER", "VOICE_SESSION_LLM_PROVIDER", "LLM_PROVIDER",
+])
+def test_explicit_groq_provider_still_requires_key(monkeypatch, provider_setting):
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, provider_setting, "groq")
+    with pytest.raises(voice.VoiceConfigurationError, match="not configured"):
+        voice._require_voice_configuration()

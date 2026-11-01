@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 from uuid import UUID
-from typing import Self
+from typing import Self, Literal
 
 from pydantic import (
     Field,
@@ -196,7 +196,13 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
     VOICE_AGENT_NAME: str = "aqlyra-voice"
-    VOICE_STT_MODEL: str = "whisper-large-v3"
+    # Transport/session metadata must match the dedicated LiveKit Worker.
+    # Session LLM is not Aqlyra's answer brain; the worker calls execute_chat_turn.
+    VOICE_STT_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_STT_MODEL: str = "deepgram/nova-3"
+    VOICE_STT_LANGUAGE: str = "multi"
+    VOICE_SESSION_LLM_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_SESSION_LLM_MODEL: str = "openai/gpt-oss-120b"
     VOICE_TTS_MODEL: str = "cartesia/sonic-3"
     VOICE_TTS_VOICE: str = (
         "a5136bf9-224c-4d76-b823-52bd5efcffcc"
