@@ -143,3 +143,47 @@ def test_production_embedding_http_pool_is_shared_without_sharing_credentials():
     assert first._client is second._client
     assert first._circuit is not second._circuit
     assert first._client.follow_redirects is False
+
+
+@pytest.mark.parametrize("invalid", [
+    "1.0", None, True, {"value": 1}, 10 ** 1000,
+    float("nan"), float("inf"),
+])
+def test_malformed_semantic_json_never_yields_a_vector(invalid):
+    def handle(_request):
+        return httpx.Response(200, json={
+            "model": MODEL, "dimension": 384,
+            "vectors": [[invalid] + [1.0] * 383],
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(EmbeddingValidationError):
+            provider(client).embed_query("private text")
+    # Invalid external vectors cannot be used as deterministic substitutes.
+
+
+def test_large_finite_semantic_vector_is_normalized_without_overflow():
+    import math
+    def handle(_request):
+        return httpx.Response(200, json={
+            "model": MODEL, "dimension": 384,
+            "vectors": [[1e308] * 384],
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        normalized = provider(client).embed_query("test")
+    assert len(normalized) == 384
+    assert all(math.isfinite(value) and value > 0 for value in normalized)
+    assert math.fsum(value * value for value in normalized) == pytest.approx(1.0)
+
+
+def test_zero_semantic_vector_fails_closed():
+    def handle(_request):
+        return httpx.Response(200, json={
+            "model": MODEL, "dimension": 384,
+            "vectors": [[0.0] * 384],
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        with pytest.raises(EmbeddingValidationError, match="magnitude"):
+            provider(client).embed_query("test")
