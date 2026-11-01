@@ -11,7 +11,26 @@ def build_voice_stt(*, prompt: str, cfg=settings, inference_factory=None, groq_f
         if inference_factory is None:
             from livekit.agents import inference
             inference_factory = inference.STT
-        return inference_factory(model=cfg.VOICE_STT_MODEL, language=cfg.VOICE_STT_LANGUAGE)
+        options = {"model": cfg.VOICE_STT_MODEL, "language": cfg.VOICE_STT_LANGUAGE}
+        # Deepgram Nova-3 in "multi" mode can use language hints as
+        # *bias*, not a language lock. Leave other STT providers unchanged.
+        raw_hints = getattr(cfg, "VOICE_STT_LANGUAGE_HINTS", "").strip()
+        if (
+            raw_hints
+            and cfg.VOICE_STT_MODEL.startswith("deepgram/nova-3")
+            and cfg.VOICE_STT_LANGUAGE == "multi"
+        ):
+            hints = [hint.strip().lower() for hint in raw_hints.split(",")]
+            permitted = {"en", "bn", "ja", "hi", "ar", "zh", "ko", "fr", "de", "es"}
+            if (
+                len(hints) > 6
+                or not hints
+                or len(set(hints)) != len(hints)
+                or any(hint not in permitted for hint in hints)
+            ):
+                raise ValueError("VOICE_STT_LANGUAGE_HINTS contains invalid language hints")
+            options["extra_kwargs"] = {"language_hint": hints}
+        return inference_factory(**options)
     if cfg.VOICE_STT_PROVIDER == "groq":
         if not cfg.GROQ_API_KEY.strip():
             raise RuntimeError("Direct Groq speech provider not configured")
