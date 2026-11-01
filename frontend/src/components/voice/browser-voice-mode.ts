@@ -33,6 +33,8 @@ type SpeechWindow = Window & {
 export type BrowserVoiceController = {
   stop: () => void;
   setMuted: (muted: boolean) => void;
+  // Must be invoked directly from the user's audio-unlock click on iOS.
+  retryAudio: () => boolean;
 };
 
 export type BrowserVoiceOptions = {
@@ -45,6 +47,8 @@ export type BrowserVoiceOptions = {
   onAgentTranscript?: (text: string, isFinal: boolean) => void;
   onState: (state: VoiceVisualState) => void;
   onError: (message: string) => void;
+  onAudioBlocked?: () => void;
+  onAudioStarted?: () => void;
   onStopped: () => void;
 };
 
@@ -116,6 +120,7 @@ export async function startBrowserVoiceMode(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let playbackTimer: ReturnType<typeof setTimeout> | null = null;
   let playing: SpeechSynthesisUtterance | null = null;
+  let lastReply = "";
 
   const clearPlaybackTimer = () => {
     if (playbackTimer !== null) clearTimeout(playbackTimer);
@@ -174,11 +179,13 @@ export async function startBrowserVoiceMode(
       clearPlaybackTimer();
       busy = false;
       options.onError(message);
+      options.onAudioBlocked?.();
       listen();
     };
     utterance.onstart = () => {
       if (stopped || playing !== utterance) return;
       clearPlaybackTimer();
+      options.onAudioStarted?.();
       options.onState("speaking");
       playbackTimer = setTimeout(() => {
         if (playing !== utterance) return;
@@ -187,6 +194,7 @@ export async function startBrowserVoiceMode(
         browser.speechSynthesis.cancel();
         busy = false;
         options.onError("Audio playback stalled; the full answer remains in chat.");
+        options.onAudioBlocked?.();
         listen();
       }, 165000);
     };
@@ -211,7 +219,8 @@ export async function startBrowserVoiceMode(
       clearPlaybackTimer();
       browser.speechSynthesis.cancel();
       busy = false;
-      options.onError("Voice audio did not start. Check volume and browser audio permissions.");
+      options.onError("Voice audio did not start. Tap to hear the reply or check your browser audio permissions.");
+      options.onAudioBlocked?.();
       listen();
     }, 12000);
     try {
@@ -272,6 +281,7 @@ export async function startBrowserVoiceMode(
             throw new Error("The AI did not return a voice response.");
           }
           options.onAgentTranscript?.(content, true);
+          lastReply = content;
           if (!muted) speak(content);
         } catch (error) {
           if (stopped) return;
@@ -302,7 +312,20 @@ export async function startBrowserVoiceMode(
   };
   recognition.onend = listen;
   listen(true); // First call must be inside the user's direct click event.
-  return { stop, setMuted(nextMuted: boolean) {
+  return { stop, retryAudio() {
+    // This method runs synchronously in the click handler, before any await.
+    if (stopped || muted || processing || !lastReply.trim()) return false;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    startScheduled = false;
+    busy = true;
+    try { recognition.abort(); } catch { /* already idle */ }
+    playing = null;
+    clearPlaybackTimer();
+    browser.speechSynthesis.cancel();
+    speak(lastReply);
+    return true;
+  }, setMuted(nextMuted: boolean) {
     muted = nextMuted;
     if (muted) {
       try { recognition.abort(); } catch { /* already stopped */ }
