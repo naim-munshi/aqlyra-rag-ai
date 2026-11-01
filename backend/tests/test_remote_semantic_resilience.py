@@ -150,11 +150,22 @@ def test_production_embedding_http_pool_is_shared_without_sharing_credentials():
     float("nan"), float("inf"),
 ])
 def test_malformed_semantic_json_never_yields_a_vector(invalid):
+    import json
+
     def handle(_request):
-        return httpx.Response(200, json={
+        body = {
             "model": MODEL, "dimension": 384,
             "vectors": [[invalid] + [1.0] * 383],
-        })
+        }
+        # httpx's strict JSON serializer rejects NaN/Infinity before
+        # the application ever receives the mocked provider payload.
+        # Deliberately inject the malformed raw response to exercise
+        # our *client* validation, not the mock response constructor.
+        return httpx.Response(
+            200,
+            content=json.dumps(body, allow_nan=True).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
 
     with httpx.Client(transport=httpx.MockTransport(handle)) as client:
         with pytest.raises(EmbeddingValidationError):
