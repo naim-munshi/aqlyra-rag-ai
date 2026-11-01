@@ -1,6 +1,6 @@
 # Aqlyra Voice Call — single release acceptance checklist
 
-**Production:** Browser speech fallback exists; **real LiveKit WebRTC voice is not yet accepted**. The dedicated agent worker has no successful deployment or verified audio call. Keep `VOICE_AGENT_READY=false`.
+**Production:** Browser Voice fallback is available. Railway's LiveKit worker registered successfully in **staging** (`ca759453-6d80-4e1d-b8d3-34a4d5710c02`, `SUCCESS`, one replica); this **does not prove** an authenticated end-to-end audio call from the production API. Keep production `VOICE_AGENT_READY=false` until actual audio, identity and rollback gates pass.
 
 ## Existing implementation (do not duplicate)
 
@@ -11,11 +11,20 @@
 
 ## Deployment boundary
 
-Use the **existing Railway staging voice worker only** for the current trial. Do not create another frontend/backend/database or accept the shared Railway staging patch to release voice. Existing Railway staging has **91 unapplied configuration changes** across a voice worker and redundant frontend/backend/PostgreSQL/volume resources; none of these staged resources has been deployed. The connected Railway tool cannot discard staged-only resources. Remove unrelated staged resources in the Railway dashboard before any isolated deploy.
+Use the **existing Railway staging voice worker only** for the current trial. The duplicate Railway frontend, backend, database and volumes were discarded; the worker was separately deployed from commit `e7f7a4e`, and the environment has **zero pending changes**. Keep Vercel frontend, Render API, Neon database and existing Redis. Do not recreate duplicate infrastructure. The new voice-intelligence fixes are in a separate draft PR and are **not released** yet.
 
-Voice worker variable names appear staged, but secret values, provider quotas and network reachability remain unverified. It must use **the actual live Render** database/Redis/auth/embedding configuration. Voice and production Core Git branches have diverged, so independently verify DB schema and conversation API compatibility before connecting to production accounts.
+Voice worker configuration preflight and LiveKit registration passed, but secret equality with Render, provider quotas and production user-session authorization remain unverified. It must use **the actual live Render** database/Redis/auth/embedding configuration. Voice and production Core Git branches have diverged; verify DB schema and conversation API compatibility before connecting to production accounts.
 
 Detailed, single-path setup: [VOICE_FREE_TIER_SETUP.md](VOICE_FREE_TIER_SETUP.md).
+
+## Conversation quality release gate
+
+- Exact self-introduction: "Tell me about you" describes **Aqlyra's capabilities**, not its founder. The founder is named only if explicitly asked.
+- English, বাংলা and 日本語: microphone transcripts preserve the actual spoken language. Do not inject voice-language hints into the user's stored question.
+- Stop speaking: "stop", "থামো", "止めて" should promptly interrupt **LiveKit** speech, not generate a reply. Browser Voice exposes a **Stop reply** button because iOS browser STT cannot reliably listen while synthesizing.
+- Browser fallback selects matching installed OS voices when available and offers a recognition-language selector. If the OS has no native-language voice, accent quality remains device-dependent.
+- LiveKit Sonic 3 supports Bangla and Japanese (unlike Sonic 3.5 for Bangla). Optional verified `VOICE_TTS_VOICE_BN`, `VOICE_TTS_VOICE_JA`, `VOICE_TTS_VOICE_HI` provider-specific voice IDs can improve accents; **do not invent IDs**, and an empty value preserves the existing voice.
+- Test sustained conversation, silence (no self-echo turns), interruption during long AI speech, repeated turns, code-switching, mute, hangup and restart on real devices.
 
 ## Required acceptance (not yet verified)
 
