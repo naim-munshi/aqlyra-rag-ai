@@ -12,7 +12,7 @@ The separate Render semantic-embedding worker exists for 512-MiB memory constrai
 
 - Repository: `naim-munshi/aqlyra-rag-ai`, branch `fix/voice-call-reliability-20261101` (follow branch, no stale SHA pin).
 - Root/build context: `/backend`; Dockerfile: `Dockerfile.voice`; no public HTTP port; one continuously running worker.
-- Docker startup: `python -m app.voice.launch start`. It runs configuration preflight before importing LiveKit runtime.
+- Docker startup: `python -m app.voice.preflight && exec python -m app.voice.worker start` (the existing image command). It validates configuration before the RTC worker starts.
 - Match the **actual live Render** API configuration for `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION` and any embedding credentials. Do not substitute a different vector model with the same dimensions.
 - LiveKit/Groq credentials are staged in Railway; verify their real values without revealing them. GitHub Actions Secrets do not read Railway variables automatically. Keep `VOICE_AGENT_READY=false` in the API until audio E2E passes.
 - **Do not accept the mixed Railway staging patch.** It includes unprovisioned duplicates of the existing Vercel frontend, Render backend, Neon PostgreSQL and storage volumes. These should be discarded **in the Railway dashboard** (connector does not currently support removing staged-only resources). Preserve the standalone voice worker's staged settings.
