@@ -242,7 +242,7 @@ def test_bengali_self_description_is_concise_and_not_about_creator():
 
 
 def test_self_description_never_hijacks_founder_or_other_subject():
-    assert resolve_product_identity_answer("Tell me about your founder") is None
+    assert "Md Naim" in resolve_product_identity_answer("Tell me about your founder")
     assert resolve_product_identity_answer("Tell me about your recommendation") is None
     assert resolve_product_identity_answer("What can you do about climate change?") is None
     assert resolve_product_identity_answer("Tell me about your CEO") is not None
