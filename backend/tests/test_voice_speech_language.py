@@ -15,6 +15,9 @@ from app.voice.speech_language import select_reply_tts_language
     ("", "ja", "ja"),
     ("Yes.", "bn", "bn"),
     ("Yes, I can explain this in English.", "ja", "en"),
+    ("Ami Bangla te kotha bolte pari, tomake help korbo.", "bn", "bn"),
+    ("Tomar kemon ache bolo, ami answer korbo.", "bn", "bn"),
+    ("Yes, I can explain this in English.", "bn", "en"),
 ])
 def test_reply_language_prevents_mismatched_voice_accents(answer, fallback, want):
     assert select_reply_tts_language(answer=answer, fallback=fallback) == want
