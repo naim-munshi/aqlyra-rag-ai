@@ -70,3 +70,20 @@ No open P0 incidents; measured semantic retrieval, grounded citations, relevant 
 5. Roll out only isolated, authorized targets; verify actual provider traffic and user behavior; publish precise status and remaining blockers.
 
 This file is the **project-persistent engineering baseline** requested by the owner, not a claim that the ten phases are complete. Keep it updated with verified evidence, not dated guesses.
+
+
+## Verified per-file PR collision sample (2026-11-02)
+
+GitHub's complete changed-file lists reveal important nontrivial intersections. These counts are not semantic conflicts by themselves, but prohibit blind whole-branch merges:
+
+| Candidates | Identical changed paths | Specific risk |
+| --- | ---: | --- |
+| #93 semantic P0 vs #90 running Voice/UI | **1** | Both change `backend/app/embeddings/remote_semantic_provider.py`. Must review against deployed Voice Worker and Core before backport; do not replace unrelated voice improvements. |
+| #90 Voice/UI vs #89 voice language | **7** | Shared voice worker, TTS routing, model factories and tests. #90 is currently deployed and may already contain #89 behavior. |
+| #90 Voice/UI vs #58 unified frontend | **7** | Shared Voice button, browser fallback, settings and chat service; source branches diverged. |
+| #84 Browser Agent vs #85 browser UI | **2** | Shared frontend deployment workflow and browser workspace; pair release with review, not blind merge. |
+| #82 durable storage vs #54 knowledge | **19** | Shared backend artifact API/storage, worker settings and CI. |
+| #82 durable storage vs #56 OCR/knowledge | **19** | Same shared artifact and release files. |
+| #93 semantic P0 vs #82 storage | **0** | No identical paths, but both are based on Core; still require backend and security acceptance. |
+
+Any actual promotion must revalidate the exact head at that time. The metadata-only audit cannot establish which historic PR contents are already semantically deployed. PR closure/supersedence is **not authorized by this file**.
