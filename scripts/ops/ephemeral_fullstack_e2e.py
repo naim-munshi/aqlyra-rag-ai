@@ -163,11 +163,42 @@ def run(client: Client) -> None:
     ), 401, "anonymous private Study Abroad cases")
     print("PASS security baseline and Study Abroad availability")
 
+    # Voice and Browser Agent are optional and intentionally disabled in
+    # this disposable stack. Prove anonymous users cannot obtain privileged
+    # tokens or approved browser plans even when those modules exist.
+    expect(client.request(
+        "POST", "/api/v1/voice/session", data={"mode": "normal"},
+    ), 401, "anonymous voice token")
+    expect(client.request(
+        "GET", "/api/v1/voice/status",
+    ), 401, "anonymous voice status")
+    expect(client.request(
+        "POST", "/api/v1/agent/browser/plan",
+        data={"task": "Read public docs", "start_url": "https://example.com/"},
+    ), 401, "anonymous browser approval")
+    print("PASS voice and browser authentication gates")
+
     token_a, id_a = create_account(client, "a")
     token_b, id_b = create_account(client, "b")
     if id_a == id_b:
         raise SmokeFailure("Synthetic identities are not distinct")
     print("PASS two-user registration, login and verified identities")
+
+    voice_status = expect(
+        client.request("GET", "/api/v1/voice/status", token=token_a),
+        200, "voice readiness without provider keys",
+    )
+    if voice_status.get("available") is not False:
+        raise SmokeFailure("Voice claims to be ready with no provider credentials")
+    expect(client.request(
+        "POST", "/api/v1/voice/session", token=token_a,
+        data={"mode": "normal"},
+    ), 503, "voice fail-closed without credentials")
+    expect(client.request(
+        "POST", "/api/v1/agent/browser/plan", token=token_a,
+        data={"task": "Read public docs", "start_url": "https://example.com/"},
+    ), 503, "browser feature gate without operator configuration")
+    print("PASS missing-provider feature gates refuse privileged execution")
 
     study = expect(client.request(
         "POST", "/api/v1/study-abroad/cases", token=token_a,
