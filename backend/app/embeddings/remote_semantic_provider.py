@@ -5,6 +5,7 @@ and a long random token. No arbitrary user-supplied URLs or redirects.
 """
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 import hashlib
 import logging
 import threading
@@ -28,6 +29,16 @@ logger = logging.getLogger(__name__)
 _TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 _BREAKER_LOCK = threading.Lock()
 _BREAKER_REGISTRY: dict[tuple[str, str], "_CircuitState"] = {}
+
+
+@lru_cache(maxsize=8)
+def _shared_http_client(timeout_seconds: float) -> httpx.Client:
+    # Shared process-local httpx connection pooling reduces cold DNS/TLS
+    # overhead and connection churn across many retrieval requests.
+    return httpx.Client(
+        timeout=min(timeout_seconds, 35.0),
+        follow_redirects=False,
+    )
 
 
 @dataclass
@@ -69,9 +80,8 @@ class RemoteSemanticEmbeddingProvider:
             raise EmbeddingValidationError("Unsupported semantic worker dimensions or batch size")
         self._base_url = base_url.rstrip("/")
         self._api_token = api_token
-        self._client = client if client is not None else httpx.Client(
-            timeout=min(timeout_seconds, 35.0),
-            follow_redirects=False,
+        self._client = (
+            client if client is not None else _shared_http_client(timeout_seconds)
         )
         # Ordinary provider construction occurs once per request. Production
         # circuit state must therefore survive distinct provider instances.
