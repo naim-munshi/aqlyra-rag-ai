@@ -79,3 +79,24 @@ def test_incompatible_backend_or_agent_settings_block_worker(key, value):
     data[key] = value
     with pytest.raises(VoiceWorkerPreflightError):
         validate_voice_worker_environment(data)
+
+
+@pytest.mark.parametrize("name,value", [
+    ("AQLYRA_PROCESS_ROLE", "api"),
+    ("RATE_LIMIT_ENABLED", "false"),
+    ("RAG_GROUNDING_VERIFIER_ENABLED", "false"),
+    ("LLM_PROVIDER", "deterministic"),
+    ("EMBEDDING_PROVIDER", "deterministic"),
+    ("HF_TOKEN", ""),
+])
+def test_worker_cannot_bypass_production_role_and_provider_guards(name, value):
+    data = valid_env()
+    data[name] = value
+    with pytest.raises(VoiceWorkerPreflightError):
+        validate_voice_worker_environment(data)
+
+def test_openai_embeddings_need_own_provider_key():
+    data = valid_env()
+    data["EMBEDDING_PROVIDER"] = "openai"
+    with pytest.raises(VoiceWorkerPreflightError, match="OPENAI_API_KEY"):
+        validate_voice_worker_environment(data)
