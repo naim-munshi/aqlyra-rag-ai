@@ -52,6 +52,13 @@ function harness({ failRecognitionStart = false, cancelRaisesError = false, trig
   }
   const synthesis = {
     current: null,
+    getVoices() {
+      return [
+        { lang: "en-US", name: "English" },
+        { lang: "bn-BD", name: "Bengali native" },
+        { lang: "ja-JP", name: "Japanese native" },
+      ];
+    },
     speak(utterance) {
       this.current = utterance;
       spoken.push(utterance);
@@ -227,5 +234,69 @@ test("a stalled AI response hits a bounded deadline and resumes microphone liste
   assert.ok(h.errors.some(message => /timed out/.test(message)));
   assert.ok(h.recognitions[0].startCount >= 2, "listening must resume after timeout");
   assert.equal(h.spoken.length, 0);
+  controller.stop();
+});
+
+
+test("a voice stop instruction does not create an unrelated AI reply", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("Stop speaking!");
+  await tick();
+  assert.equal(h.pendingReplies.length, 0);
+  assert.equal(h.spoken.length, 0);
+  controller.stop();
+});
+
+test("Stop reply immediately cancels browser TTS without ending the call", async () => {
+  const h = harness({ cancelRaisesError: true });
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("Tell me about you");
+  await tick();
+  h.settle("I'm Aqlyra, an AI assistant.");
+  await tick();
+  assert.equal(h.spoken.length, 1);
+  assert.equal(controller.interruptSpeech(), true);
+  assert.equal(h.synthesis.current, null);
+  assert.equal(h.stopEvents(), 0, "stopping speech must not hang up");
+  assert.equal(controller.interruptSpeech(), false);
+  assert.deepEqual(h.errors, []);
+  controller.stop();
+});
+
+test("language selector applies to recognition and TTS picks same-language native voices", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  controller.setSpeechLocale("bn-BD");
+  assert.equal(h.recognitions[0].lang, "bn-BD");
+  // The locale switch can restart the microphone asynchronously.
+  h.recognitions[0].emitFinal("বাংলায় কথা বলো");
+  await tick();
+  h.settle("আমি বাংলায় উত্তর দিচ্ছি।");
+  await tick();
+  assert.equal(h.spoken.length, 1);
+  assert.equal(h.spoken[0].lang, "bn-BD");
+  assert.equal(h.spoken[0].voice?.lang, "bn-BD");
+  assert.ok(h.spoken[0].rate < 1);
+  controller.stop();
+});
+
+test("late microphone echo cannot trigger a second AI turn", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("Hello");
+  await tick();
+  h.settle("An informative answer spoken by the assistant.");
+  await tick();
+  h.spoken[0].onstart?.();
+  h.spoken[0].onend?.();
+  await new Promise(resolve => setTimeout(resolve, 820));
+  h.recognitions[0].emitFinal("informative answer spoken by the assistant");
+  await tick();
+  assert.equal(h.pendingReplies.length, 1, "speaker echo should be ignored");
   controller.stop();
 });
