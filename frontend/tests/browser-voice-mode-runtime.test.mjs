@@ -23,6 +23,7 @@ function harness({ failRecognitionStart = false, cancelRaisesError = false } = {
   const pendingReplies = [];
   const errors = [];
   const transcribed = [];
+  const audioEvents = [];
   let stopEvents = 0;
   const calls = [];
 
@@ -91,11 +92,13 @@ function harness({ failRecognitionStart = false, cancelRaisesError = false } = {
     onAgentTranscript: text => transcribed.push(text),
     onConversationStarted: () => {},
     onError: error => errors.push(error),
+    onAudioBlocked: () => audioEvents.push("blocked"),
+    onAudioStarted: () => audioEvents.push("started"),
     onStopped: () => { stopEvents++; },
   };
   return {
     api: exports, options, recognitions, pendingReplies, spoken,
-    errors, transcribed, calls, synthesis,
+    errors, transcribed, audioEvents, calls, synthesis,
     stopEvents: () => stopEvents,
     settle(reply = "Spoken answer") {
       assert.equal(pendingReplies.length, 1);
@@ -169,4 +172,41 @@ test("synchronous speech permission failure stops exactly once and reports the p
   assert.match(h.errors[0], /microphone/i);
   controller.stop();
   assert.equal(h.stopEvents(), 1);
+});
+
+test("tap to hear replays last reply on user activation after Safari speech error", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  assert.equal(controller.retryAudio(), false, "no reply exists yet");
+  h.recognitions[0].emitFinal("hello");
+  await tick();
+  h.settle("Here is a test reply");
+  await tick();
+  assert.equal(h.spoken.length, 1);
+  h.spoken[0].onerror?.({ error: "audio-busy" });
+  assert.deepEqual(h.audioEvents, ["blocked"]);
+  assert.equal(h.spoken.length, 1);
+  assert.equal(controller.retryAudio(), true);
+  assert.equal(h.spoken.length, 2);
+  h.spoken[1].onstart?.();
+  assert.deepEqual(h.audioEvents, ["blocked", "started"]);
+  h.spoken[1].onend?.();
+  assert.deepEqual(h.errors, ["Voice playback unavailable; the answer remains in chat."]);
+  controller.stop();
+});
+
+test("muted/stopped browser calls cannot replay a reply even with audio unlock click", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("hello");
+  await tick();
+  h.settle();
+  await tick();
+  controller.setMuted(true);
+  assert.equal(controller.retryAudio(), false);
+  controller.stop();
+  assert.equal(controller.retryAudio(), false);
+  assert.equal(h.spoken.length, 1);
 });
