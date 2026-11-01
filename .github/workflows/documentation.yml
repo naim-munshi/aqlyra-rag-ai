@@ -2,13 +2,13 @@ name: Documentation Consistency
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
     paths:
       - "**/*.md"
       - "scripts/ops/check_markdown_docs.py"
       - ".github/workflows/documentation.yml"
   pull_request:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
   workflow_dispatch:
 
 permissions:

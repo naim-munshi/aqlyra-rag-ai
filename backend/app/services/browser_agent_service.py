@@ -15,7 +15,7 @@ import socket
 import threading
 import time
 from typing import Any
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 import jwt
 from jwt import InvalidTokenError as JWTInvalidTokenError
@@ -320,6 +320,79 @@ async def _validate_public_dns(host: str) -> str:
     return public_ipv4
 
 
+
+# Tracking-only query arguments add no document evidence but can cause the
+# same page to be revisited. Preserve all other query arguments and order.
+_TRACKING_PARAMETERS = frozenset({
+    "fbclid", "gclid", "dclid", "msclkid", "igshid",
+    "mc_cid", "mc_eid", "ref_src",
+})
+_RESEARCH_STOPWORDS = frozenset({
+    "the", "and", "from", "with", "into", "this", "that", "what",
+    "when", "where", "which", "how", "are", "for", "can", "you",
+    "about", "read", "find", "please", "official", "site",
+    "page", "pages", "information", "summarize", "summarise",
+    "compare", "browse", "research", "explore", "website",
+})
+
+
+def _canonical_public_url(url: str, host: str) -> str | None:
+    """Stable, safe URL for one already-approved host; never change routing host.
+
+    Strip in-page fragments and known *tracking only* query parameters.
+    Preserve application query keys (including search, pagination and IDs).
+    Validate both before and after normalization; no network access here.
+    """
+    if safe_browser_url(url, host) is None:
+        return None
+    parsed = urlsplit(url)
+    items = parse_qsl(parsed.query, keep_blank_values=True)
+    query = urlencode([
+        (key, value) for key, value in items
+        if not key.casefold().startswith("utm_")
+        and key.casefold() not in _TRACKING_PARAMETERS
+    ])
+    canonical = urlunsplit((
+        parsed.scheme, parsed.netloc,
+        parsed.path or "/", query, "",
+    ))
+    return canonical if safe_browser_url(canonical, host) is not None else None
+
+
+def _task_terms(task: str) -> tuple[str, ...]:
+    """Bounded multilingual-ish lexical hints, never treated as commands."""
+    words = re.findall(r"[\w]{3,}", task.casefold(), flags=re.UNICODE)
+    return tuple(dict.fromkeys(
+        word for word in words if word not in _RESEARCH_STOPWORDS
+    ))[:16]
+
+
+def _rank_link_frontier(
+    links: list[dict[str, str]], task: str,
+) -> list[dict[str, str]]:
+    """Put goal-relevant links in the LLM's limited 25-link window.
+
+    Navigation is still selected by the LLM from explicit numbered links,
+    and every candidate must first pass the existing host/URL guard.
+    Stable ties retain the previous crawl/discovery ordering.
+    """
+    terms = _task_terms(task)
+    if not terms:
+        return list(links)
+
+    def score(link: dict[str, str]) -> int:
+        title = link["title"].casefold()
+        path = unquote(urlsplit(link["url"]).path).casefold()
+        found = urlsplit(link["found_on"]).path.casefold()
+        return sum(
+            6 * (term in title)
+            + 3 * (term in path)
+            + (term in found)
+            for term in terms
+        )
+    return sorted(links, key=score, reverse=True)
+
+
 def _merge_link_frontier(
     existing: list[dict[str, str]],
     raw_links: list[Any],
@@ -343,7 +416,8 @@ def _merge_link_frontier(
         except ValueError:
             # Malformed untrusted href must not abort an otherwise valid run.
             continue
-        if url in seen or safe_browser_url(url, approved_host) is None:
+        url = _canonical_public_url(url, approved_host)
+        if url is None or url in seen:
             continue
         seen.add(url)
         title = link.get("text")
@@ -376,7 +450,9 @@ async def _run_browser(
 
     visited: list[BrowserPageEvidence] = []
     steps: list[str] = []
-    next_url = start_url
+    next_url = _canonical_public_url(start_url, host)
+    if next_url is None:
+        raise BrowserAgentPlanError("Starting public URL is not approved")
     visited_urls: set[str] = set()
     frontier: list[dict[str, str]] = []
 
@@ -472,7 +548,7 @@ async def _run_browser(
                         frontier = _merge_link_frontier(
                             frontier, raw_links, current, host, visited_urls,
                         )
-                        options = frontier[:MAX_LINKS]
+                        options = _rank_link_frontier(frontier, task)[:MAX_LINKS]
                         if not options:
                             break
                         selection = await asyncio.to_thread(

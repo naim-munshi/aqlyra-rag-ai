@@ -1,0 +1,46 @@
+name: Browser Public HTML Live Acceptance
+
+on:
+  push:
+    branches: ["feat/browser-agent-research-v2-20261101"]
+    paths:
+      - "backend/app/services/browser_agent_service.py"
+      - "backend/app/services/browser_public_html_service.py"
+      - "backend/scripts/browser_public_html_live_canary.py"
+      - ".github/workflows/browser-public-html-live.yml"
+  pull_request:
+    branches: ["release/**"]
+    paths:
+      - "backend/app/services/browser_agent_service.py"
+      - "backend/app/services/browser_public_html_service.py"
+      - "backend/scripts/browser_public_html_live_canary.py"
+      - ".github/workflows/browser-public-html-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-public-html:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      APP_ENV: test
+      SECRET_KEY: test-only-canary-key-not-for-production
+      DATABASE_URL: postgresql+psycopg://test:dummy@localhost/unused
+      EMBEDDING_PROVIDER: deterministic
+      LLM_PROVIDER: deterministic
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+      - name: Check real pinned-DNS TLS public HTML fetch without credentials
+        working-directory: backend
+        run: python -m scripts.browser_public_html_live_canary
+        # Exit 2 is BLOCKED, not PASS. No production account or site is accessed.
