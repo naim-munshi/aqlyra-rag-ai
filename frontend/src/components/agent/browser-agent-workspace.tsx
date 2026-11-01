@@ -43,9 +43,12 @@ function exportBrowserReport(report: Report) {
     ...report.steps.map((step, index) => (index + 1) + ". " + step),
     "",
     "## Verified visited pages",
-    ...report.visited.map((source) =>
-      source.citation + " [" + source.title + "](" + source.url + ")"
-    ),
+    ...report.visited.flatMap((source) => [
+      source.citation + " [" + source.title + "](" + source.url + ")",
+      "",
+      "> " + source.excerpt.slice(0, 650).replaceAll("\\n", " "),
+      "",
+    ]),
     "",
   ].join("\n");
   const url = URL.createObjectURL(new Blob([markdown], {
@@ -236,13 +239,30 @@ export function BrowserAgentWorkspace() {
                   {i + 1}. {step}
                 </p>
               ))}
-              <h3 className="mt-6 text-sm font-semibold">Visited sources</h3>
-              {report.visited.map(src => (
-                <a key={src.citation} href={src.url} target="_blank" rel="noopener noreferrer"
-                  className="mt-2 block break-all text-sm text-[var(--aq-blue)] hover:underline">
-                  {src.citation} {src.title}
-                </a>
-              ))}
+              <h3 className="mt-6 text-sm font-semibold">
+                Verified sources ({report.visited.length})
+              </h3>
+              <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
+                Only pages actually fetched from the approved site can receive citations.
+                Expand a source to inspect the supporting excerpt.
+              </p>
+              <div className="mt-3 space-y-2">
+                {report.visited.map(src => (
+                  <details key={src.citation}
+                    className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-[var(--aq-text)]">
+                      {src.citation} {src.title}
+                    </summary>
+                    <a href={src.url} target="_blank" rel="noopener noreferrer"
+                      className="mt-3 block break-all text-xs text-[var(--aq-blue)] hover:underline">
+                      Open original public source
+                    </a>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-[var(--aq-muted)]">
+                      {src.excerpt}
+                    </p>
+                  </details>
+                ))}
+              </div>
             </article>
           </section>
         )}
