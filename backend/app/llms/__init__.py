@@ -15,6 +15,8 @@ from app.llms.types import (
     LLMProvider,
     LLMProviderInfo,
     LLMProviderRequestError,
+    LLMProviderRateLimitError,
+    LLMProviderPayloadTooLargeError,
     LLMProviderResponseError,
     LLMValidationError,
 )
@@ -27,6 +29,8 @@ __all__ = [
     "LLMProvider",
     "LLMProviderInfo",
     "LLMProviderRequestError",
+    "LLMProviderRateLimitError",
+    "LLMProviderPayloadTooLargeError",
     "LLMProviderResponseError",
     "LLMValidationError",
     "OpenAILLMProvider",
