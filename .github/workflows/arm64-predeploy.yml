@@ -2,7 +2,7 @@ name: Native ARM64 Full-stack Predeploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
     paths:
       - "backend/**"
       - "frontend/**"
@@ -11,7 +11,7 @@ on:
       - "scripts/ops/**"
       - ".github/workflows/arm64-predeploy.yml"
   pull_request:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
   workflow_dispatch:
 
 permissions:

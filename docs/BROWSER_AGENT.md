@@ -12,9 +12,10 @@ a page-by-page evidence trail and `[B1]` citations.
 - **Plan -> Review -> Approve -> Execute**. The plan contains a short-lived
   signed token bound to the authenticated user's ID, task and approved host.
   Approval is a separate user click, never automatically issued by the AI.
-- Disabled by default, including **always disabled in production** until a
-  separately sandboxed browser worker, egress ACLs, quotas, and durable
-  approval/replay storage are deployed and security reviewed.
+- Disabled by default. Production is restricted to the **public HTML-only**
+  DNS-pinned HTTPS reader when the operator explicitly enables it along with
+  Redis-backed single-use approvals. It cannot use production Chromium,
+  browser login, JavaScript, cookie sessions or desktop access.
 - Public HTTPS only; the admin configures an exact hostname allowlist.
   DNS addresses must resolve globally. Request routing blocks all non-GET
   requests, scripts, downloads, service workers, cross-host requests and
@@ -27,10 +28,9 @@ a page-by-page evidence trail and `[B1]` citations.
 - Read-only GET requests can still cause side effects on poorly designed
   websites. Only allow vetted public documentation/news sites. HTTPS/DNS
   validation is not a substitute for network namespace/egress isolation.
-- Each approval is **single-use within one local API process** and lasts
-  at most 120 seconds. A process restart clears the replay ledger; separate
-  workers do not share it. Production stays disabled until a durable,
-  centrally enforced single-use approval store exists. The local runner
+- Each approval lasts at most 120 seconds. Production uses Redis NX for
+  distributed single-use redemption; a local in-memory ledger is only
+  permitted in development. A missing Redis store fails closed. The local runner
   allows one active browser task at a time, with bounded wait and duration.
 
 **NOT included:** local macOS mouse/keyboard control, Windows desktop access,
@@ -105,4 +105,32 @@ within the existing four-page, 55-second read-only budget.
 
 This is still **not unrestricted browsing**. The agent does not submit
 forms, run page JavaScript, use cookies, change data, or operate desktop
-applications. Production remains disabled pending real network isolation.
+applications. Production deployment is operator-gated and additionally
+requires independent SSRF/egress acceptance; no rollout is implied by CI.
+
+
+## Browser Agent v2 — ranked evidence and resilient read-only navigation (2026-11-01)
+
+- Uses bounded lexical hints from the user's research goal to **rank** the
+  prevalidated same-host link frontier before presenting the best 25 choices
+  to the LLM. The model can still only choose an enumerated safe link or finish.
+  No model-generated URLs, selectors, JavaScript or cross-host operations.
+- Strips only known *tracking* query keys (`utm_*`, `fbclid`, `gclid`, etc.)
+  and in-page fragments before deduplication. Preserves search, pagination
+  and other functional parameters; validates URLs before and after rewriting.
+- Production HTML-only mode preferentially extracts `article` / `main`
+  content, discarding scripts, forms, menus, headers, footers and asides.
+- A broken **secondary** approved page no longer destroys earlier evidence.
+  It can skip to another previously approved same-host link. Limits remain
+  **4 successful pages, 6 HTTP attempts, 55 seconds** per execution. A broken
+  start page fails, invalid model actions fail, and reports still require
+  valid `[B1]` style citations against actually visited pages.
+- These upgrades are pure backend enhancements to the existing approval API;
+  no database migrations, new user permissions or website login are added.
+  Unit tests use mocked DNS, fetch and LLM — they do not certify remote-site
+  reliability, production provider quotas or network egress isolation.
+
+**Deployment:** keep the existing operator allowlist, Redis approvals and
+production HTML-only gates. Review the draft PR and CI first; do not
+merge to protected `main`, flip production flags or redeploy Render until
+real-site acceptance and rollback checks are complete.

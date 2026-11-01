@@ -2,7 +2,7 @@ name: Frontend and Deployment Checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -12,7 +12,7 @@ on:
       - "docs/STAGING.md"
       - ".github/workflows/frontend-deployment.yml"
   pull_request:
-    branches: [main]
+    branches: [main, "release/**", "feat/browser-agent-research-v2-20261101"]
   workflow_dispatch:
 
 permissions:
