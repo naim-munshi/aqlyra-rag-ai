@@ -37,5 +37,18 @@ def select_reply_tts_language(*, answer: str, fallback: str = "en") -> str:
     # answer. Read a genuinely English reply in English rather than
     # inheriting the user's Bengali TTS accent.
     if latin >= 12 and latin >= max(count, 1) * 3:
+        # Romanized Bangla is common in casual speech transcripts and
+        # must not become English-accent TTS merely for using A-Z.
+        if fallback == "bn":
+            import re
+
+            words = set(re.findall(r"[a-z]+", content.casefold()))
+            romanized = {
+                "ami", "amar", "tumi", "tomar", "kemon", "bhalo",
+                "bangla", "kotha", "bolte", "pari", "koro", "hobe",
+                "ekhon", "achhi", "ache", "ki", "keno", "amake",
+            }
+            if len(words & romanized) >= 2:
+                return "bn"
         return "en"
     return fallback
