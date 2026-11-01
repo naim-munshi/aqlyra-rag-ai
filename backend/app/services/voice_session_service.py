@@ -148,6 +148,40 @@ def _require_voice_configuration() -> None:
         )
 
 
+def missing_voice_configuration_keys() -> tuple[str, ...]:
+    """Operator diagnostic: names only, never credentials or token values.
+
+    This list is for private production logs and can identify why the
+    authenticated status route reports unavailable without leaking secrets.
+    It is deliberately not returned to end users.
+    """
+    checks = {
+        "LIVEKIT_URL": settings.LIVEKIT_URL,
+        "LIVEKIT_API_KEY": settings.LIVEKIT_API_KEY,
+        "LIVEKIT_API_SECRET": settings.LIVEKIT_API_SECRET,
+        "VOICE_AGENT_NAME": settings.VOICE_AGENT_NAME,
+        "VOICE_STT_MODEL": settings.VOICE_STT_MODEL,
+        "VOICE_STT_LANGUAGE": settings.VOICE_STT_LANGUAGE,
+        "VOICE_SESSION_LLM_MODEL": settings.VOICE_SESSION_LLM_MODEL,
+        "VOICE_TTS_MODEL": settings.VOICE_TTS_MODEL,
+        "VOICE_TTS_VOICE": settings.VOICE_TTS_VOICE,
+    }
+    missing = [name for name, value in checks.items() if not value.strip()]
+    if not settings.VOICE_AGENT_READY:
+        missing.append("VOICE_AGENT_READY")
+    if not _valid_livekit_url(
+        settings.LIVEKIT_URL, production=settings.APP_ENV == "production"
+    ):
+        missing.append("LIVEKIT_URL_INVALID")
+    if (
+        settings.VOICE_STT_PROVIDER == "groq"
+        or settings.VOICE_SESSION_LLM_PROVIDER == "groq"
+        or settings.LLM_PROVIDER == "groq"
+    ) and not settings.GROQ_API_KEY.strip():
+        missing.append("GROQ_API_KEY")
+    return tuple(dict.fromkeys(missing))
+
+
 def voice_is_ready() -> bool:
     """Server-side readiness contract; never expose LiveKit credentials."""
     try:
