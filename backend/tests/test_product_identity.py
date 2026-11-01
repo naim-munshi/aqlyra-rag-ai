@@ -256,3 +256,9 @@ def test_production_self_intro_is_not_creator_metadata():
         assert "Md Naim" not in answer
     # Explicitly asking about the founder must remain supported.
     assert "Md Naim" in resolve_product_identity_answer("Who founded Aqlyra?")
+
+    # Common spoken wording should not fall back to the model's founder bio.
+    spoken = resolve_product_identity_answer("Can you introduce yourself?")
+    assert spoken is not None
+    assert spoken.startswith("I'm Aqlyra")
+    assert "Md Naim" not in spoken
