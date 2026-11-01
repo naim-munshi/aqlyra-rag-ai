@@ -188,3 +188,30 @@ def test_explicit_groq_provider_still_requires_key(monkeypatch, provider_setting
     monkeypatch.setattr(settings, provider_setting, "groq")
     with pytest.raises(voice.VoiceConfigurationError, match="not configured"):
         voice._require_voice_configuration()
+
+
+def test_livekit_readiness_diagnostics_never_return_secret_values(monkeypatch):
+    _configure(monkeypatch)
+    secret = "ultra-private-synthetic-token-not-for-logs"
+    monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", secret)
+    monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "")
+    missing = voice.missing_voice_configuration_keys()
+    assert "LIVEKIT_API_KEY" in missing
+    assert "LIVEKIT_API_SECRET" not in missing
+    assert secret not in str(missing)
+    assert not voice.voice_is_ready()
+
+
+def test_livekit_readiness_diagnostics_require_feature_gate(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "VOICE_AGENT_READY", False)
+    assert "VOICE_AGENT_READY" in voice.missing_voice_configuration_keys()
+    assert not voice.voice_is_ready()
+
+
+def test_livekit_readiness_diagnostics_valid_configuration(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://aqlyra-whhfocpe.livekit.cloud/")
+    assert voice.missing_voice_configuration_keys() == ()
+    assert voice.voice_is_ready()
