@@ -37,7 +37,7 @@ _SUFFIX = re.compile(
     r"হিসাব করো|はいくつ|は何|ですか|は)\s*$",
     re.IGNORECASE,
 )
-_SAFE_CHARACTERS = re.compile(r"[0-9.+\\-*/()% \t]+\Z")
+_SAFE_CHARACTERS = re.compile(r"[0-9.+*/()% \t-]+\Z")
 _LIMIT = Decimal("1000000000000")
 
 
@@ -102,7 +102,7 @@ def exact_calculation_reply(message: str) -> str | None:
     text = re.sub(r"\bto the power of\b", " ** ", text)
     if not _SAFE_CHARACTERS.fullmatch(text):
         return None
-    if not re.search(r"[+*/%\\-]", text) or not re.search(r"\d", text):
+    if not re.search(r"[-+*/%]", text) or not re.search(r"\d", text):
         return None
     if len(text) > 100 or re.search(r"\*{3,}|/{2,}", text):
         return None
