@@ -56,7 +56,7 @@ test("moving the input does not remount the active LiveKit voice call", () => {
   assert.equal(composerCalls.length, 1);
   assert.equal(welcomeConditions.length, 1);
   assert.ok(composerCalls[0].getStart(ast) > welcomeConditions[0].getEnd());
-  assert.equal((source.match(/<VoiceCallButton\\b/g) || []).length, 1);
+  assert.equal((source.match(/<VoiceCallButton\b/g) || []).length, 1);
   assert.match(source, /renderComposer\(\s*!hasConversation,?\s*\)/);
 });
 
