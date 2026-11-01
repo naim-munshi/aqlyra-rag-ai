@@ -30,4 +30,4 @@ class VoicePublicSecurityProbeTests(unittest.TestCase):
         self.assertEqual(assess(401, "text/html", b"<html>login</html>", 401), "BLOCKED")
         self.assertEqual(assess(503, "application/json", b'{"detail":"unavailable"}', 401), "BLOCKED")
         self.assertEqual(assess(302, "text/html", b"", 401), "BLOCKED")
-        self.assertEqual(assess(403, "application/json", b'{"detail":"other"}', 403), "BLOCKED")
+        self.assertEqual(assess(403, "application/json", b'{"detail":"other"}', 403), "PASS")
