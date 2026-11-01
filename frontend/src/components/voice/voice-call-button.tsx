@@ -170,6 +170,9 @@ export function VoiceCallButton({
   const [browserMode, setBrowserMode] = useState(false);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
+  // Avoid repeatedly sending the user to a LiveKit worker that never joined.
+  // A new real-time attempt remains possible after remount/reload.
+  const preferBrowserSpeechRef = useRef(false);
   const startingRef = useRef(false);
   const sessionRequestControllerRef = useRef<AbortController | null>(null);
   const agentJoinTimerRef =
@@ -312,9 +315,11 @@ export function VoiceCallButton({
         roomRef.current !== room ||
         hasVoiceAgent(room)
       ) return;
-      const message =
-        "The AI voice agent did not join. The call was ended. " +
-        "Please retry once the voice service is online.";
+      const hasBrowserFallback = browserSpeechIsSupported();
+      preferBrowserSpeechRef.current = hasBrowserFallback;
+      const message = hasBrowserFallback
+        ? "The real-time voice agent did not join. Tap the microphone again to use Browser Voice."
+        : "The AI voice agent did not join. Please retry when the service is online.";
       roomRef.current = null;
       stopMicrophoneTrack();
       void room.disconnect();
@@ -461,6 +466,14 @@ export function VoiceCallButton({
       starting ||
       startingRef.current
     ) {
+      return;
+    }
+
+    // A real-time worker may advertise configured-but-not-joined availability.
+    // After its join timeout, retry browser speech only on a fresh user tap.
+    if (preferBrowserSpeechRef.current && browserSpeechIsSupported()
+        && !availability?.requiresAuth) {
+      void startBrowserSpeech();
       return;
     }
 
