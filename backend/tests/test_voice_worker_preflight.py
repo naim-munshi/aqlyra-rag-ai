@@ -22,7 +22,11 @@ def valid_env():
         "LIVEKIT_API_SECRET": "s" * 42,
         "VOICE_AGENT_NAME": "aqlyra-voice",
         "GROQ_API_KEY": "test-placeholder-key",
-        "VOICE_STT_MODEL": "whisper-large-v3",
+        "VOICE_STT_PROVIDER": "livekit",
+        "VOICE_STT_MODEL": "deepgram/nova-3",
+        "VOICE_STT_LANGUAGE": "multi",
+        "VOICE_SESSION_LLM_PROVIDER": "livekit",
+        "VOICE_SESSION_LLM_MODEL": "openai/gpt-oss-120b",
         "VOICE_TTS_MODEL": "cartesia/sonic-3",
         "VOICE_TTS_VOICE": "fake-voice",
     }

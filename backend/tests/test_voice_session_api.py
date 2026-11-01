@@ -56,8 +56,13 @@ def configure_livekit(
         "LIVEKIT_API_SECRET",
         "test-api-secret-at-least-32-bytes-long",
     )
-    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-only-groq-voice-key")
-    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "whisper-large-v3")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "VOICE_STT_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "deepgram/nova-3")
+    monkeypatch.setattr(settings, "VOICE_STT_LANGUAGE", "multi")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_PROVIDER", "livekit")
+    monkeypatch.setattr(settings, "VOICE_SESSION_LLM_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setattr(settings, "VOICE_TTS_MODEL", "cartesia/sonic-3")
     monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(

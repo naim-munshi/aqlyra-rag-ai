@@ -23,3 +23,7 @@ def test_voice_model_and_language_remain_configurable():
     assert "VOICE_TTS_MODEL" in fields
     assert "VOICE_TTS_DEFAULT_LANGUAGE" in fields
     assert "VOICE_TTS_VOICE" in fields
+    assert "VOICE_STT_PROVIDER" in fields
+    assert "VOICE_STT_LANGUAGE" in fields
+    assert "VOICE_SESSION_LLM_PROVIDER" in fields
+    assert "VOICE_SESSION_LLM_MODEL" in fields

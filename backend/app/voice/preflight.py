@@ -26,8 +26,11 @@ REQUIRED = (
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
     "VOICE_AGENT_NAME",
-    "GROQ_API_KEY",
+    "VOICE_STT_PROVIDER",
     "VOICE_STT_MODEL",
+    "VOICE_STT_LANGUAGE",
+    "VOICE_SESSION_LLM_PROVIDER",
+    "VOICE_SESSION_LLM_MODEL",
     "VOICE_TTS_MODEL",
     "VOICE_TTS_VOICE",
 )
@@ -57,6 +60,26 @@ def validate_voice_worker_environment(values: Mapping[str, str]) -> None:
         raise VoiceWorkerPreflightError("Production grounding must be enabled")
     if values["LLM_PROVIDER"].strip().lower() == "deterministic":
         raise VoiceWorkerPreflightError("A real LLM provider is required")
+    if values["LLM_PROVIDER"].strip().lower() not in {"groq", "openai"}:
+        raise VoiceWorkerPreflightError("Unsupported Aqlyra brain provider")
+    stt_provider = values["VOICE_STT_PROVIDER"].strip().lower()
+    session_provider = values["VOICE_SESSION_LLM_PROVIDER"].strip().lower()
+    if stt_provider not in {"livekit", "groq"}:
+        raise VoiceWorkerPreflightError("Unsupported speech provider")
+    if session_provider not in {"livekit", "groq"}:
+        raise VoiceWorkerPreflightError("Unsupported session model provider")
+    if stt_provider == "livekit":
+        if not values["VOICE_STT_MODEL"].strip().startswith("deepgram/"):
+            raise VoiceWorkerPreflightError("Configured STT is not a LiveKit Deepgram model")
+    elif "/" in values["VOICE_STT_MODEL"].strip():
+        raise VoiceWorkerPreflightError("Groq STT requires a Groq model ID")
+    if session_provider == "livekit" and "/" not in values["VOICE_SESSION_LLM_MODEL"].strip():
+        raise VoiceWorkerPreflightError("LiveKit session LLM requires a provider/model ID")
+    if (
+        stt_provider == "groq" or session_provider == "groq"
+        or values["LLM_PROVIDER"].strip().lower() == "groq"
+    ) and not values.get("GROQ_API_KEY", "").strip():
+        raise VoiceWorkerPreflightError("GROQ_API_KEY required for selected provider")
     if values["EMBEDDING_PROVIDER"].strip().lower() == "deterministic":
         raise VoiceWorkerPreflightError("Real embeddings are required")
     if (

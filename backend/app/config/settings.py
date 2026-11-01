@@ -189,7 +189,13 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
     VOICE_AGENT_NAME: str = "aqlyra-voice"
-    VOICE_STT_MODEL: str = "whisper-large-v3"
+    # LiveKit speech by default, optional direct Groq.
+    VOICE_STT_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_STT_MODEL: str = "deepgram/nova-3"
+    VOICE_STT_LANGUAGE: str = "multi"
+    # Actual reasoning uses execute_chat_turn(), never this session LLM.
+    VOICE_SESSION_LLM_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_SESSION_LLM_MODEL: str = "openai/gpt-oss-120b"
     VOICE_TTS_MODEL: str = "cartesia/sonic-3"
     VOICE_TTS_VOICE: str = (
         "a5136bf9-224c-4d76-b823-52bd5efcffcc"

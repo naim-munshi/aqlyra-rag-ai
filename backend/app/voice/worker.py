@@ -16,7 +16,8 @@ from livekit.agents import (
     inference,
     llm,
 )
-from livekit.plugins import groq, silero
+from livekit.plugins import silero
+from app.voice.model_factories import build_voice_stt, build_session_llm
 
 from app.config.settings import settings
 from app.voice.job_metadata import VoiceJobData
@@ -738,25 +739,10 @@ async def aqlyra_voice_session(
     )
 
     session = AgentSession(
-        llm=groq.LLM(
-            model="openai/gpt-oss-20b",
-            api_key=(
-                settings.GROQ_API_KEY
-            ),
-        ),
-        stt=groq.STT(
-            model=(
-                settings
-                .VOICE_STT_MODEL
-            ),
-            api_key=(
-                settings.GROQ_API_KEY
-            ),
-            detect_language=True,
-            prompt=(
-                _VOICE_STT_PROMPT
-            ),
-        ),
+        # Actual reasoning comes from the overridden llm_node which
+        # calls existing Aqlyra execute_chat_turn and persists answers.
+        llm=build_session_llm(),
+        stt=build_voice_stt(prompt=_VOICE_STT_PROMPT),
         tts=tts_model,
         vad=silero.VAD.load(),
         turn_handling=(
