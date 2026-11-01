@@ -197,6 +197,8 @@ class Settings(BaseSettings):
     VOICE_STT_PROVIDER: Literal["livekit", "groq"] = "livekit"
     VOICE_STT_MODEL: str = "deepgram/nova-3"
     VOICE_STT_LANGUAGE: str = "multi"
+    # Optional Deepgram Nova-3 multilingual bias; does not restrict languages.
+    VOICE_STT_LANGUAGE_HINTS: str = ""
     # Actual reasoning uses execute_chat_turn(), never this session LLM.
     VOICE_SESSION_LLM_PROVIDER: Literal["livekit", "groq"] = "livekit"
     VOICE_SESSION_LLM_MODEL: str = "openai/gpt-oss-120b"
