@@ -33,4 +33,9 @@ def select_reply_tts_language(*, answer: str, fallback: str = "en") -> str:
     # Require a substantial non-Latin passage, not a quoted glossary word.
     if count >= 5 and count >= latin * 0.28:
         return language
+    # A user may be speaking Bengali but explicitly request an English
+    # answer. Read a genuinely English reply in English rather than
+    # inheriting the user's Bengali TTS accent.
+    if latin >= 12 and latin >= max(count, 1) * 3:
+        return "en"
     return fallback
