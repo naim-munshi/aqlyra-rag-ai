@@ -79,3 +79,32 @@ migration or service creation is implied by this document.
 The existing `backend/Dockerfile.voice` now runs `python -m app.voice.preflight` before registering a LiveKit agent. It checks **presence only** of APP_ENV, SECRET_KEY, DATABASE_URL, REDIS_URL, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VOICE_AGENT_NAME, GROQ_API_KEY, VOICE_STT_MODEL, VOICE_TTS_MODEL and VOICE_TTS_VOICE, validates production environment, transport syntax and minimum secret length, and logs **no secret values**. This is not proof that the external providers are reachable or have working quotas.
 
 For an isolated new Railway voice worker, use repository `naim-munshi/aqlyra-rag-ai`, build context/root directory `backend`, Dockerfile `Dockerfile.voice`, default Docker CMD (no HTTP port/public URL), continuous worker and private production-like staging variables (stored only in the provider secret dashboard). Use a separate LiveKit project and disposable test database for staging. **Do not commit the existing Railway staging patch** (56 old unrelated service/database changes) just to start the voice worker. A separately deployed, reviewed worker with approved billing and secrets is required before `VOICE_AGENT_READY=true` on the actual API.
+
+
+## Dedicated worker production role — 2026-11-01 startup blocker
+
+The voice worker Docker image sets `AQLYRA_PROCESS_ROLE=voice_worker`.
+This bypasses **only HTTP API-specific** Google OAuth, email delivery and
+CORS requirements. `app.main` refuses the worker role, preventing a public
+API server from inheriting these exemptions.
+
+Common production security remains mandatory: strong `SECRET_KEY` and
+PostgreSQL password, Redis, `RATE_LIMIT_ENABLED=true`,
+`RAG_GROUNDING_VERIFIER_ENABLED=true`, real LLM/embedding providers,
+verified email policy and `DEBUG=false`.
+
+Configure in the worker provider's secret UI, never in Git:
+`APP_ENV=production`, `DATABASE_URL`, `SECRET_KEY`, `REDIS_URL`,
+`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
+`VOICE_AGENT_NAME` (same as API), `GROQ_API_KEY`, `VOICE_STT_MODEL`,
+`VOICE_TTS_MODEL`, `VOICE_TTS_VOICE`, `RATE_LIMIT_ENABLED=true`,
+`RAG_GROUNDING_VERIFIER_ENABLED=true`, `LLM_PROVIDER=groq`,
+`LLM_MODEL` (an actual Groq-supported model), and a non-deterministic
+`EMBEDDING_PROVIDER` with its corresponding credential (for example
+the Hugging Face `HF_TOKEN` or OpenAI `OPENAI_API_KEY`).
+
+The startup preflight validates configuration only; it does not prove
+LiveKit worker registration, quotas or real audio. The connected Railway
+staging voice service still has zero deployments and missing provider
+variables. Leave API-side `VOICE_AGENT_READY=false` until worker
+registration and real speech E2E tests pass.
