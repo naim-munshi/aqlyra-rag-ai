@@ -105,12 +105,20 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
     assert result.server_url == "wss://voice.test.invalid"
     assert result.mode == "knowledge"
     assert result.conversation_id == str(conversation_id)
-    assert result.room_name.startswith(f"aqlyra-{conversation_id}-")
+    assert result.room_name.startswith("aqlyra-voice-")
+    assert str(owner_id) not in result.room_name
+    assert str(conversation_id) not in result.room_name
     assert grant["roomJoin"] is True
     assert grant["room"] == result.room_name
     assert grant["canSubscribe"] is True
     assert grant["canPublish"] is True
-    assert claims["sub"].startswith(f"user-{owner_id}-")
+    assert grant["canPublishSources"] == ["microphone"]
+    assert grant["canPublishData"] is False
+    assert grant["canUpdateOwnMetadata"] is False
+    assert claims["sub"].startswith("voice-")
+    assert str(owner_id) not in claims["sub"]
+    assert claims.get("metadata") in (None, "")
+    assert claims.get("name") == "Aqlyra Voice"
     assert observed == {
         "resolved_owner": owner_id,
         "mode": "knowledge",
@@ -118,7 +126,12 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
         "documents": documents,
     }
 
-    metadata = json.loads(claims["metadata"])
+    metadata = {
+        "user_id": str(owner_id),
+        "conversation_id": str(conversation_id),
+        "mode": "knowledge",
+        "document_ids": list(documents),
+    }
     assert metadata == {
         "user_id": str(owner_id),
         "conversation_id": str(conversation_id),

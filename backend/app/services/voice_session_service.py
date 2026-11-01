@@ -244,15 +244,10 @@ def create_voice_session(
         title=title,
     )
 
-    room_name = (
-        f"aqlyra-{conversation.id}-"
-        f"{uuid4().hex[:12]}"
-    )
-
-    participant_identity = (
-        f"user-{user.id}-"
-        f"{uuid4().hex[:8]}"
-    )
+    # Opaque identifiers: never put stable account/conversation IDs in
+    # LiveKit room or participant identities (both appear in RTC logs).
+    room_name = f"aqlyra-voice-{uuid4().hex}"
+    participant_identity = f"voice-{uuid4().hex}"
 
     context = {
         "user_id": str(user.id),
@@ -279,18 +274,21 @@ def create_voice_session(
         .with_identity(
             participant_identity
         )
-        .with_name(user.username)
+        .with_name("Aqlyra Voice")
         # Short-lived joining authority: an active session may continue.
         # Do not rely on LiveKit's longer SDK default TTL.
         .with_ttl(timedelta(minutes=10))
-        .with_metadata(metadata)
+        # Do not copy private owner/document IDs into visible participant
+        # metadata. Only the named agent dispatch receives job metadata.
         .with_grants(
             api.VideoGrants(
                 room_join=True,
                 room=room_name,
                 can_publish=True,
+                can_publish_sources=["microphone"],
                 can_subscribe=True,
-                can_publish_data=True,
+                can_publish_data=False,
+                can_update_own_metadata=False,
             )
         )
         .with_room_config(
