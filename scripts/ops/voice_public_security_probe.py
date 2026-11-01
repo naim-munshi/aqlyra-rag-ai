@@ -83,7 +83,14 @@ def run_one(check: Check) -> str:
         mime = response.headers.get("Content-Type", "")
         body = response.read(2048)
     except (URLError, TimeoutError, OSError):
+        print(f"voice_security_probe_http: {check.label}=UNREACHABLE")
         return "BLOCKED"
+    # Safe diagnostics only: never print URLs, headers, response bodies or tokens.
+    is_json = "application/json" in mime.lower()
+    print(
+        f"voice_security_probe_http: {check.label}=HTTP_{code}"
+        f" expected=HTTP_{check.expected_status} json={is_json}"
+    )
     return assess(code, mime, body, check.expected_status)
 
 
