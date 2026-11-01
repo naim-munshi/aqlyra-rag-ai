@@ -111,6 +111,12 @@ def _require_voice_configuration() -> None:
                 "LIVEKIT_API_SECRET",
                 settings.LIVEKIT_API_SECRET,
             ),
+            # The deployed worker uses Groq for STT and model integration.
+            # A LiveKit token alone cannot make an agent speak.
+            ("GROQ_API_KEY", settings.GROQ_API_KEY),
+            ("VOICE_STT_MODEL", settings.VOICE_STT_MODEL),
+            ("VOICE_TTS_MODEL", settings.VOICE_TTS_MODEL),
+            ("VOICE_TTS_VOICE", settings.VOICE_TTS_VOICE),
         )
         if not value.strip()
     ]
