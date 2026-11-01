@@ -65,6 +65,9 @@ RUN mkdir -p /app/uploads \
 
 USER appuser
 
+# The headless RTC process never needs the HTTP API OAuth/email settings.
+ENV AQLYRA_PROCESS_ROLE=voice_worker
+
 # Fail closed before connecting to LiveKit or allocating paid STT/TTS.
 # The preflight prints variable NAMES only and never logs secret values.
 CMD ["/bin/sh", "-c", "python -m app.voice.preflight && exec python -m app.voice.worker start"]
