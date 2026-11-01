@@ -20,6 +20,8 @@ from app.database.connection import get_db
 from app.embeddings import EmbeddingError, EmbeddingProviderQuotaError
 from app.llms import (
     LLMProviderRequestError,
+    LLMProviderRateLimitError,
+    LLMProviderPayloadTooLargeError,
     LLMProviderResponseError,
     LLMValidationError,
 )
@@ -288,6 +290,20 @@ def create_message_endpoint(
                 "the embedding service quota was exhausted. "
                 "Use Normal chat for general questions or try again later."
             ),
+        ) from exc
+
+    except LLMProviderPayloadTooLargeError as exc:
+        app_logger.warning("conversation_llm_payload_too_large")
+        raise HTTPException(
+            status_code=413,
+            detail="AI request is too long for the current provider. Shorten the message or use document upload.",
+        ) from exc
+
+    except LLMProviderRateLimitError as exc:
+        app_logger.warning("conversation_llm_rate_limited")
+        raise HTTPException(
+            status_code=429,
+            detail="AI provider rate limit reached. Try again shortly.",
         ) from exc
 
     except (
@@ -755,6 +771,28 @@ def create_message_stream_endpoint(
                         "the embedding service quota was exhausted. "
                         "Use Normal chat or try again later."
                     ),
+                },
+            )
+
+        except LLMProviderPayloadTooLargeError:
+            app_logger.warning("conversation_stream_llm_payload_too_large")
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 413,
+                    "code": "provider_payload_too_large",
+                    "detail": "AI request is too long for the current provider. Shorten the message or use document upload.",
+                },
+            )
+
+        except LLMProviderRateLimitError:
+            app_logger.warning("conversation_stream_llm_rate_limited")
+            yield _encode_stream_event(
+                "error",
+                {
+                    "status": 429,
+                    "code": "provider_rate_limited",
+                    "detail": "AI provider rate limit reached. Try again shortly.",
                 },
             )
 
