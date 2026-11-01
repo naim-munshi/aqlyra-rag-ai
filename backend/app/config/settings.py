@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 from uuid import UUID
-from typing import Self
+from typing import Self, Literal
 
 from pydantic import (
     Field,
