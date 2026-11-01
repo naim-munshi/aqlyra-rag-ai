@@ -74,20 +74,39 @@ async function fetchJson(
   body: Record<string, unknown>,
   signal: AbortSignal,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-    signal,
-  });
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data || typeof data !== "object") {
-    const detail = data && typeof data.detail === "string"
-      ? data.detail : "Voice message could not be processed.";
-    throw new Error(detail);
+  // A hung LLM request must not lock Browser Voice in "Thinking" forever.
+  const requestController = new AbortController();
+  const abortWithCall = () => requestController.abort();
+  if (signal.aborted) requestController.abort();
+  else signal.addEventListener("abort", abortWithCall, { once: true });
+  const timeoutMs = url === "/api/conversations" ? 20000 : 75000;
+  const deadline = setTimeout(() => requestController.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: requestController.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || typeof data !== "object") {
+      const detail = data && typeof data.detail === "string"
+        ? data.detail : "Voice message could not be processed.";
+      throw new Error(detail);
+    }
+    return data as Record<string, unknown>;
+  } catch (error) {
+    if (!signal.aborted && requestController.signal.aborted) {
+      throw new Error(
+        "Voice AI request timed out. Check chat history before retrying to avoid duplicate turns.",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(deadline);
+    signal.removeEventListener("abort", abortWithCall);
   }
-  return data as Record<string, unknown>;
 }
 
 export async function startBrowserVoiceMode(
