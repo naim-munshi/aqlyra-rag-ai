@@ -205,6 +205,12 @@ class Settings(BaseSettings):
         "a5136bf9-224c-4d76-b823-52bd5efcffcc"
     )
     VOICE_TTS_DEFAULT_LANGUAGE: str = "en"
+    # Optional provider-verified native voice IDs; no guessed IDs.
+    # Each language falls back to the existing VOICE_TTS_VOICE.
+    VOICE_TTS_VOICE_BN: str = ""
+    VOICE_TTS_VOICE_JA: str = ""
+    VOICE_TTS_VOICE_HI: str = ""
+
 
     # Embeddings
     EMBEDDING_PROVIDER: str = (
