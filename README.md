@@ -2,7 +2,7 @@
 
 **Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
 
-[Live application](https://aqlyra-ai.vercel.app) · [Product walkthrough](https://aqlyra-ai.vercel.app/demo) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [Deployment status](docs/PRODUCTION_STATUS_2026-10-31.md)
+[Engineering recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md) · [Live application](https://aqlyra-ai.vercel.app) · [Product walkthrough](https://aqlyra-ai.vercel.app/demo) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [Deployment status](docs/PRODUCTION_STATUS_2026-10-31.md)
 
 > **Production beta — verified 31 October 2026.** Aqlyra has a live Next.js frontend on Vercel, FastAPI backend on Render, Neon PostgreSQL/pgvector, Redis, cloud document storage, Groq-based chat, Tavily-backed Web Search, and a separate authenticated multilingual semantic-embedding worker. Some features remain limited or disabled; see the status matrix. Live availability and provider quotas can change after this verification date. A green CI build is not a replacement for authenticated user acceptance.
 
@@ -14,19 +14,21 @@
 
 **Web Search** currently uses **Tavily in production**. An independent, token-protected SearXNG gateway is under controlled acceptance; a real 5-result probe has succeeded using a bounded Wikimedia fallback, but that is not equivalent to a complete independent general-purpose web index. Tavily must not be disabled until broad search accuracy, source quality and outage behavior pass live acceptance.
 
+> **2026-11-02 incident update:** The official frontend now exposes real-time LiveKit Voice only; user microphone E2E is BLOCKED by two missing Render LiveKit credential values. Semantic embedding reliability is degraded by repeat 502s. Groq returned intermittent 413/429 errors. Treat the 31 October acceptance baseline below as historical; see [verified recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md).
+
 ## Current capability matrix
 
 | Capability | Status as last verified | Important qualification |
 | --- | --- | --- |
 | Email and Google identity; authenticated chat | Production beta | Two-account browser/security E2E not yet certified |
-| General Converse with Groq | Live | Response quality is probabilistic; context and memory require real-user review |
-| Memory recall | Implemented; lexical fallback enabled | No cross-user recall; actual long-term recall accuracy not yet benchmarked |
+| General Converse with Groq | Live; reliability work open | 2026-11-01 production logs include successful 200 responses and occasional 413 payload-too-large / 429 rate-limit errors; response quality and recovery need real-user validation |
+| Memory recall | Degraded during semantic-worker outages | Repeated live embedding HTTP 502 caused documented lexical fallback; no claim of semantic recall reliability until real-provider acceptance |
 | PDF Knowledge ingestion and lexical search | Verified | One legacy PDF was recovered into **12 chunks** |
-| Dense semantic RAG | Verified at provider/database layer | Separate compact multilingual static encoder; **12 genuine 384-dimensional vectors** recorded; full live answer-quality evaluation pending |
+| Dense semantic RAG | Earlier provider/database canary PASS; ongoing 502 incident | Preserved genuine **384-d** vectors and original multilingual ONNX model; a bounded transient retry/circuit breaker is in PR #93, not evidence that worker health is restored |
 | Tavily Web Research | Provider pipeline verified | Real public canary returned four validated sources; citations do not guarantee factual truth |
 | Self-hosted SearXNG | Limited canary PASS | Wikipedia-backed 5-result probe; wider web coverage/zero-result resilience not yet certified |
-| Browser Voice | Code shipped to frontend release branch | Browser STT/TTS depends on device support/permissions and may use browser-vendor speech services; **not** a verified LiveKit RTC call |
-| LiveKit realtime voice | Not accepted | Requires running agent/RTC credentials and actual call E2E |
+| Browser Voice | No longer offered as silent fallback on official frontend | Browser synthesis cannot reliably support hands-free interruption on iOS. Official Voice UI uses LiveKit-only connection and reports unavailability rather than simulating a call |
+| LiveKit realtime voice | Worker registered; real call BLOCKED | Railway 1/1 replica Online, but Render startup diagnostics show missing **LIVEKIT_API_KEY** and **LIVEKIT_API_SECRET**. Authenticated room/audio, STT, TTS, barge-in and two-account E2E remain unverified |
 | Browser Agent | **Disabled in production** | Signed approvals and Redis replay protection do **not** replace network-isolated browser execution |
 | PDF/DOCX/XLSX/PPTX/other artifact generation | Implemented | Format-specific and cross-user production acceptance outstanding |
 | Backups | Neon recovery branch exists | **Off-host encrypted export + isolated database/object restore remain unverified** |
