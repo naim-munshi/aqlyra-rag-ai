@@ -35,6 +35,10 @@ export type BrowserVoiceController = {
   setMuted: (muted: boolean) => void;
   // Must be invoked directly from the user's audio-unlock click on iOS.
   retryAudio: () => boolean;
+  // Explicit user stop works even where browser speech recognition
+  // cannot listen while Web Speech is synthesizing audio (iOS Safari).
+  interruptSpeech: () => boolean;
+  setSpeechLocale: (locale: string) => void;
 };
 
 export type BrowserVoiceOptions = {
@@ -67,6 +71,34 @@ function speechLanguage(text: string): string {
   if (/[\u3040-\u30ff\u3400-\u9fff]/.test(text)) return "ja-JP";
   if (/[\u0900-\u097f]/.test(text)) return "hi-IN";
   return "en-US";
+}
+
+// Browser TTS uses an installed OS voice; setting just utterance.lang
+// does not reliably select a Japanese/Bangla voice on mobile Safari.
+function selectSpeechVoice(
+  synthesis: SpeechSynthesis,
+  locale: string,
+): SpeechSynthesisVoice | null {
+  const voices = typeof synthesis.getVoices === "function"
+    ? synthesis.getVoices() : [];
+  const desired = locale.toLowerCase();
+  const language = desired.split("-")[0];
+  return voices.find(voice => voice.lang.toLowerCase() === desired)
+    ?? voices.find(voice => voice.lang.toLowerCase().split("-")[0] === language)
+    ?? null;
+}
+
+function stopSpeechCommand(text: string): boolean {
+  const cleaned = text.trim().toLocaleLowerCase()
+    .replace(/[.,!?;:।。！？、，…]+/g, " ")
+    .replace(/\s+/g, " ").trim();
+  return [
+    "stop", "stop talking", "stop speaking", "please stop",
+    "stop please", "stop now", "that's enough",
+    "থামো", "থাম", "চুপ করো", "আর বলো না",
+    "thamo", "chup koro", "ar bolo na",
+    "止めて", "やめて", "もういい",
+  ].includes(cleaned);
 }
 
 async function fetchJson(
@@ -140,6 +172,7 @@ export async function startBrowserVoiceMode(
   let playbackTimer: ReturnType<typeof setTimeout> | null = null;
   let playing: SpeechSynthesisUtterance | null = null;
   let lastReply = "";
+  let lastPlaybackFinishedAt = 0;
 
   const clearPlaybackTimer = () => {
     if (playbackTimer !== null) clearTimeout(playbackTimer);
@@ -179,10 +212,13 @@ export async function startBrowserVoiceMode(
       return;
     }
     startScheduled = true;
+    // Give Safari time to finish its TTS tail. Otherwise the mic can
+    // recognize Aqlyra's own answer as a fresh user question.
+    const cooldown = Math.max(150, lastPlaybackFinishedAt + 800 - Date.now());
     timer = setTimeout(() => {
       startScheduled = false;
       beginRecognition();
-    }, 150);
+    }, cooldown);
   };
 
   const speak = (content: string) => {
@@ -191,7 +227,9 @@ export async function startBrowserVoiceMode(
     // endless mobile TTS session and gives the user an audible reply.
     const utterance = new SpeechSynthesisUtterance(content.slice(0, 1400));
     utterance.lang = speechLanguage(content);
-    utterance.rate = 1;
+    const matchedVoice = selectSpeechVoice(browser.speechSynthesis, utterance.lang);
+    if (matchedVoice) utterance.voice = matchedVoice;
+    utterance.rate = utterance.lang === "en-US" ? 1 : 0.93;
     const failPlayback = (message: string) => {
       if (stopped || playing !== utterance) return;
       playing = null;
@@ -221,6 +259,7 @@ export async function startBrowserVoiceMode(
       if (stopped || playing !== utterance) return;
       playing = null;
       clearPlaybackTimer();
+      lastPlaybackFinishedAt = Date.now();
       busy = false;
       listen();
     };
@@ -278,6 +317,18 @@ export async function startBrowserVoiceMode(
       if (!text) continue;
       options.onUserTranscript?.(text, item.isFinal);
       if (!item.isFinal || busy) continue;
+      if (stopSpeechCommand(text)) {
+        // Control phrases must not be sent as a paid AI request.
+        options.onState("listening");
+        continue;
+      }
+      const echoed = text.trim().toLocaleLowerCase();
+      if (echoed.length >= 18
+          && Date.now() - lastPlaybackFinishedAt < 3000
+          && lastReply.toLocaleLowerCase().includes(echoed)) {
+        // The phone's speaker occasionally feeds its tail back into STT.
+        continue;
+      }
       busy = true;
       processing = true;
       try { recognition.stop(); } catch { /* already ended */ }
@@ -331,7 +382,29 @@ export async function startBrowserVoiceMode(
   };
   recognition.onend = listen;
   listen(true); // First call must be inside the user's direct click event.
-  return { stop, retryAudio() {
+  return { stop, interruptSpeech() {
+    if (stopped || !playing) return false;
+    playing = null; // Cancel callbacks must not re-arm old speech.
+    clearPlaybackTimer();
+    browser.speechSynthesis.cancel();
+    lastPlaybackFinishedAt = Date.now();
+    busy = processing;
+    if (!muted && !processing) {
+      options.onState("listening");
+      listen();
+    }
+    return true;
+  }, setSpeechLocale(locale: string) {
+    if (stopped) return;
+    const allowed = ["auto", "en-US", "bn-BD", "ja-JP", "hi-IN"];
+    if (!allowed.includes(locale)) return;
+    recognition.lang = locale === "auto"
+      ? (navigator.language || "en-US") : locale;
+    if (!busy && !muted) {
+      try { recognition.abort(); } catch { /* idle microphone */ }
+      listen();
+    }
+  }, retryAudio() {
     // This method runs synchronously in the click handler, before any await.
     if (stopped || muted || processing || !lastReply.trim()) return false;
     if (timer) clearTimeout(timer);
