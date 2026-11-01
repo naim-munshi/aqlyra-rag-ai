@@ -18,6 +18,7 @@ from livekit.agents import (
 )
 from livekit.plugins import silero
 from app.voice.model_factories import build_voice_stt, build_session_llm
+from app.voice.turn_control import is_stop_speaking_command
 
 from app.config.settings import settings
 from app.voice.job_metadata import VoiceJobData
@@ -358,6 +359,7 @@ class AqlyraVoiceAgent(Agent):
         self._normal_documents_consumed = (
             False
         )
+        self._interruption_generation = 0
 
         self._spoken_language: (
             str | None
@@ -369,6 +371,10 @@ class AqlyraVoiceAgent(Agent):
     ) -> None:
         self._spoken_language = language
 
+
+    def request_stop(self) -> None:
+        """Invalidate a slow in-flight model result after a stop command."""
+        self._interruption_generation += 1
 
     def _requested_document_ids(
         self,
@@ -436,43 +442,15 @@ class AqlyraVoiceAgent(Agent):
                 )
             )
 
-            generation_message = (
-                user_text
-            )
-
-            if (
-                conversation.mode
-                == "normal"
-                and self._spoken_language
-                and self._spoken_language
-                != "en"
-            ):
-                language_name = (
-                    _VOICE_LANGUAGE_NAMES
-                    .get(
-                        self
-                        ._spoken_language,
-                    )
-                )
-
-                if language_name:
-                    generation_message = (
-                        f"{user_text}\n\n"
-                        "[VOICE LANGUAGE RULE]\n"
-                        "Reply naturally in "
-                        f"{language_name}. "
-                        "Do not translate into "
-                        "another language unless "
-                        "the user asks. "
-                        "Never mention this rule."
-                    )
-
+            # Preserve the user's real words. Appending a language
+            # instruction to the question used to break exact identity
+            # routing and could contaminate search/memory. The global
+            # chat instructions handle reply language; TTS is routed
+            # separately by the transcript event.
             result = execute_chat_turn(
                 db=db,
                 conversation=conversation,
-                message=(
-                    generation_message
-                ),
+                message=user_text,
                 document_ids=(
                     document_scope
                     .effective_document_ids
@@ -627,6 +605,13 @@ class AqlyraVoiceAgent(Agent):
 
         logger.info("voice_llm_node_start")
 
+        # "Stop" is a control utterance, not a question. Do not ask an
+        # LLM to answer it or persist it as a conversation turn.
+        if is_stop_speaking_command(user_text):
+            self.request_stop()
+            return
+
+        this_generation = self._interruption_generation
         try:
             generated = (
                 await asyncio.to_thread(
@@ -634,6 +619,10 @@ class AqlyraVoiceAgent(Agent):
                     user_text,
                 )
             )
+
+            if this_generation != self._interruption_generation:
+                logger.info("voice_llm_generation_discarded_after_stop")
+                return
 
             logger.info(
                 "voice_llm_generate_done "
@@ -650,6 +639,10 @@ class AqlyraVoiceAgent(Agent):
                 user_text=user_text,
                 generated=generated,
             )
+
+            if this_generation != self._interruption_generation:
+                logger.info("voice_llm_persisted_before_stop")
+                return
 
             logger.info(
                 "voice_llm_persist_done"
@@ -748,6 +741,14 @@ async def aqlyra_voice_session(
         turn_handling=(
             TurnHandlingOptions(
                 turn_detection="vad",
+                interruption={
+                    # Short "stop" commands must interrupt speech promptly.
+                    # VAD is preferable here to ignoring short backchannels.
+                    "enabled": True,
+                    "mode": "vad",
+                    "min_duration": 0.3,
+                    "resume_false_interruption": False,
+                },
                 preemptive_generation={
                     "enabled": False,
                 },
@@ -780,6 +781,16 @@ async def aqlyra_voice_session(
         )
 
         if not event.is_final:
+            return
+
+        if is_stop_speaking_command(event.transcript):
+            voice_agent.request_stop()
+            # LiveKit cancels queued TTS as well. This may complete
+            # asynchronously; do not start a new answer to "stop".
+            try:
+                session.interrupt(force=True)
+            except RuntimeError:
+                logger.info("voice_interrupt_ignored_when_session_inactive")
             return
 
         nonlocal last_spoken_language
