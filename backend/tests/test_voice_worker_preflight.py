@@ -8,6 +8,12 @@ from app.voice.preflight import (
 def valid_env():
     return {
         "APP_ENV": "production",
+        "AQLYRA_PROCESS_ROLE": "voice_worker",
+        "RATE_LIMIT_ENABLED": "true",
+        "RAG_GROUNDING_VERIFIER_ENABLED": "true",
+        "LLM_PROVIDER": "groq",
+        "EMBEDDING_PROVIDER": "huggingface",
+        "HF_TOKEN": "test-only-placeholder-hf",
         "SECRET_KEY": "s" * 48,
         "DATABASE_URL": "postgresql+psycopg://user:fake@db.example.com:5432/voice",
         "REDIS_URL": "rediss://redis.example.com:6380",

@@ -14,6 +14,11 @@ from urllib.parse import urlsplit
 
 REQUIRED = (
     "APP_ENV",
+    "AQLYRA_PROCESS_ROLE",
+    "RATE_LIMIT_ENABLED",
+    "RAG_GROUNDING_VERIFIER_ENABLED",
+    "LLM_PROVIDER",
+    "EMBEDDING_PROVIDER",
     "SECRET_KEY",
     "DATABASE_URL",
     "REDIS_URL",
@@ -43,6 +48,30 @@ def validate_voice_worker_environment(values: Mapping[str, str]) -> None:
         raise VoiceWorkerPreflightError(
             "APP_ENV must be production for the deployed voice worker"
         )
+
+    if values["AQLYRA_PROCESS_ROLE"].strip() != "voice_worker":
+        raise VoiceWorkerPreflightError("AQLYRA_PROCESS_ROLE must be voice_worker")
+    if values["RATE_LIMIT_ENABLED"].strip().lower() != "true":
+        raise VoiceWorkerPreflightError("Production rate limiting must be enabled")
+    if values["RAG_GROUNDING_VERIFIER_ENABLED"].strip().lower() != "true":
+        raise VoiceWorkerPreflightError("Production grounding must be enabled")
+    if values["LLM_PROVIDER"].strip().lower() == "deterministic":
+        raise VoiceWorkerPreflightError("A real LLM provider is required")
+    if values["EMBEDDING_PROVIDER"].strip().lower() == "deterministic":
+        raise VoiceWorkerPreflightError("Real embeddings are required")
+    if (
+        values["EMBEDDING_PROVIDER"].strip().lower() == "huggingface"
+        and not values.get("HF_TOKEN", "").strip()
+    ):
+        raise VoiceWorkerPreflightError("HF_TOKEN is required for Hugging Face")
+    if (
+        "openai" in (
+            values["LLM_PROVIDER"].strip().lower(),
+            values["EMBEDDING_PROVIDER"].strip().lower(),
+        )
+        and not values.get("OPENAI_API_KEY", "").strip()
+    ):
+        raise VoiceWorkerPreflightError("OPENAI_API_KEY is required for OpenAI")
 
     if len(values["SECRET_KEY"].strip()) < 32:
         raise VoiceWorkerPreflightError("SECRET_KEY must be at least 32 characters")
