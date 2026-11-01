@@ -114,12 +114,21 @@ export async function startBrowserVoiceMode(
   let processing = false;
   let startScheduled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let playbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let playing: SpeechSynthesisUtterance | null = null;
+
+  const clearPlaybackTimer = () => {
+    if (playbackTimer !== null) clearTimeout(playbackTimer);
+    playbackTimer = null;
+  };
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     controller.abort();
     if (timer) clearTimeout(timer);
+    clearPlaybackTimer();
+    playing = null;
     browser.speechSynthesis.cancel();
     recognition.onend = null;
     recognition.onresult = null;
@@ -153,34 +162,62 @@ export async function startBrowserVoiceMode(
   };
 
   const speak = (content: string) => {
-    if (stopped) return;
-    const utterance = new SpeechSynthesisUtterance(content.slice(0, 3500));
+    if (stopped || muted) return;
+    // Keep long responses in chat; speaking the first segment prevents an
+    // endless mobile TTS session and gives the user an audible reply.
+    const utterance = new SpeechSynthesisUtterance(content.slice(0, 1400));
     utterance.lang = speechLanguage(content);
     utterance.rate = 1;
+    const failPlayback = (message: string) => {
+      if (stopped || playing !== utterance) return;
+      playing = null;
+      clearPlaybackTimer();
+      busy = false;
+      options.onError(message);
+      listen();
+    };
+    utterance.onstart = () => {
+      if (stopped || playing !== utterance) return;
+      clearPlaybackTimer();
+      options.onState("speaking");
+      playbackTimer = setTimeout(() => {
+        if (playing !== utterance) return;
+        playing = null;
+        clearPlaybackTimer();
+        browser.speechSynthesis.cancel();
+        busy = false;
+        options.onError("Audio playback stalled; the full answer remains in chat.");
+        listen();
+      }, 165000);
+    };
     utterance.onend = () => {
-      if (stopped) return;
+      if (stopped || playing !== utterance) return;
+      playing = null;
+      clearPlaybackTimer();
       busy = false;
       listen();
     };
     utterance.onerror = () => {
-      if (stopped || muted) return; // cancel-on-mute is intentional
-      busy = false;
-      options.onError("Voice playback unavailable; the answer remains in chat.");
-      listen();
+      // Browser TTS often reports an error when muted/cancelled intentionally.
+      if (stopped || muted || playing !== utterance) return;
+      failPlayback("Voice playback unavailable; the answer remains in chat.");
     };
-    // A reply may complete while the user muted the call; never speak it.
-    if (muted) {
+    playing = utterance;
+    // iOS Safari can accept speak() without actually starting sound.
+    // Recover listening after a bounded start timeout rather than hanging.
+    playbackTimer = setTimeout(() => {
+      if (stopped || playing !== utterance) return;
+      playing = null;
+      clearPlaybackTimer();
+      browser.speechSynthesis.cancel();
       busy = false;
-      options.onState("idle");
-      return;
-    }
+      options.onError("Voice audio did not start. Check volume and browser audio permissions.");
+      listen();
+    }, 12000);
     try {
       browser.speechSynthesis.speak(utterance);
-      options.onState("speaking");
     } catch {
-      busy = false;
-      options.onError("Voice playback unavailable; the answer remains in chat.");
-      listen();
+      failPlayback("Voice playback unavailable; the answer remains in chat.");
     }
   };
 
@@ -245,7 +282,7 @@ export async function startBrowserVoiceMode(
           listen();
         } finally {
           processing = false;
-          if (muted) {
+          if (!stopped && muted) {
             busy = false;
             options.onState("idle");
           }
@@ -269,6 +306,8 @@ export async function startBrowserVoiceMode(
     muted = nextMuted;
     if (muted) {
       try { recognition.abort(); } catch { /* already stopped */ }
+      playing = null;
+      clearPlaybackTimer();
       browser.speechSynthesis.cancel();
       // Keep the outstanding AI turn serialized until its fetch finishes.
       // Otherwise unmuting can capture a second turn and race the first.
