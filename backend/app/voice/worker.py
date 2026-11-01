@@ -824,15 +824,22 @@ async def aqlyra_voice_session(
             language,
         )
 
+        # One English-centric voice ID cannot guarantee native Bengali or
+        # Japanese pronunciation. Operators may supply validated regional
+        # Cartesia voice IDs; never guess voice IDs or alter the model.
+        native_voice = {
+            "bn": settings.VOICE_TTS_VOICE_BN,
+            "ja": settings.VOICE_TTS_VOICE_JA,
+            "hi": settings.VOICE_TTS_VOICE_HI,
+        }.get(language, "").strip()
         try:
             tts_model.update_options(
                 language=language,
+                voice=native_voice or settings.VOICE_TTS_VOICE,
             )
-        except ValueError:
+        except (TypeError, ValueError):
             logger.warning(
-                "voice_tts_language_"
-                "update_failed "
-                "language=%s",
+                "voice_tts_language_or_voice_update_failed language=%s",
                 language,
             )
 
