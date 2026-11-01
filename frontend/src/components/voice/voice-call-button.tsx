@@ -322,7 +322,9 @@ export function VoiceCallButton({
         : "The AI voice agent did not join. Please retry when the service is online.";
       roomRef.current = null;
       stopMicrophoneTrack();
-      void room.disconnect();
+      void room.disconnect().catch(() => {
+        // The microphone is already released; teardown is best effort.
+      });
       clearAudioElements();
       setActive(false);
       setStarting(false);
@@ -905,7 +907,9 @@ export function VoiceCallButton({
       roomRef.current = null;
 
       if (room) {
-        void room.disconnect();
+        void room.disconnect().catch(() => {
+          // Navigation must not leave an unhandled WebRTC teardown error.
+        });
       }
     };
   }, []);
