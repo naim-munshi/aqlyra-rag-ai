@@ -1,4 +1,0 @@
-name: aqlyra-voice
-image: aqlyra-voice
-build:
-  dockerfile: Dockerfile.voice
