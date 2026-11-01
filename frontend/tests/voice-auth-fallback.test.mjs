@@ -14,7 +14,8 @@ test("logged-out voice status rejects browser fallback before microphone activat
   const gate = voice.indexOf("if (availability?.requiresAuth)");
   const fallback = voice.indexOf("availability?.available === false && browserSpeechIsSupported()", gate);
   assert.ok(gate > 0 && fallback > gate, "auth gate must precede speech fallback");
-  assert.match(voice, /refreshVoiceAvailability\(controller\.signal\)/);
+  assert.match(voice, /void fetch\("\/api\/voice\/status"/);
+  assert.match(voice, /refreshVoiceAvailability\(\)/);
 });
 
 test("sync microphone startup failures invalidate pending async controller", () => {
