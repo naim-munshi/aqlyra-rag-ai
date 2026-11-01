@@ -13,6 +13,7 @@ on:
       - backend/scripts/prepare_livekit_context.py
       - backend/tests/test_voice_worker_preflight.py
       - backend/tests/test_voice_cloud_packaging.py
+      - backend/tests/test_voice_launch.py
   workflow_dispatch:
     inputs:
       operation:
@@ -60,7 +61,7 @@ jobs:
       - name: Run offline voice preflight and packaging tests
         run: |
           python -m pip install --disable-pip-version-check pytest
-          python -m pytest -q tests/test_voice_worker_preflight.py tests/test_voice_cloud_packaging.py
+          python -m pytest -q tests/test_voice_worker_preflight.py tests/test_voice_cloud_packaging.py tests/test_voice_launch.py
       - name: Verify isolated LiveKit build context
         run: |
           python scripts/prepare_livekit_context.py "$RUNNER_TEMP/aqlyra-livekit-voice"
