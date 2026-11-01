@@ -19,6 +19,7 @@ from livekit.agents import (
 from livekit.plugins import silero
 from app.voice.model_factories import build_voice_stt, build_session_llm
 from app.voice.turn_control import is_stop_speaking_command
+from app.voice.speech_language import select_reply_tts_language
 
 from app.config.settings import settings
 from app.voice.job_metadata import VoiceJobData
@@ -344,6 +345,7 @@ class AqlyraVoiceAgent(Agent):
         self,
         *,
         job_data: VoiceJobData,
+        tts_model=None,
     ) -> None:
         super().__init__(
             instructions=(
@@ -356,6 +358,7 @@ class AqlyraVoiceAgent(Agent):
         )
 
         self._job_data = job_data
+        self._tts_model = tts_model
         self._normal_documents_consumed = (
             False
         )
@@ -664,6 +667,29 @@ class AqlyraVoiceAgent(Agent):
                 True
             )
 
+        # The question and answer can use different languages. Decide
+        # pronunciation from the *actual reply*, immediately before TTS.
+        output_language = select_reply_tts_language(
+            answer=generated.result.content,
+            fallback=self._spoken_language or "en",
+        )
+        if self._tts_model is not None:
+            regional_voice = {
+                "bn": settings.VOICE_TTS_VOICE_BN,
+                "ja": settings.VOICE_TTS_VOICE_JA,
+                "hi": settings.VOICE_TTS_VOICE_HI,
+            }.get(output_language, "").strip()
+            try:
+                self._tts_model.update_options(
+                    language=output_language,
+                    voice=regional_voice or settings.VOICE_TTS_VOICE,
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "voice_tts_reply_language_update_failed language=%s",
+                    output_language,
+                )
+        logger.info("voice_reply_tts_language_resolved language=%s", output_language)
         yield generated.result.content
 
 
@@ -759,6 +785,7 @@ async def aqlyra_voice_session(
     voice_agent = (
         AqlyraVoiceAgent(
             job_data=job_data,
+            tts_model=tts_model,
         )
     )
 
