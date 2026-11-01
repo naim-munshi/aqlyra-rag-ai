@@ -111,6 +111,7 @@ export async function startBrowserVoiceMode(
   let stopped = false;
   let muted = false;
   let busy = false;
+  let processing = false;
   let startScheduled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -157,16 +158,30 @@ export async function startBrowserVoiceMode(
     utterance.lang = speechLanguage(content);
     utterance.rate = 1;
     utterance.onend = () => {
+      if (stopped) return;
       busy = false;
       listen();
     };
     utterance.onerror = () => {
+      if (stopped || muted) return; // cancel-on-mute is intentional
       busy = false;
       options.onError("Voice playback unavailable; the answer remains in chat.");
       listen();
     };
-    browser.speechSynthesis.speak(utterance);
-    options.onState("speaking");
+    // A reply may complete while the user muted the call; never speak it.
+    if (muted) {
+      busy = false;
+      options.onState("idle");
+      return;
+    }
+    try {
+      browser.speechSynthesis.speak(utterance);
+      options.onState("speaking");
+    } catch {
+      busy = false;
+      options.onError("Voice playback unavailable; the answer remains in chat.");
+      listen();
+    }
   };
 
   const conversationReady: Promise<string> = conversationId
@@ -199,6 +214,7 @@ export async function startBrowserVoiceMode(
       options.onUserTranscript?.(text, item.isFinal);
       if (!item.isFinal || busy) continue;
       busy = true;
+      processing = true;
       try { recognition.stop(); } catch { /* already ended */ }
       options.onState("thinking");
       void (async () => {
@@ -219,7 +235,7 @@ export async function startBrowserVoiceMode(
             throw new Error("The AI did not return a voice response.");
           }
           options.onAgentTranscript?.(content, true);
-          speak(content);
+          if (!muted) speak(content);
         } catch (error) {
           if (stopped) return;
           busy = false;
@@ -227,6 +243,12 @@ export async function startBrowserVoiceMode(
             error instanceof Error ? error.message : "Voice response unavailable.",
           );
           listen();
+        } finally {
+          processing = false;
+          if (muted) {
+            busy = false;
+            options.onState("idle");
+          }
         }
       })();
     }
@@ -248,7 +270,9 @@ export async function startBrowserVoiceMode(
     if (muted) {
       try { recognition.abort(); } catch { /* already stopped */ }
       browser.speechSynthesis.cancel();
-      busy = false;
+      // Keep the outstanding AI turn serialized until its fetch finishes.
+      // Otherwise unmuting can capture a second turn and race the first.
+      busy = processing;
       options.onState("idle");
     } else {
       listen();
