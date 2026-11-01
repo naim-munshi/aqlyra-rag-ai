@@ -163,6 +163,7 @@ export function VoiceCallButton({
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
   const callAttemptRef = useRef(0);
   const startingRef = useRef(false);
+  const agentEverJoinedRef = useRef(false);
   const sessionRequestControllerRef = useRef<AbortController | null>(null);
   const agentJoinTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,6 +291,7 @@ export function VoiceCallButton({
   function waitForAgent(room: Room) {
     clearAgentJoinTimer();
     if (hasVoiceAgent(room)) {
+      agentEverJoinedRef.current = true;
       setError("");
       setAgentState((current) =>
         current === "connecting" || current === "error"
@@ -393,6 +395,7 @@ export function VoiceCallButton({
 
     clearAgentJoinTimer();
     startingRef.current = true;
+    agentEverJoinedRef.current = false;
     const attempt = ++callAttemptRef.current;
     setStarting(true);
     setError("");
@@ -449,6 +452,16 @@ export function VoiceCallButton({
           | VoiceSessionResponse
           | VoiceApiError;
 
+      if (response.status === 429) {
+        // Retrying repeatedly can only deepen the per-user voice limit.
+        // Preserve the backend's Retry-After without silently restarting.
+        const retry = Number(response.headers.get("Retry-After"));
+        throw new Error(
+          Number.isFinite(retry) && retry > 0
+            ? `Too many voice reconnect attempts. Retry in ${Math.ceil(retry)} seconds.`
+            : "Too many voice reconnect attempts. Try again shortly.",
+        );
+      }
       if (
         !response.ok ||
         !(
@@ -585,6 +598,7 @@ export function VoiceCallButton({
             participant.attributes["lk.publish_on_behalf"]
           ) return;
           clearAgentJoinTimer();
+          agentEverJoinedRef.current = true;
           setError("");
           const state =
             normalizeAgentState(
@@ -640,6 +654,8 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.Disconnected,
         () => {
+          // Unexpected RTC drops must never look like a user-initiated
+          // hangup. endCall and unmount clear roomRef before disconnect.
           if (roomRef.current !== room) return;
           clearAgentJoinTimer();
           roomRef.current = null;
@@ -647,11 +663,16 @@ export function VoiceCallButton({
           stopMicrophoneTrack();
           clearAudioElements();
 
+          const message = agentEverJoinedRef.current
+            ? "Voice call disconnected unexpectedly. Check your connection and try again."
+            : "LiveKit disconnected before the AI agent joined. Please check the voice connection and try again.";
           setActive(false);
           setStarting(false);
           setMuted(false);
           setNeedsAudioUnlock(false);
-          setAgentState("idle");
+          setAgentState("error");
+          setError(message);
+          onError?.(message);
         },
       );
 
