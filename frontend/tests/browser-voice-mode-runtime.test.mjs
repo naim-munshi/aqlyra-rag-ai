@@ -11,13 +11,14 @@ const compiled = typescript.transpileModule(source, {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const response = body => ({ ok: true, json: async () => body });
 
-function harness({ failRecognitionStart = false, cancelRaisesError = false } = {}) {
+function harness({ failRecognitionStart = false, cancelRaisesError = false, triggerNetworkTimeout = false } = {}) {
   const recognitions = [];
   const spoken = [];
   const pendingReplies = [];
@@ -72,13 +73,19 @@ function harness({ failRecognitionStart = false, cancelRaisesError = false } = {
     navigator: { language: "en-US" },
     SpeechSynthesisUtterance: Utterance,
     AbortController,
-    setTimeout,
+    setTimeout: (callback, ms) =>
+      triggerNetworkTimeout && ms === 75000
+        ? setTimeout(callback, 0)
+        : setTimeout(callback, ms),
     clearTimeout,
     fetch: (url, options) => {
       calls.push({ url, signal: options.signal });
       if (url === "/api/conversations") return Promise.resolve(response({ id: "conversation-1" }));
       const pending = deferred();
       pendingReplies.push(pending);
+      options.signal.addEventListener("abort", () => {
+        pending.reject(new Error("AbortError"));
+      }, { once: true });
       return pending.promise;
     },
   };
@@ -209,4 +216,16 @@ test("muted/stopped browser calls cannot replay a reply even with audio unlock c
   controller.stop();
   assert.equal(controller.retryAudio(), false);
   assert.equal(h.spoken.length, 1);
+});
+
+test("a stalled AI response hits a bounded deadline and resumes microphone listening", async () => {
+  const h = harness({ triggerNetworkTimeout: true });
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("hello");
+  await new Promise(resolve => setTimeout(resolve, 190));
+  assert.ok(h.errors.some(message => /timed out/.test(message)));
+  assert.ok(h.recognitions[0].startCount >= 2, "listening must resume after timeout");
+  assert.equal(h.spoken.length, 0);
+  controller.stop();
 });
