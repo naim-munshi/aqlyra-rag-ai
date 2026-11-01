@@ -70,4 +70,4 @@ ENV AQLYRA_PROCESS_ROLE=voice_worker
 
 # Fail closed before connecting to LiveKit or allocating paid STT/TTS.
 # The preflight prints variable NAMES only and never logs secret values.
-CMD ["/bin/sh", "-c", "python -m app.voice.preflight && exec python -m app.voice.worker start"]
+CMD ["python", "-m", "app.voice.launch", "start"]
