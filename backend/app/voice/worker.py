@@ -3,6 +3,7 @@ import logging
 from app.core.logging import configure_logging
 import os
 import re
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 
 from livekit import agents
@@ -719,6 +720,14 @@ def _install_livekit_environment() -> None:
 
 
 _install_livekit_environment()
+
+# Public target identity only. Never log LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+# a full connection URL, room name, or user/job metadata.
+logger.info(
+    "voice_worker_dispatch_target agent_name=%s livekit_host=%s",
+    settings.VOICE_AGENT_NAME.strip(),
+    urlsplit(settings.LIVEKIT_URL).hostname,
+)
 
 
 server = AgentServer()
