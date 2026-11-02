@@ -264,6 +264,8 @@ def test_explicit_voice_dispatch_targets_configured_worker_once(monkeypatch):
 
 
 def test_explicit_dispatch_fails_closed_without_secret_in_logs(monkeypatch, caplog):
+    # Preserve the real guard before the offline fixture stubs dispatch.
+    original_guard = voice._dispatch_voice_agent
     _configure(monkeypatch)
     private_error = "provider-error-including-private-secret"
     async def fail_dispatch(*, room_name, metadata):
@@ -275,7 +277,7 @@ def test_explicit_dispatch_fails_closed_without_secret_in_logs(monkeypatch, capl
         voice.VoiceDispatchUnavailableError,
         match="Voice agent could not be started",
     ):
-        voice._dispatch_voice_agent(
+        original_guard(
             room_name="aqlyra-voice-room",
             metadata='{"secret":"should-never-be-logged"}',
         )
