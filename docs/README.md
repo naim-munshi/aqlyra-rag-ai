@@ -25,6 +25,11 @@
 - [Performance baseline](PERFORMANCE_BASELINE.md): read the recorded environment and methodology before interpreting results.
 - [Scripted portfolio demo](VERCEL_PORTFOLIO_DEMO.md): backend-free UI walkthrough and hosting instructions.
 
+## Engineering collaboration
+
+- [PR and commit conventions](ENGINEERING_PRACTICES.md): Aqlyra-specific language, one PR per workstream, verification and safe cleanup.
+- [November 2 PR backlog triage](PR_BACKLOG_TRIAGE_20261102.md): reviewed 61 proposals, archived 19 redundant drafts and categorized the remaining unique release candidates.
+
 ## Deploy and operate
 
 - [Staging and release gate](STAGING.md)
