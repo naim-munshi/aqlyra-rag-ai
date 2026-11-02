@@ -227,11 +227,19 @@ def test_explicit_voice_dispatch_targets_configured_worker_once(monkeypatch):
     import asyncio
 
     _configure(monkeypatch)
-    seen = {"dispatches": 0, "closed": 0}
+    seen = {"dispatches": 0, "closed": 0, "room_creations": 0, "order": []}
+
+    class FakeRoom:
+        async def create_room(self, request):
+            seen["room_creations"] += 1
+            seen["order"].append("room_create")
+            seen["room_name"] = request.name
+            seen["empty_timeout"] = request.empty_timeout
 
     class FakeDispatch:
         async def create_dispatch(self, request):
             seen["dispatches"] += 1
+            seen["order"].append("agent_dispatch")
             seen["agent_name"] = request.agent_name
             seen["room"] = request.room
             seen["metadata"] = request.metadata
@@ -241,6 +249,7 @@ def test_explicit_voice_dispatch_targets_configured_worker_once(monkeypatch):
             seen["url"] = url
             seen["key"] = api_key
             seen["secret"] = api_secret
+            self.room = FakeRoom()
             self.agent_dispatch = FakeDispatch()
 
         async def aclose(self):
@@ -254,6 +263,10 @@ def test_explicit_voice_dispatch_targets_configured_worker_once(monkeypatch):
         )
     )
     assert seen["dispatches"] == 1
+    assert seen["room_creations"] == 1
+    assert seen["order"] == ["room_create", "agent_dispatch"]
+    assert seen["room_name"] == "aqlyra-voice-private-room"
+    assert seen["empty_timeout"] == 180
     assert seen["closed"] == 1
     assert seen["agent_name"] == "aqlyra-voice"
     assert seen["room"] == "aqlyra-voice-private-room"
@@ -284,3 +297,43 @@ def test_explicit_dispatch_fails_closed_without_secret_in_logs(monkeypatch, capl
     assert private_error not in caplog.text
     assert "should-never-be-logged" not in caplog.text
     assert "error_type=RuntimeError" in caplog.text
+
+
+def test_room_create_provider_error_is_safe_and_does_not_dispatch(monkeypatch, caplog):
+    import asyncio
+
+    _configure(monkeypatch)
+    seen = {"dispatches": 0, "closed": 0}
+
+    class FakeRoom:
+        async def create_room(self, request):
+            raise voice.api.ServerError(
+                "not_found", "provider-secret-and-room-private",
+                status=404, metadata={"secret": "never-log-this"},
+            )
+
+    class FakeDispatch:
+        async def create_dispatch(self, request):
+            seen["dispatches"] += 1
+
+    class FakeLiveKitAPI:
+        def __init__(self, **kwargs):
+            self.room = FakeRoom()
+            self.agent_dispatch = FakeDispatch()
+
+        async def aclose(self):
+            seen["closed"] += 1
+
+    monkeypatch.setattr(voice.api, "LiveKitAPI", FakeLiveKitAPI)
+    with pytest.raises(voice.api.ServerError):
+        asyncio.run(
+            voice._create_explicit_voice_dispatch(
+                room_name="aqlyra-voice-private-room",
+                metadata='{"document_ids":["private"]}',
+            )
+        )
+    assert seen == {"dispatches": 0, "closed": 1}
+    assert "phase=room_create status=404 code=not_found" in caplog.text
+    assert "provider-secret-and-room-private" not in caplog.text
+    assert "never-log-this" not in caplog.text
+    assert "document_ids" not in caplog.text
