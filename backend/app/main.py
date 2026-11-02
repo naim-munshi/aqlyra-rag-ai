@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlsplit
 from fastapi import FastAPI
 
 from app.api.router import api_router
@@ -73,6 +74,14 @@ def start_knowledge_index_worker() -> None:
         "voice_api_startup_ready=%s",
         "true" if voice_configured else "false",
     )
+    # Log only the public LiveKit host and dispatch name. No room/user data,
+    # token, provider URL, API key or secret is included in this evidence.
+    if voice_configured:
+        logging.getLogger(__name__).info(
+            "voice_api_dispatch_target agent_name=%s livekit_host=%s",
+            settings.VOICE_AGENT_NAME.strip(),
+            urlsplit(settings.LIVEKIT_URL).hostname,
+        )
     if not voice_configured:
         logging.getLogger(__name__).warning(
             "voice_api_startup_missing_keys=%s",
