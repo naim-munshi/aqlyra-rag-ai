@@ -113,14 +113,12 @@ destroy the database or uploads.
 
 ## Public hosting is a different release gate
 
-Your `aqlyrax.vercel.app` frontend is **not connected** to this local
-FastAPI instance. It remains the labelled demo until there is
-a hardened, authenticated HTTPS backend with a reachable database,
-persistent private uploads, rate limits, real SMTP and provider
-credentials. Do not expose the local test Mailpit inbox, Docker DB
-ports, or deterministic fake model mode to the Internet.
+The hosted application at [aqlyra-ai.vercel.app](https://aqlyra-ai.vercel.app)
+is separate from this local FastAPI instance. Running this guide does not
+change or connect the hosted application. See [Project status](PROJECT_STATUS.md)
+for the distinction between the default branch and release branches.
 
-The next release step after successfully testing local registration,
-login, upload and retrieval is a separate production-grade Mac hosting
-profile or a verified Always Free cloud VM. Consult
-[STAGING.md](STAGING.md) for full acceptance criteria.
+Public deployment requires authenticated HTTPS, persistent private storage,
+rate limits, real email delivery and configured model services. Keep the
+local Mailpit inbox and database ports private. Consult
+[Staging](STAGING.md) for acceptance criteria.
