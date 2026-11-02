@@ -275,7 +275,18 @@ async def _create_explicit_voice_dispatch(
         api_key=settings.LIVEKIT_API_KEY,
         api_secret=settings.LIVEKIT_API_SECRET,
     )
+    phase = "room_create"
     try:
+        # Room auto-create can be disabled in LiveKit Cloud. Dispatching an
+        # absent room then returns not_found without starting any agent job.
+        # Always create this one-use opaque room before dispatching its agent.
+        await asyncio.wait_for(
+            lkapi.room.create_room(
+                api.CreateRoomRequest(name=room_name, empty_timeout=180)
+            ),
+            timeout=8.0,
+        )
+        phase = "agent_dispatch"
         await asyncio.wait_for(
             lkapi.agent_dispatch.create_dispatch(
                 api.CreateAgentDispatchRequest(
@@ -286,6 +297,24 @@ async def _create_explicit_voice_dispatch(
             ),
             timeout=8.0,
         )
+    except Exception as exc:
+        # Never log provider error messages or metadata: they can contain
+        # private project identifiers, room details or auth tokens.
+        status = getattr(exc, "status", None)
+        status = status if isinstance(status, int) and 100 <= status <= 599 else 0
+        code = getattr(exc, "code", None)
+        known_codes = {
+            "not_found", "unauthenticated", "permission_denied",
+            "failed_precondition", "invalid_argument", "unavailable",
+            "internal", "resource_exhausted", "already_exists",
+            "unknown", "deadline_exceeded",
+        }
+        code = code if isinstance(code, str) and code in known_codes else "unknown"
+        logger.warning(
+            "voice_dispatch_provider_failure phase=%s status=%s code=%s",
+            phase, status, code,
+        )
+        raise
     finally:
         await lkapi.aclose()
 
