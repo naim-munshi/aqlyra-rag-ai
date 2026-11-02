@@ -1,5 +1,7 @@
+import asyncio
 import json
 import ipaddress
+import logging
 from urllib.parse import urlsplit
 from datetime import timedelta
 from dataclasses import dataclass
@@ -22,11 +24,17 @@ from app.services.document_service import (
     get_user_document,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class VoiceConfigurationError(
     RuntimeError
 ):
     pass
+
+
+class VoiceDispatchUnavailableError(VoiceConfigurationError):
+    """Do not expose LiveKit transport or credential errors to a browser."""
 
 
 class VoiceConversationNotFoundError(
@@ -257,6 +265,54 @@ def _validate_documents(
             )
 
 
+async def _create_explicit_voice_dispatch(
+    *, room_name: str, metadata: str,
+) -> None:
+    # Explicit server-side dispatch avoids silent token-only room-config
+    # failures; the one-time room UUID prevents cross-session reuse.
+    lkapi = api.LiveKitAPI(
+        url=settings.LIVEKIT_URL,
+        api_key=settings.LIVEKIT_API_KEY,
+        api_secret=settings.LIVEKIT_API_SECRET,
+    )
+    try:
+        await asyncio.wait_for(
+            lkapi.agent_dispatch.create_dispatch(
+                api.CreateAgentDispatchRequest(
+                    agent_name=settings.VOICE_AGENT_NAME,
+                    room=room_name,
+                    metadata=metadata,
+                )
+            ),
+            timeout=8.0,
+        )
+    finally:
+        await lkapi.aclose()
+
+
+def _dispatch_voice_agent(
+    *, room_name: str, metadata: str,
+) -> None:
+    # FastAPI runs the sync endpoint in a worker thread. Never execute
+    # network requests on the application's event loop.
+    try:
+        asyncio.run(
+            _create_explicit_voice_dispatch(
+                room_name=room_name, metadata=metadata,
+            )
+        )
+    except Exception as exc:
+        # Error type only: provider exceptions may contain private tokens.
+        logger.warning(
+            "voice_dispatch_request_failed error_type=%s",
+            type(exc).__name__,
+        )
+        raise VoiceDispatchUnavailableError(
+            "Voice agent could not be started. Please retry later."
+        ) from None
+    logger.info("voice_dispatch_request_accepted")
+
+
 def create_voice_session(
     *,
     db: Session,
@@ -331,21 +387,12 @@ def create_voice_session(
                 can_update_own_metadata=False,
             )
         )
-        .with_room_config(
-            api.RoomConfiguration(
-                agents=[
-                    api.RoomAgentDispatch(
-                        agent_name=(
-                            settings
-                            .VOICE_AGENT_NAME
-                        ),
-                        metadata=metadata,
-                    )
-                ]
-            )
-        )
         .to_jwt()
     )
+
+    # The API dispatches exactly once before sending a participant token.
+    # Do not also add RoomConfiguration.agents to the token (duplicate jobs).
+    _dispatch_voice_agent(room_name=room_name, metadata=metadata)
 
     return VoiceSessionResult(
         server_url=settings.LIVEKIT_URL,
