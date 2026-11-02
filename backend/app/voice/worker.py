@@ -730,6 +730,9 @@ server = AgentServer()
 async def aqlyra_voice_session(
     ctx: agents.JobContext,
 ) -> None:
+    # This event must appear on Railway whenever LiveKit dispatches a job.
+    # Do not log room, participant, user, metadata or provider credentials.
+    logger.info("voice_dispatch_entrypoint_invoked")
     job_data = (
         VoiceJobData.from_metadata(
             ctx.job.metadata
@@ -742,6 +745,7 @@ async def aqlyra_voice_session(
             authorize_voice_job(db, job_data)
 
     await asyncio.to_thread(authorize_initial_job)
+    logger.info("voice_dispatch_identity_authorized")
 
     # Avoid persistent private identifiers in general worker logs.
     ctx.log_context_fields = {
@@ -900,6 +904,7 @@ async def aqlyra_voice_session(
         room=ctx.room,
         agent=voice_agent,
     )
+    logger.info("voice_dispatch_session_started")
 
 
 if __name__ == "__main__":
