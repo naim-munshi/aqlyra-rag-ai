@@ -30,6 +30,8 @@ def _configure(monkeypatch):
     monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_READY", True)
+    # Offline contract tests must never dispatch a real billable job.
+    monkeypatch.setattr(voice, "_dispatch_voice_agent", lambda **_: None)
 
 
 def _jwt_claims(token: str) -> dict:
@@ -98,6 +100,10 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
     monkeypatch.setattr(voice, "_resolve_conversation", resolve)
     monkeypatch.setattr(voice, "_validate_documents", validate)
 
+    dispatched = {}
+    monkeypatch.setattr(
+        voice, "_dispatch_voice_agent", lambda **kwargs: dispatched.update(kwargs)
+    )
     result = voice.create_voice_session(
         db=object(), user=user, mode="knowledge",
         conversation_id=str(conversation_id), title="Voice session",
@@ -143,10 +149,10 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
         "mode": "knowledge",
         "document_ids": list(documents),
     }
-    dispatches = claims["roomConfig"]["agents"]
-    assert len(dispatches) == 1
-    assert dispatches[0]["agentName"] == "aqlyra-voice"
-    assert json.loads(dispatches[0]["metadata"]) == metadata
+    # Server-side explicit dispatch must not be duplicated by JWT room config.
+    assert claims.get("roomConfig") in (None, {})
+    assert dispatched["room_name"] == result.room_name
+    assert json.loads(dispatched["metadata"]) == metadata
     assert "voice-test-secret-do-not-use" not in result.participant_token
 
 
