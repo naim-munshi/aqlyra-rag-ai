@@ -75,6 +75,8 @@ def configure_livekit(
         "VOICE_AGENT_READY",
         True,
     )
+    from app.services import voice_session_service as voice
+    monkeypatch.setattr(voice, "_dispatch_voice_agent", lambda **_: None)
 
 
 def test_voice_session_requires_authentication(
