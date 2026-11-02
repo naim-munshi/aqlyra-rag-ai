@@ -221,3 +221,64 @@ def test_livekit_readiness_diagnostics_valid_configuration(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://aqlyra-whhfocpe.livekit.cloud/")
     assert voice.missing_voice_configuration_keys() == ()
     assert voice.voice_is_ready()
+
+
+def test_explicit_voice_dispatch_targets_configured_worker_once(monkeypatch):
+    import asyncio
+
+    _configure(monkeypatch)
+    seen = {"dispatches": 0, "closed": 0}
+
+    class FakeDispatch:
+        async def create_dispatch(self, request):
+            seen["dispatches"] += 1
+            seen["agent_name"] = request.agent_name
+            seen["room"] = request.room
+            seen["metadata"] = request.metadata
+
+    class FakeLiveKitAPI:
+        def __init__(self, *, url, api_key, api_secret):
+            seen["url"] = url
+            seen["key"] = api_key
+            seen["secret"] = api_secret
+            self.agent_dispatch = FakeDispatch()
+
+        async def aclose(self):
+            seen["closed"] += 1
+
+    monkeypatch.setattr(voice.api, "LiveKitAPI", FakeLiveKitAPI)
+    asyncio.run(
+        voice._create_explicit_voice_dispatch(
+            room_name="aqlyra-voice-private-room",
+            metadata='{"mode":"normal"}',
+        )
+    )
+    assert seen["dispatches"] == 1
+    assert seen["closed"] == 1
+    assert seen["agent_name"] == "aqlyra-voice"
+    assert seen["room"] == "aqlyra-voice-private-room"
+    assert json.loads(seen["metadata"]) == {"mode": "normal"}
+    assert seen["url"] == "wss://voice.test.invalid"
+    assert seen["key"] == "voice-test-key"
+    assert seen["secret"] == "voice-test-secret-do-not-use"
+
+
+def test_explicit_dispatch_fails_closed_without_secret_in_logs(monkeypatch, caplog):
+    _configure(monkeypatch)
+    private_error = "provider-error-including-private-secret"
+    async def fail_dispatch(*, room_name, metadata):
+        raise RuntimeError(private_error)
+
+    monkeypatch.setattr(voice, "_create_explicit_voice_dispatch", fail_dispatch)
+    # Bypass the standard contract mock, exercising real dispatch guard.
+    with pytest.raises(
+        voice.VoiceDispatchUnavailableError,
+        match="Voice agent could not be started",
+    ):
+        voice._dispatch_voice_agent(
+            room_name="aqlyra-voice-room",
+            metadata='{"secret":"should-never-be-logged"}',
+        )
+    assert private_error not in caplog.text
+    assert "should-never-be-logged" not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
