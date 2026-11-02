@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import {
   backendUrl,
@@ -99,6 +101,14 @@ export async function POST(
   request: Request,
   context: RouteContext,
 ) {
+  // Both browser voice fallback and normal chat use cookie authentication.
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const accessToken =
     await getAccessToken();
 
@@ -115,10 +125,17 @@ export async function POST(
   let body: ConversationMessageRequest;
 
   try {
-    body =
-      (await request.json()) as
-        ConversationMessageRequest;
-  } catch {
+    body = (await readBoundedJson(
+      request,
+      131072,
+    )) as ConversationMessageRequest;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json(
+        { detail: "Message request too large" },
+        { status: 413 },
+      );
+    }
     return NextResponse.json(
       { detail: "Invalid request body" },
       { status: 400 },

@@ -96,16 +96,32 @@ def resolve_product_identity_answer(
             "currently configured."
         )
 
-    if bengali:
+    # Describe the assistant, not the creator, unless the user actually
+    # requested creator/founder information. Avoid marketing paragraphs.
+    if match.intent == ProductIdentityIntent.SELF_IDENTITY:
+        normalized = " ".join(message.casefold().split())
+        asks_name = any(phrase in normalized for phrase in (
+            "your name", "tomar nam", "tumar nam", "তোমার নাম",
+        ))
+        if bengali:
+            if asks_name:
+                return f"আমার নাম {PRODUCT_NAME}।"
+            return (
+                f"আমি {PRODUCT_NAME}, একটি AI সহকারী। "
+                "প্রশ্নের উত্তর, বিষয় ব্যাখ্যা এবং তোমার দেওয়া "
+                "ডকুমেন্ট নিয়ে কাজ করতে সাহায্য করি।"
+            )
+        if asks_name:
+            return f"I'm {PRODUCT_NAME}."
         return (
-            f"আমি {PRODUCT_NAME}, "
-            "একটি AI assistant।"
+            f"I'm {PRODUCT_NAME}, an AI assistant. "
+            "I help answer questions, explain topics, "
+            "and work with documents you share."
         )
 
-    return (
-        f"I'm {PRODUCT_NAME}, "
-        "an AI assistant."
-    )
+    if bengali:
+        return f"আমি {PRODUCT_NAME}, একটি AI সহকারী।"
+    return f"I'm {PRODUCT_NAME}, an AI assistant."
 
 
 def resolve_founder_followup_answer(

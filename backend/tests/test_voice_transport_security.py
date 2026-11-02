@@ -44,6 +44,10 @@ def test_ready_flag_cannot_override_invalid_production_transport(monkeypatch):
     monkeypatch.setattr(settings, "LIVEKIT_URL", "ws://127.0.0.1:7880")
     monkeypatch.setattr(settings, "LIVEKIT_API_KEY", "test-key")
     monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", "not-a-real-secret")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-only-groq-voice-key")
+    monkeypatch.setattr(settings, "VOICE_STT_MODEL", "whisper-large-v3")
+    monkeypatch.setattr(settings, "VOICE_TTS_MODEL", "cartesia/sonic-3")
+    monkeypatch.setattr(settings, "VOICE_TTS_VOICE", "test-tts-voice")
     monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "aqlyra-voice")
     assert voice.voice_is_ready() is False
     with pytest.raises(voice.VoiceConfigurationError, match="safely configured"):
