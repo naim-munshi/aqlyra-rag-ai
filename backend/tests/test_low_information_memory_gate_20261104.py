@@ -112,11 +112,31 @@ def test_owned_greeting_is_not_sent_to_memory_extraction_llm(db_session: Session
 
 
 def test_unauthorized_greeting_still_checks_message_owner(db_session: Session):
+    from uuid import uuid4
     from app.services.memory_extraction_service import (
         MemoryExtractionValidationError,
     )
+    owner = User(
+        email="social-gate-foreign@example.com",
+        username="social-gate-foreign",
+        hashed_password="fake-hash",
+    )
+    db_session.add(owner)
+    db_session.flush()
+    conversation = Conversation(
+        user_id=str(owner.id), title="Private greeting", mode="normal",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    message = Message(
+        conversation_id=conversation.id,
+        role="user", mode="normal", content="Hello",
+        citations=[], is_refusal=False,
+    )
+    db_session.add(message)
+    db_session.commit()
     with pytest.raises(MemoryExtractionValidationError):
         extract_memories_for_message(
-            db=db_session, user_id="not-a-real-owner",
-            source_message_id="not-a-message", provider=Mock(),
+            db=db_session, user_id=str(uuid4()),
+            source_message_id=str(message.id), provider=Mock(),
         )
