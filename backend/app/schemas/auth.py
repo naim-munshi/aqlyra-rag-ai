@@ -8,6 +8,14 @@ from app.schemas.user import UserResponse
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
+    # Forwarded only between backend and first-party BFF. Browser receives
+    # an HttpOnly cookie, never these tokens in a client-visible JSON body.
+    refresh_token: str | None = None
+    user: UserResponse | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=40, max_length=4000)
 
 
 class RegistrationResponse(UserResponse):
