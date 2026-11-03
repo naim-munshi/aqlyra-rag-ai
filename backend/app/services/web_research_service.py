@@ -383,6 +383,9 @@ def _research_web_tavily(
     if not isinstance(raw_pages, list):
         raise WebResearchUnavailable("Invalid web extract response")
     page_content: dict[str, str] = {}
+    # A government homepage can place the current officeholder well below
+    # navigation links. Scan more extracted text without feeding it all to LLM.
+    official_scan_text: str | None = None
     approved = {item["url"] for item in candidates}
     for item in raw_pages:
         if not isinstance(item, dict):
@@ -391,6 +394,8 @@ def _research_web_tavily(
         content = item.get("raw_content")
         if isinstance(url, str) and url in approved and isinstance(content, str) and content.strip():
             page_content[url] = content[:MAX_EVIDENCE_CHARS].strip()
+            if url == pinned_official_url:
+                official_scan_text = content[:16_000].strip()
 
     sources: list[WebResearchSource] = []
     for item in candidates:
@@ -414,6 +419,7 @@ def _research_web_tavily(
     if mode == "search" and pinned_official_url is not None and provider is None:
         fast = verified_officeholder_fast_answer(
             question, sources, extracted_urls=set(page_content),
+            official_page_text=official_scan_text,
         )
         if fast is not None:
             fast_text, primary = fast
