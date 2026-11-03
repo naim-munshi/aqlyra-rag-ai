@@ -19,7 +19,7 @@ _US_ADMINISTRATION_HEADING = re.compile(
 )
 _BD_PRIME_MINISTER_LABEL = re.compile(
     r"জনাব\s+([\u0980-\u09ff]{2,}(?:\s+[\u0980-\u09ff]{2,}){1,3})"
-    r"\s*(?:\n|\|)\s*প্রধানমন্ত্রী(?=\s|$|[।|])"
+    r"\s*(?:\n|\|)\s*(?:মাননীয়\s+)?প্রধানমন্ত্রী(?=\s|$|[।|])"
 )
 
 
@@ -34,6 +34,7 @@ def verified_officeholder_fast_answer(
     sources: list[WebResearchSource],
     *,
     extracted_urls: set[str],
+    official_page_text: str | None = None,
 ) -> tuple[str, WebResearchSource] | None:
     """Return a concise evidence-cited answer only from a strict primary page.
 
@@ -47,7 +48,7 @@ def verified_officeholder_fast_answer(
     for source in sources:
         if source.url != official_url or not source.excerpt:
             continue
-        page = _clean_official_page(source.excerpt)
+        page = _clean_official_page(official_page_text or source.excerpt)
         if official_url == "https://www.whitehouse.gov/administration/":
             found = _US_ADMINISTRATION_HEADING.search(page)
             if found:
