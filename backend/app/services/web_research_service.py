@@ -449,6 +449,33 @@ def _research_web_tavily(
                 if url == pinned_official_url:
                     official_scan_text = official_pages[url]
 
+    # Preserve the relevant officeholder passage for the grounded model.
+    # Government homepages can put the actual incumbent below thousands of
+    # navigation characters. This is extracted government text, not a
+    # synthetic model name or a search snippet.
+    if pinned_official_urls:
+        from app.services.official_fact_fast_path import _extract_current_bd_name
+        for url, full_text in official_pages.items():
+            if (urlsplit(url).hostname or "").lower() not in {
+                "pmo.gov.bd", "cabinet.gov.bd",
+            }:
+                continue
+            name = _extract_current_bd_name(full_text)
+            if not name:
+                continue
+            match = re.search(
+                r"জনাব[ \\t]+" + re.escape(name), full_text,
+            )
+            if match:
+                focused = full_text[
+                    max(0, match.start() - 180):
+                    min(len(full_text), match.end() + 320)
+                ].strip()
+                if focused and focused not in page_content[url]:
+                    page_content[url] = (
+                        focused + "\\n\\n" + page_content[url]
+                    )[:MAX_EVIDENCE_CHARS]
+
     sources: list[WebResearchSource] = []
     for item in candidates:
         url = item["url"]
