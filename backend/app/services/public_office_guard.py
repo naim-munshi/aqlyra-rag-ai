@@ -234,10 +234,11 @@ def officeholder_search_query(question: str) -> str:
             "official government source"
         )
     if official == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        # Keep the public follow-up wording stable for existing users/tests.
         return (
-            "Who is the current Prime Minister of Bangladesh "
-            f"as of {date}? Bangladesh Prime Minister's Office "
-            "official government website"
+            "Who is the prime minister of Bangladesh? "
+            f"current officeholder as of {date} official government source "
+            "Bangladesh Prime Minister's Office"
         )
     # Correct safe, role-only spelling variants in other public queries.
     return f"{_normalized(question)} current officeholder as of {date} official government source"
