@@ -124,7 +124,10 @@ def unverified_officeholder_reply(question: str) -> str | None:
     Called only on the ordinary (non-web) chat path. A real verified web
     request does not call this function and preserves its sources.
     """
-    if not is_public_officeholder_question(question):
+    if not (
+        is_public_officeholder_question(question)
+        or is_bangladesh_pm_profile_question(question)
+    ):
         return None
     lang = _language(question)
     ambiguous = is_ambiguous_public_officeholder_question(question)
