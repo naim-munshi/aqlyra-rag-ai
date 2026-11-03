@@ -180,6 +180,18 @@ _BD_PM_SHORT = re.compile(
     r"(?:\s+(?:name|nam))?\??$",
     re.IGNORECASE,
 )
+_BD_PM_PROFILE = re.compile(
+    r"^(?:tell|give)\s+me\s+(?:briefly\s+)?(?:about|information\s+about)\s+"
+    r"(?:the\s+)?(?:(?:current|present)\s+)?"
+    r"(?:bd|bangladesh)\s+(?:pm|prime\s+minister)\??$",
+    re.IGNORECASE,
+)
+
+def is_bangladesh_pm_profile_question(question: str) -> bool:
+    """A public profile needs factual synthesis, not just the person's name."""
+    return bool(_BD_PM_PROFILE.fullmatch(_normalized(question).rstrip(" ?")))
+
+
 _BD_PM_ROLE = re.compile(
     r"\b(?:(?:bd|bangladesh)\s+(?:pm|prime\s+minister)"
     r"|(?:pm|prime\s+minister)\s+(?:of\s+)?(?:bd|bangladesh))\b",
@@ -198,7 +210,10 @@ _US_PRESIDENT = re.compile(
 
 def officeholder_primary_domains(question: str) -> list[str] | None:
     """Server-owned official source scope; never trust a model-supplied URL."""
-    if not is_public_officeholder_question(question):
+    if not (
+        is_public_officeholder_question(question)
+        or is_bangladesh_pm_profile_question(question)
+    ):
         return None
     normalized = _normalized(question)
     if _US_PRESIDENT.search(normalized):
@@ -219,11 +234,26 @@ def officeholder_authoritative_url(question: str) -> str | None:
 
 
 
+def officeholder_additional_authoritative_urls(question: str) -> list[str]:
+    """Current government directory fallback, rather than just PMO navigation."""
+    if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return ["https://cabinet.gov.bd/"]
+    return []
+
+
 def officeholder_search_query(question: str) -> str:
     """Add an as-of date to public search without transmitting chat history."""
-    if not is_public_officeholder_question(question):
+    is_profile = is_bangladesh_pm_profile_question(question)
+    if not is_public_officeholder_question(question) and not is_profile:
         return question
     date = datetime.now(timezone.utc).date().isoformat()
+    if is_profile:
+        return (
+            "Who is the current prime minister of Bangladesh? "
+            "Give a concise, factual profile including name, appointment "
+            f"date and background as of {date}; prioritize an official "
+            "government incumbent listing and corroborated biography."
+        )
     # A primary-source query is more precise than a generic officeholder query,
     # especially when the user misspells "president".
     official = officeholder_primary_domains(question)
