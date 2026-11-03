@@ -58,7 +58,7 @@ export function LoginForm() {
             "aqlyra_pending_email",
             email.trim().toLowerCase(),
           );
-          router.push("/verify-email");
+          window.location.assign("/verify-email");
           return;
         }
 
