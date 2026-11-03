@@ -183,7 +183,12 @@ def _research_web_tavily(
     ):
         raise WebResearchUnavailable("TAVILY_API_KEY is not configured")
     if provider is None and settings.LLM_PROVIDER == "deterministic":
-        raise WebResearchUnavailable("Real web research requires a live LLM provider")
+        # A strictly verified first-party fact needs no generative provider.
+        # Any other web-research query still requires a real LLM.
+        from app.services.public_office_guard import officeholder_authoritative_url
+        primary_url = officeholder_authoritative_url(question)
+        if mode != "search" or not primary_url or not include_domains:
+            raise WebResearchUnavailable("Real web research requires a live LLM provider")
     if not 1 <= max_sources <= 5:
         raise ValueError("max_sources out of bounds")
     if mode not in MODE_GUIDANCE:
