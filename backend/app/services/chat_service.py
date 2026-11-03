@@ -818,7 +818,10 @@ def generate_web_chat_reply(
     official_domains = officeholder_primary_domains(message)
     research = research_web(
         officeholder_search_query(message),
-        max_sources=5,
+        max_sources=(
+            2 if research_mode == "search" and is_public_officeholder_question(message)
+            else 3 if research_mode == "search" else 5
+        ),
         mode=research_mode,
         time_range=None if is_public_officeholder_question(message) else detect_time_range(message),
         **({"include_domains": official_domains} if official_domains else {}),

@@ -49,8 +49,13 @@ def test_off_topic_web_pages_are_excluded_before_grounding(monkeypatch):
                 },
             ]})
         if request.url.path == "/extract":
-            assert payload["urls"] == []
-            return httpx.Response(200, json={"results": []})
+            # A first-party page must be freshly extracted even if a
+            # cached search response already had raw_content.
+            assert payload["urls"] == ["https://www.whitehouse.gov/administration/"]
+            return httpx.Response(200, json={"results": [{
+                "url": "https://www.whitehouse.gov/administration/",
+                "raw_content": "Administration of the current United States president",
+            }]})
         raise AssertionError("Unexpected endpoint")
 
     model = EvidenceOnlyProvider()

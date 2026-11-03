@@ -9,6 +9,7 @@ import ipaddress
 import json
 import logging
 import re
+from time import perf_counter
 from urllib.parse import urlsplit
 from typing import Any
 
@@ -16,6 +17,8 @@ import httpx
 
 from app.config.settings import settings
 from app.services.research_query_planner import plan_second_query
+from app.services.official_fact_fast_path import verified_officeholder_fast_answer
+from app.llms.registry import create_latency_bounded_web_provider
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
 from app.schemas.web_research import (
@@ -173,6 +176,7 @@ def _research_web_tavily(
     provider: LLMProvider | None = None,
     iterative: bool = False,
 ) -> WebResearchResponse:
+    started_at = perf_counter()
     if not settings.WEB_RESEARCH_ENABLED:
         raise WebResearchUnavailable("Web research is disabled")
     key = settings.TAVILY_API_KEY.strip()
@@ -181,7 +185,26 @@ def _research_web_tavily(
     ):
         raise WebResearchUnavailable("TAVILY_API_KEY is not configured")
     if provider is None and settings.LLM_PROVIDER == "deterministic":
-        raise WebResearchUnavailable("Real web research requires a live LLM provider")
+        # A strictly verified first-party fact needs no generative provider.
+        # Any other web-research query still requires a real LLM.
+        from app.services.public_office_guard import officeholder_authoritative_url
+        primary_url = officeholder_authoritative_url(question)
+        primary_host = (
+            (urlsplit(primary_url).hostname or "").lower()
+            if primary_url else ""
+        )
+        allowed_domains = [
+            d.strip().lower() for d in (include_domains or [])
+            if isinstance(d, str)
+        ]
+        officially_scoped = bool(
+            primary_host and any(
+                primary_host == d or primary_host.endswith("." + d)
+                for d in allowed_domains
+            )
+        )
+        if mode != "search" or not officially_scoped:
+            raise WebResearchUnavailable("Real web research requires a live LLM provider")
     if not 1 <= max_sources <= 5:
         raise ValueError("max_sources out of bounds")
     if mode not in MODE_GUIDANCE:
@@ -214,6 +237,7 @@ def _research_web_tavily(
         follow_redirects=False,
         trust_env=False,
     )
+    pinned_official_url: str | None = None
     try:
         candidates: list[dict[str, str | None]] = []
         search_raw_pages: dict[str, str] = {}
@@ -289,29 +313,31 @@ def _research_web_tavily(
                 if len(candidates) >= limit:
                     break
 
-        # For this narrow current U.S. executive-office question, anchor
-        # retrieval to the official administration page even if the generic
-        # search ranking returns only election news. Tavily must still extract
-        # the page: adding a URL is NOT fabricating evidence or an incumbent.
-        if mode != "url" and domains == ["whitehouse.gov"]:
-            from app.services.public_office_guard import officeholder_primary_domains
-            if officeholder_primary_domains(question) == ["whitehouse.gov"]:
-                official_url = "https://www.whitehouse.gov/administration/"
-                official_candidates = [
-                    item for item in candidates if item["url"] == official_url
-                ]
-                if official_candidates:
-                    primary = official_candidates[0]
-                else:
-                    primary = {
-                        "url": official_url,
-                        "title": "Official White House Administration",
-                        "published_date": None,
-                    }
-                candidates = [primary] + [
-                    item for item in candidates if item["url"] != official_url
-                ]
-                candidates = candidates[:max_sources]
+        # For selected current offices, preserve a stable first-party source
+        # ahead of noisy search rankings. This URL alone is NOT evidence:
+        # the page still has to be fetched through the bounded Tavily reader.
+        if mode == "search" and domains:
+            from app.services.public_office_guard import officeholder_authoritative_url
+            official_url = officeholder_authoritative_url(question)
+            if official_url:
+                official_host = (urlsplit(official_url).hostname or "").lower()
+                if any(
+                    official_host == domain or official_host.endswith("." + domain)
+                    for domain in domains
+                ):
+                    pinned_official_url = official_url
+                    primary = next(
+                        (item for item in candidates if item["url"] == official_url),
+                        {
+                            "url": official_url,
+                            "title": "Official government officeholder",
+                            "published_date": None,
+                        },
+                    )
+                    candidates = [primary] + [
+                        item for item in candidates if item["url"] != official_url
+                    ]
+                    candidates = candidates[:max_sources]
 
         if not candidates:
             logger.warning("web_research_stage_failed stage=search_no_candidates")
@@ -334,7 +360,10 @@ def _research_web_tavily(
 
         missing_raw_urls = [
             item["url"] for item in candidates
+            # A primary government page must be freshly extracted. A search
+            # result's cached raw_content alone is never proof of incumbency.
             if item["url"] not in search_raw_pages
+            or item["url"] == pinned_official_url
         ]
         if not missing_raw_urls:
             extracted = {"results": []}
@@ -368,6 +397,9 @@ def _research_web_tavily(
     if not isinstance(raw_pages, list):
         raise WebResearchUnavailable("Invalid web extract response")
     page_content: dict[str, str] = {}
+    # A government homepage can place the current officeholder well below
+    # navigation links. Scan more extracted text without feeding it all to LLM.
+    official_scan_text: str | None = None
     approved = {item["url"] for item in candidates}
     for item in raw_pages:
         if not isinstance(item, dict):
@@ -376,6 +408,8 @@ def _research_web_tavily(
         content = item.get("raw_content")
         if isinstance(url, str) and url in approved and isinstance(content, str) and content.strip():
             page_content[url] = content[:MAX_EVIDENCE_CHARS].strip()
+            if url == pinned_official_url:
+                official_scan_text = content[:16_000].strip()
 
     sources: list[WebResearchSource] = []
     for item in candidates:
@@ -394,6 +428,31 @@ def _research_web_tavily(
         logger.warning("web_research_stage_failed stage=extract_no_readable_pages candidates=%s extracted_items=%s failed_items=%s", len(candidates), len(raw_pages), len(extracted.get("failed_results", [])) if isinstance(extracted.get("failed_results"), list) else -1)
         raise WebResearchEvidenceError("No readable public web pages could be extracted")
 
+    # Zero-provider fast lane for a strictly validated role/name on the
+    # actual extracted first-party page. Never infer from search snippets.
+    if mode == "search" and pinned_official_url is not None and provider is None:
+        fast = verified_officeholder_fast_answer(
+            question, sources, extracted_urls=set(page_content),
+            official_page_text=official_scan_text,
+        )
+        if fast is not None:
+            fast_text, primary = fast
+            logger.info(
+                "web_research_timing lane=official_fast sources=1 total_ms=%d",
+                int((perf_counter() - started_at) * 1000),
+            )
+            return WebResearchResponse(
+                question=question, answer=fast_text, sources=[primary],
+                provider_name="aqlyra-official-fact",
+                model_name="strict-first-party-parser-v1",
+                searched_at=datetime.now(timezone.utc),
+            )
+        if pinned_official_url not in page_content:
+            logger.warning("web_research_official_fact_fast_path status=no_verified_primary")
+            raise WebResearchEvidenceError(
+                "Unable to verify the current official from an extracted government page"
+            )
+
     body = {
         "user_question": question,
         "research_mode": mode,
@@ -404,7 +463,11 @@ def _research_web_tavily(
         ],
     }
     # Each source is bounded; no HTML/scripts are run or directly fetched.
-    llm = planning_provider or create_configured_llm_provider()
+    llm = planning_provider or (
+        create_latency_bounded_web_provider()
+        if mode == "search" and settings.LLM_PROVIDER == "groq"
+        else create_configured_llm_provider()
+    )
     generation = llm.generate(
         instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode],
         input_text=json.dumps(body, ensure_ascii=False),
@@ -465,6 +528,11 @@ def _research_web_tavily(
         )
         raise WebResearchEvidenceError("Generated answer has no valid source citations")
 
+    logger.info(
+        "web_research_timing lane=grounded_llm sources=%d total_ms=%d",
+        len(sources),
+        int((perf_counter() - started_at) * 1000),
+    )
     return WebResearchResponse(
         question=question,
         answer=text,

@@ -113,7 +113,7 @@ def test_normal_sync_chat_routes_public_question_through_verified_research(enabl
         db=Mock(),conversation=SimpleNamespace(mode="normal",id="conversation",user_id="owner"),
         message=query, web_mode="auto",provider=selector,
     )
-    assert invoked == [(query,"search",5)]
+    assert invoked == [(query,"search",3)]
     assert len(selector.calls) == 1
     assert "https://example.org/jobs" in result.content
     assert "[W1]" in result.content

@@ -68,7 +68,7 @@ def test_web_query_does_not_read_history_or_personal_memory(monkeypatch):
         db=Mock(), conversation=private_conversation,
         message="What are the latest AI developments?", web_mode="auto",
     )
-    assert calls == [("What are the latest AI developments?", 5, "search", "month", False)]
+    assert calls == [("What are the latest AI developments?", 3, "search", "month", False)]
     assert "[W1]" in result.content
     assert "[Source  untrusted  markdown](https://example.org/report)" in result.content
     assert "[S1]" not in result.content

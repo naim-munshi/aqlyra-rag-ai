@@ -178,6 +178,10 @@ class Settings(BaseSettings):
     BROWSER_AGENT_HTML_CANARY_ON_STARTUP: bool = False
     BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
+    # Public research is never allowed to exhaust chat latency through
+    # automatic provider retries. Override explicitly only after staging.
+    WEB_RESEARCH_LLM_MAX_RETRIES: int = Field(default=0, ge=0, le=2)
+    WEB_RESEARCH_LLM_TIMEOUT_SECONDS: float = Field(default=20.0, ge=3, le=60)
     # Temporary one-shot operator-only E2E check; OFF after validation.
     WEB_RESEARCH_CANARY_ON_STARTUP: bool = False
     WEB_KEYLESS_CANARY_ON_STARTUP: bool = False
