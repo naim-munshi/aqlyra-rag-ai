@@ -287,6 +287,30 @@ def _research_web_tavily(
                 if len(candidates) >= limit:
                     break
 
+        # For this narrow current U.S. executive-office question, anchor
+        # retrieval to the official administration page even if the generic
+        # search ranking returns only election news. Tavily must still extract
+        # the page: adding a URL is NOT fabricating evidence or an incumbent.
+        if mode != "url" and domains == ["whitehouse.gov"]:
+            from app.services.public_office_guard import officeholder_primary_domains
+            if officeholder_primary_domains(question) == ["whitehouse.gov"]:
+                official_url = "https://www.whitehouse.gov/administration/"
+                official_candidates = [
+                    item for item in candidates if item["url"] == official_url
+                ]
+                if official_candidates:
+                    primary = official_candidates[0]
+                else:
+                    primary = {
+                        "url": official_url,
+                        "title": "Official White House Administration",
+                        "published_date": None,
+                    }
+                candidates = [primary] + [
+                    item for item in candidates if item["url"] != official_url
+                ]
+                candidates = candidates[:max_sources]
+
         if not candidates:
             logger.warning("web_research_stage_failed stage=search_no_candidates")
             raise WebResearchEvidenceError("No public web sources found")
