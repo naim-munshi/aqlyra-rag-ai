@@ -13,6 +13,7 @@ from app.llms.types import LLMProvider
 from app.services.public_office_guard import (
     is_ambiguous_public_officeholder_question,
     is_public_officeholder_question,
+    is_bangladesh_pm_profile_question,
 )
 from app.services.auto_web_research_service import (
     _NO_WEB,
@@ -111,7 +112,10 @@ def route_web_request(
     if mode != "auto" or primary is not None:
         return primary
     # No "latest/today" keyword is required for a present-tense office.
-    if settings.WEB_RESEARCH_ENABLED and is_public_officeholder_question(question):
+    if settings.WEB_RESEARCH_ENABLED and (
+        is_public_officeholder_question(question)
+        or is_bangladesh_pm_profile_question(question)
+    ):
         return "search"
     if not settings.WEB_RESEARCH_ENABLED or len(question) > 600:
         return None
