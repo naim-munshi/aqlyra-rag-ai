@@ -56,6 +56,7 @@ from app.services.memory_retrieval_service import (
 from app.services.memory_lexical_retrieval import (
     retrieve_lexical_memories_for_user,
 )
+from app.services.social_turn_policy import is_low_information_social_turn
 from app.services.rag_answer_service import (
     answer_question,
 )
@@ -386,7 +387,10 @@ def _retrieve_normal_chat_memories(
     user_id: str,
     message: str,
 ) -> tuple[MemoryRetrievalHit, ...]:
-    if not settings.MEMORY_CHAT_ENABLED:
+    # A standalone greeting has no personal retrieval intent. Avoid an
+    # unnecessary remote 384-d embedding call (and its quota/429 exposure).
+    # All mixed questions and personalization requests use normal memory.
+    if not settings.MEMORY_CHAT_ENABLED or is_low_information_social_turn(message):
         return ()
 
     if (
