@@ -152,7 +152,7 @@ def test_live_style_government_page_after_navigation_and_honorific(monkeypatch):
     monkeypatch.setattr(settings, "WEB_SEARCH_PROVIDER", "tavily")
     long_page = (
         "নোটিশ বোর্ড অনেক তথ্য " * 220
-        + "\\nজনাব কল্পিত পরীক্ষা\\nমাননীয় প্রধানমন্ত্রী\\nগণপ্রজাতন্ত্রী বাংলাদেশ সরকার"
+        + "\nজনাব কল্পিত পরীক্ষা\nমাননীয় প্রধানমন্ত্রী\nগণপ্রজাতন্ত্রী বাংলাদেশ সরকার"
     )
 
     def transport(request):
