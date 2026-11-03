@@ -9,6 +9,7 @@ import ipaddress
 import json
 import logging
 import re
+from time import perf_counter
 from urllib.parse import urlsplit
 from typing import Any
 
@@ -175,6 +176,7 @@ def _research_web_tavily(
     provider: LLMProvider | None = None,
     iterative: bool = False,
 ) -> WebResearchResponse:
+    started_at = perf_counter()
     if not settings.WEB_RESEARCH_ENABLED:
         raise WebResearchUnavailable("Web research is disabled")
     key = settings.TAVILY_API_KEY.strip()
@@ -415,7 +417,10 @@ def _research_web_tavily(
         )
         if fast is not None:
             fast_text, primary = fast
-            logger.info("web_research_official_fact_fast_path status=verified")
+            logger.info(
+                "web_research_timing lane=official_fast sources=1 total_ms=%d",
+                int((perf_counter() - started_at) * 1000),
+            )
             return WebResearchResponse(
                 question=question, answer=fast_text, sources=[primary],
                 provider_name="aqlyra-official-fact",
@@ -503,6 +508,11 @@ def _research_web_tavily(
         )
         raise WebResearchEvidenceError("Generated answer has no valid source citations")
 
+    logger.info(
+        "web_research_timing lane=grounded_llm sources=%d total_ms=%d",
+        len(sources),
+        int((perf_counter() - started_at) * 1000),
+    )
     return WebResearchResponse(
         question=question,
         answer=text,
