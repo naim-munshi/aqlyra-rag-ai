@@ -144,3 +144,32 @@ def test_wrong_page_role_does_not_become_a_fast_answer():
         [_source("https://example.org/fake", "জনাব কল্পিত পরীক্ষা\nপ্রধানমন্ত্রী")],
         extracted_urls={"https://example.org/fake"},
     ) is None
+
+
+def test_live_style_government_page_after_navigation_and_honorific(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "synthetic-only")
+    monkeypatch.setattr(settings, "WEB_SEARCH_PROVIDER", "tavily")
+    long_page = (
+        "নোটিশ বোর্ড অনেক তথ্য " * 220
+        + "\\nজনাব কল্পিত পরীক্ষা\\nমাননীয় প্রধানমন্ত্রী\\nগণপ্রজাতন্ত্রী বাংলাদেশ সরকার"
+    )
+
+    def transport(request):
+        if request.url.path == "/search":
+            return httpx.Response(200, json={"results": []})
+        return httpx.Response(200, json={"results": [{
+            "url": "https://pmo.gov.bd/",
+            "raw_content": long_page,
+        }]})
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        result = research_web(
+            officeholder_search_query("tell me bd pm name"),
+            include_domains=["pmo.gov.bd", "cabinet.gov.bd"],
+            max_sources=2,
+            client=client,
+        )
+    assert result.provider_name == "aqlyra-official-fact"
+    assert "কল্পিত পরীক্ষা" in result.answer
+    assert len(result.sources[0].excerpt) <= 3_000
