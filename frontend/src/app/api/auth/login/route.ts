@@ -40,7 +40,12 @@ export async function POST(request: Request) {
       {
         method: "POST",
         headers: backendHeaders,
-        body: JSON.stringify(body),
+        // Persistence is first-party BFF policy, never an auth-provider
+        // permission or an extra field in the password validation request.
+        body: JSON.stringify({
+          email: body.email,
+          password: body.password,
+        }),
         cache: "no-store",
       },
     );
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
     return await completeAuthentication(
       loginResponse,
       "Login failed",
+      { remember: body.remember_me !== false },
     );
   } catch {
     return NextResponse.json(
