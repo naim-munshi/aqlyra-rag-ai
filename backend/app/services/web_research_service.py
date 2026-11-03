@@ -53,9 +53,19 @@ short sentence with a relevant [W#] citation; avoid unrelated background.
 For current prime ministers, presidents and other changing offices, prioritize
 up-to-date official government sources. Verify the named person actually
 holds office at the requested date; do not repeat historical incumbents as
-current. If the evidence is old, conflicting or undated, say you cannot
-confirm the current officeholder instead of guessing.
-Do not infer publication dates or freshness from an undated page.
+current. A freshly extracted, actively maintained first-party government
+officeholder directory which explicitly lists a person's name AND current
+role is direct primary evidence even if it has no publication date.
+Do not refuse only because this kind of live official directory is undated.
+Do NOT treat unrelated government navigation, old archived biographies,
+search snippets, or historical press releases as an incumbent directory.
+When official sources conflict or none identifies the actual officeholder,
+say you cannot verify rather than guessing.
+For a brief 'tell me about' request, answer with the person's verified name
+and concise details supported by evidence. If biographical details are not
+available, give the verified name rather than refusing the entire request.
+Do not invent publication dates or infer freshness from an undated
+third-party page.
 Do not claim you searched or visited additional sources.
 When sources do not establish a current fact, explain the uncertainty and
 cite the evidence you actually reviewed; do not state an unverified name.
@@ -238,6 +248,7 @@ def _research_web_tavily(
         trust_env=False,
     )
     pinned_official_url: str | None = None
+    pinned_official_urls: set[str] = set()
     try:
         candidates: list[dict[str, str | None]] = []
         search_raw_pages: dict[str, str] = {}
@@ -317,7 +328,10 @@ def _research_web_tavily(
         # ahead of noisy search rankings. This URL alone is NOT evidence:
         # the page still has to be fetched through the bounded Tavily reader.
         if mode == "search" and domains:
-            from app.services.public_office_guard import officeholder_authoritative_url
+            from app.services.public_office_guard import (
+                officeholder_authoritative_url,
+                officeholder_additional_authoritative_urls,
+            )
             official_url = officeholder_authoritative_url(question)
             if official_url:
                 official_host = (urlsplit(official_url).hostname or "").lower()
@@ -334,8 +348,39 @@ def _research_web_tavily(
                             "published_date": None,
                         },
                     )
-                    candidates = [primary] + [
-                        item for item in candidates if item["url"] != official_url
+                    pinned_official_urls.add(official_url)
+                    selected: list[dict[str, str | None]] = [primary]
+                    for fallback_url in officeholder_additional_authoritative_urls(question):
+                        host = (urlsplit(fallback_url).hostname or "").lower()
+                        if not any(host == d or host.endswith("." + d) for d in domains):
+                            continue
+                        # Prefer a more specific government office-head page
+                        # returned by live search. If search is noisy or empty,
+                        # the official cabinet homepage is still authoritative.
+                        cabinet_profile = next(
+                            (
+                                item for item in candidates
+                                if (urlsplit(str(item["url"])).hostname or "").lower()
+                                == host
+                                and "/pages/office-heads/" in urlsplit(
+                                    str(item["url"])
+                                ).path
+                            ),
+                            None,
+                        )
+                        extra = cabinet_profile or next(
+                            (item for item in candidates if item["url"] == fallback_url),
+                            {
+                                "url": fallback_url,
+                                "title": "Bangladesh Cabinet Division",
+                                "published_date": None,
+                            },
+                        )
+                        selected.append(extra)
+                        pinned_official_urls.add(str(extra["url"]))
+                    candidates = selected + [
+                        item for item in candidates
+                        if item["url"] not in pinned_official_urls
                     ]
                     candidates = candidates[:max_sources]
 
@@ -363,7 +408,7 @@ def _research_web_tavily(
             # A primary government page must be freshly extracted. A search
             # result's cached raw_content alone is never proof of incumbency.
             if item["url"] not in search_raw_pages
-            or item["url"] == pinned_official_url
+            or item["url"] in pinned_official_urls
         ]
         if not missing_raw_urls:
             extracted = {"results": []}
@@ -400,6 +445,7 @@ def _research_web_tavily(
     # A government homepage can place the current officeholder well below
     # navigation links. Scan more extracted text without feeding it all to LLM.
     official_scan_text: str | None = None
+    official_pages: dict[str, str] = {}
     approved = {item["url"] for item in candidates}
     for item in raw_pages:
         if not isinstance(item, dict):
@@ -408,8 +454,37 @@ def _research_web_tavily(
         content = item.get("raw_content")
         if isinstance(url, str) and url in approved and isinstance(content, str) and content.strip():
             page_content[url] = content[:MAX_EVIDENCE_CHARS].strip()
-            if url == pinned_official_url:
-                official_scan_text = content[:16_000].strip()
+            if url in pinned_official_urls:
+                official_pages[url] = content[:16_000].strip()
+                if url == pinned_official_url:
+                    official_scan_text = official_pages[url]
+
+    # Preserve the relevant officeholder passage for the grounded model.
+    # Government homepages can put the actual incumbent below thousands of
+    # navigation characters. This is extracted government text, not a
+    # synthetic model name or a search snippet.
+    if pinned_official_urls:
+        from app.services.official_fact_fast_path import _extract_current_bd_name
+        for url, full_text in official_pages.items():
+            if (urlsplit(url).hostname or "").lower() not in {
+                "pmo.gov.bd", "cabinet.gov.bd",
+            }:
+                continue
+            name = _extract_current_bd_name(full_text)
+            if not name:
+                continue
+            match = re.search(
+                r"জনাব[ \t]+" + re.escape(name), full_text,
+            )
+            if match:
+                focused = full_text[
+                    max(0, match.start() - 180):
+                    min(len(full_text), match.end() + 320)
+                ].strip()
+                if focused and focused not in page_content[url]:
+                    page_content[url] = (
+                        focused + "\n\n" + page_content[url]
+                    )[:MAX_EVIDENCE_CHARS]
 
     sources: list[WebResearchSource] = []
     for item in candidates:
@@ -431,12 +506,24 @@ def _research_web_tavily(
     # Zero-provider fast lane for a strictly validated role/name on the
     # actual extracted first-party page. Never infer from search snippets.
     if mode == "search" and pinned_official_url is not None and provider is None:
-        fast = verified_officeholder_fast_answer(
+        # A profile request should synthesize a relevant short biography,
+        # not collapse the user's intent to the one-name fast lane.
+        profile_question = bool(
+            re.search(r"\b(?:profile|background|biography|career|about)\b", question, re.I)
+        )
+        fast = None if profile_question else verified_officeholder_fast_answer(
             question, sources, extracted_urls=set(page_content),
             official_page_text=official_scan_text,
+            official_page_text_by_url=official_pages,
         )
         if fast is not None:
             fast_text, primary = fast
+            # A second extracted government page can be [W2] during
+            # research, but a one-source fast response must be numbered [W1].
+            # Keep citation IDs and the clickable source list consistent.
+            if primary.citation != "[W1]":
+                fast_text = fast_text.replace(primary.citation, "[W1]")
+                primary = primary.model_copy(update={"citation": "[W1]"})
             logger.info(
                 "web_research_timing lane=official_fast sources=1 total_ms=%d",
                 int((perf_counter() - started_at) * 1000),
@@ -447,7 +534,7 @@ def _research_web_tavily(
                 model_name="strict-first-party-parser-v1",
                 searched_at=datetime.now(timezone.utc),
             )
-        if pinned_official_url not in page_content:
+        if not any(u in page_content for u in pinned_official_urls):
             logger.warning("web_research_official_fact_fast_path status=no_verified_primary")
             raise WebResearchEvidenceError(
                 "Unable to verify the current official from an extracted government page"
