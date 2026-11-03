@@ -258,7 +258,7 @@ def officeholder_search_query(question: str) -> str:
     if is_profile:
         return (
             "Who is the current prime minister of Bangladesh? "
-            "Give a concise, factual profile including name, appointment "
+            "Give a brief, factual profile including name, appointment "
             f"date and background as of {date}; prioritize an official "
             "government incumbent listing and corroborated biography."
         )
