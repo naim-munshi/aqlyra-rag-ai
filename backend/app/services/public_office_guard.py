@@ -13,6 +13,13 @@ from app.llms.types import LLMGeneration, LLMProviderInfo, LLMStreamEvent
 from app.services.web_research_capability import public_web_research_status
 
 
+# Correct only a short allowlist of common typos in a public-office role.
+# Do not perform fuzzy matching on arbitrary text or send private chat history.
+_PRESIDENT_TYPOS = re.compile(
+    r"\b(?:presodent|presedent|presadent|presdent|presidant|presdient|prezident)\b",
+    flags=re.IGNORECASE,
+)
+
 _ROLE = re.compile(
     r"\b(?:prime\s+minister|president|head\s+of\s+(?:state|government))\b"
     r"|প্রধানমন্ত্রী|রাষ্ট্রপতি|首相|総理大臣|大統領",
@@ -40,7 +47,8 @@ _ROMANIZED_AMBIGUOUS = re.compile(
     re.IGNORECASE,
 )
 _EN_OFFICE_QUESTION = re.compile(
-    r"^\s*who(?:'s|\s+is|\s+currently\s+is|\s+holds|\s+currently\s+holds)\b",
+    r"^\s*(?:who(?:'s|\s+is|\s+currently\s+is|\s+holds|\s+currently\s+holds)"
+    r"|what(?:'s|\s+is)\s+(?:the\s+)?name\s+of)\b",
     flags=re.IGNORECASE,
 )
 _BN_JA_WHO = re.compile(r"কে(?:\s|\?|$)|কার\b|誰|だれ")
@@ -68,7 +76,8 @@ _HISTORICAL = re.compile(
 
 
 def _normalized(question: str) -> str:
-    return " ".join(question.replace("’", "'").split()).strip()
+    text = " ".join(question.replace("’", "'").split()).strip()
+    return _PRESIDENT_TYPOS.sub("president", text)
 
 
 def is_public_officeholder_question(question: str) -> bool:
@@ -165,7 +174,8 @@ def officeholder_search_query(question: str) -> str:
     if not is_public_officeholder_question(question):
         return question
     date = datetime.now(timezone.utc).date().isoformat()
-    return f"{question.strip()} current officeholder as of {date} official government source"
+    # Correct safe, role-only spelling variants in the verified public query.
+    return f"{_normalized(question)} current officeholder as of {date} official government source"
 
 
 class PublicFactGuardProvider:
