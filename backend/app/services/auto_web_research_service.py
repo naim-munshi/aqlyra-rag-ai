@@ -127,10 +127,17 @@ def detect_time_range(question: str) -> str | None:
 
 
 def cited_web_answer(answer: str, sources: list) -> str:
-    """Append clickable, checked-source links without trusting source titles as Markdown."""
+    """Show only cited public sources; never present unrelated search hits as evidence."""
+    cited_indices = {
+        int(value) for value in re.findall(r"\[W([1-9][0-9]*)\]", answer, re.I)
+    }
     entries = []
-    for source in sources:
+    for index, source in enumerate(sources, start=1):
+        if index not in cited_indices:
+            continue
         title = re.sub(r"[\[\]()\r\n<>]", " ", source.title).strip()[:160]
         url = source.url.replace(")", "%29")
         entries.append(f"- {source.citation} [{title or 'Source'}]({url})")
+    if not entries:
+        return answer.rstrip()
     return answer.rstrip() + "\n\n**Web sources**\n" + "\n".join(entries)

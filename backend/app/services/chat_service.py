@@ -22,6 +22,7 @@ from app.services.public_office_guard import (
     officeholder_search_query,
     is_ambiguous_public_officeholder_question,
     is_public_officeholder_question,
+    officeholder_primary_domains,
     unverified_officeholder_reply,
 )
 from app.llms import (
@@ -814,11 +815,13 @@ def generate_web_chat_reply(
 ) -> ChatExecutionResult:
     # Only the current user message is sent externally: NEVER history,
     # user memories, uploaded document content or knowledge retrieval text.
+    official_domains = officeholder_primary_domains(message)
     research = research_web(
         officeholder_search_query(message),
         max_sources=5,
         mode=research_mode,
-        time_range=detect_time_range(message),
+        time_range=None if is_public_officeholder_question(message) else detect_time_range(message),
+        **({"include_domains": official_domains} if official_domains else {}),
         provider=provider,
         iterative=(research_mode == "deep"),
     )
