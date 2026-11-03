@@ -31,7 +31,7 @@ test("stay signed in is explicit and enabled by default on personal laptop", () 
   assert.match(login, /useState\(true\)/);
   assert.match(login, /remember_me: rememberMe/);
   assert.match(login, /Keep me signed in on this device/);
-  assert.match(login, /window\.location\.replace\("\/"\)/);
+  assert.match(login, /router\.replace\("\/"\)/);
   assert.doesNotMatch(login, /router\.refresh/);
 });
 
@@ -54,6 +54,6 @@ test("temporary backend outage does not become a 401 signed-out response", () =>
 
 test("Google sign in avoids duplicate push and refresh navigation", () => {
   const google = source("components/auth/google-sign-in-button.tsx");
-  assert.match(google, /window\.location\.replace\("\/"\)/);
+  assert.match(google, /router\.replace\("\/"\)/);
   assert.doesNotMatch(google, /router\.refresh/);
 });
