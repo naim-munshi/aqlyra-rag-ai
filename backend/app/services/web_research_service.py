@@ -464,7 +464,7 @@ def _research_web_tavily(
             if not name:
                 continue
             match = re.search(
-                r"জনাব[ \\t]+" + re.escape(name), full_text,
+                r"জনাব[ \t]+" + re.escape(name), full_text,
             )
             if match:
                 focused = full_text[
@@ -473,7 +473,7 @@ def _research_web_tavily(
                 ].strip()
                 if focused and focused not in page_content[url]:
                     page_content[url] = (
-                        focused + "\\n\\n" + page_content[url]
+                        focused + "\n\n" + page_content[url]
                     )[:MAX_EVIDENCE_CHARS]
 
     sources: list[WebResearchSource] = []
