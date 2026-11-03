@@ -87,6 +87,11 @@ def is_public_officeholder_question(question: str) -> bool:
     if _HISTORICAL.search(text):
         return False
     romanized = _TERMINAL_PUNCTUATION.sub("", text)
+    # "tell me about BD PM" is a profile, not a name-only question.
+    # The broad legacy country-first matcher otherwise misclassifies
+    # "tell me about bd" as a country name.
+    if is_bangladesh_pm_profile_question(question):
+        return False
     if _BD_PM_SHORT.fullmatch(romanized):
         return True
     if _ROMANIZED_PUBLIC_NAME.fullmatch(romanized) or _ROMANIZED_COUNTRY_FIRST.fullmatch(romanized):
