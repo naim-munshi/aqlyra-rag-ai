@@ -129,7 +129,7 @@ def detect_time_range(question: str) -> str | None:
 def cited_web_answer(answer: str, sources: list) -> str:
     """Show only cited public sources; never present unrelated search hits as evidence."""
     cited_indices = {
-        int(value) for value in re.findall(r"\\[W([1-9][0-9]*)\\]", answer, re.I)
+        int(value) for value in re.findall(r"\[W([1-9][0-9]*)\]", answer, re.I)
     }
     entries = []
     for index, source in enumerate(sources, start=1):
