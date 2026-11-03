@@ -337,3 +337,45 @@ def test_room_create_provider_error_is_safe_and_does_not_dispatch(monkeypatch, c
     assert "provider-secret-and-room-private" not in caplog.text
     assert "never-log-this" not in caplog.text
     assert "document_ids" not in caplog.text
+
+
+def test_livekit_auth_probe_uses_read_only_list_rooms(monkeypatch):
+    _configure(monkeypatch)
+    observed = {"listed": 0, "closed": 0}
+
+    class FakeRoom:
+        async def list_rooms(self, request):
+            observed["listed"] += 1
+            observed["request_type"] = type(request).__name__
+
+    class FakeLiveKitAPI:
+        def __init__(self, **kwargs):
+            self.room = FakeRoom()
+
+        async def aclose(self):
+            observed["closed"] += 1
+
+    monkeypatch.setattr(voice.api, "LiveKitAPI", FakeLiveKitAPI)
+    assert voice.probe_livekit_credentials_once() is True
+    assert observed == {
+        "listed": 1,
+        "request_type": "ListRoomsRequest",
+        "closed": 1,
+    }
+
+
+def test_livekit_auth_probe_401_never_logs_private_exception(monkeypatch, caplog):
+    _configure(monkeypatch)
+    secret_message = "private-token-do-not-print"
+
+    class AuthFailure(Exception):
+        status = 401
+
+    async def deny():
+        raise AuthFailure(secret_message)
+
+    monkeypatch.setattr(voice, "_read_only_livekit_auth_probe", deny)
+    assert voice.probe_livekit_credentials_once() is False
+    assert "voice_provider_auth_probe result=FAIL status=401" in caplog.text
+    assert "error_type=AuthFailure" in caplog.text
+    assert secret_message not in caplog.text
