@@ -265,6 +265,39 @@ def _validate_documents(
             )
 
 
+async def _read_only_livekit_auth_probe() -> None:
+    """Verify this Render instance's real credentials without creating rooms."""
+    lkapi = api.LiveKitAPI(
+        url=settings.LIVEKIT_URL,
+        api_key=settings.LIVEKIT_API_KEY,
+        api_secret=settings.LIVEKIT_API_SECRET,
+    )
+    try:
+        await asyncio.wait_for(
+            lkapi.room.list_rooms(api.ListRoomsRequest()),
+            timeout=7.0,
+        )
+    finally:
+        await lkapi.aclose()
+
+
+def probe_livekit_credentials_once() -> bool:
+    """Startup-only diagnostics; never log tokens, key values, or room lists."""
+    try:
+        asyncio.run(_read_only_livekit_auth_probe())
+    except Exception as exc:
+        status = getattr(exc, "status", None)
+        status = status if isinstance(status, int) and 100 <= status <= 599 else 0
+        logger.warning(
+            "voice_provider_auth_probe result=FAIL status=%s error_type=%s",
+            status,
+            type(exc).__name__,
+        )
+        return False
+    logger.info("voice_provider_auth_probe result=PASS")
+    return True
+
+
 async def _create_explicit_voice_dispatch(
     *, room_name: str, metadata: str,
 ) -> None:
