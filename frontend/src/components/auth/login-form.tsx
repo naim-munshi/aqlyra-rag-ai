@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Eye,
   EyeOff,
@@ -17,6 +18,7 @@ type LoginError = {
 };
 
 export function LoginForm() {
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +60,7 @@ export function LoginForm() {
             "aqlyra_pending_email",
             email.trim().toLowerCase(),
           );
-          window.location.assign("/verify-email");
+          router.replace("/verify-email");
           return;
         }
 
@@ -72,7 +74,7 @@ export function LoginForm() {
       }
 
       // One navigation avoids an extra duplicate authenticated page load.
-      window.location.replace("/");
+      router.replace("/");
     } catch {
       setError("Unable to connect to Aqlyra.");
     } finally {
