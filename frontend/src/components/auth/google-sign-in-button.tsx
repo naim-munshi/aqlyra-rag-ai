@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import Script from "next/script";
-import { useRouter } from "next/navigation";
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -42,7 +41,6 @@ type ApiError = {
 };
 
 export function GoogleSignInButton() {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,15 +78,15 @@ export function GoogleSignInButton() {
           return;
         }
 
-        router.push("/");
-        router.refresh();
+        // Avoid a duplicate authenticated fetch caused by push+refresh.
+        window.location.replace("/");
       } catch {
         setError("Unable to connect to Aqlyra.");
       } finally {
         setLoading(false);
       }
     },
-    [router],
+    [],
   );
 
   const initializeGoogle = useCallback(() => {
