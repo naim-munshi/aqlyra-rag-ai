@@ -508,6 +508,12 @@ def _research_web_tavily(
         )
         if fast is not None:
             fast_text, primary = fast
+            # A second extracted government page can be [W2] during
+            # research, but a one-source fast response must be numbered [W1].
+            # Keep citation IDs and the clickable source list consistent.
+            if primary.citation != "[W1]":
+                fast_text = fast_text.replace(primary.citation, "[W1]")
+                primary = primary.model_copy(update={"citation": "[W1]"})
             logger.info(
                 "web_research_timing lane=official_fast sources=1 total_ms=%d",
                 int((perf_counter() - started_at) * 1000),
