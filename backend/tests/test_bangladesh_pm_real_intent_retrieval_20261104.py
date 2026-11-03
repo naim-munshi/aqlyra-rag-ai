@@ -191,3 +191,20 @@ def test_stale_only_or_fake_domains_cannot_be_fast_evidence():
         [fake],
         extracted_urls={fake.url},
     ) is None
+
+
+def test_offline_current_profile_does_not_guess_an_outdated_officeholder(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "mock-key")
+    monkeypatch.setattr(
+        chat_service, "create_configured_llm_provider",
+        lambda: pytest.fail("Current offline profile should not guess"),
+    )
+    result = chat_service.execute_chat_turn(
+        db=Mock(),
+        conversation=SimpleNamespace(mode="normal", id="synthetic", user_id="test"),
+        message="tell me about bd pm",
+        web_mode="off",
+    )
+    assert result.provider_name == "aqlyra-public-fact-guard"
+    assert "can't verify" in result.content.casefold()
