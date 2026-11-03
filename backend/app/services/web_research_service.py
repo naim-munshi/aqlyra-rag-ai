@@ -17,6 +17,7 @@ import httpx
 from app.config.settings import settings
 from app.services.research_query_planner import plan_second_query
 from app.services.official_fact_fast_path import verified_officeholder_fast_answer
+from app.llms.registry import create_latency_bounded_web_provider
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
 from app.schemas.web_research import (
@@ -432,7 +433,11 @@ def _research_web_tavily(
         ],
     }
     # Each source is bounded; no HTML/scripts are run or directly fetched.
-    llm = planning_provider or create_configured_llm_provider()
+    llm = planning_provider or (
+        create_latency_bounded_web_provider()
+        if mode == "search" and settings.LLM_PROVIDER == "groq"
+        else create_configured_llm_provider()
+    )
     generation = llm.generate(
         instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode],
         input_text=json.dumps(body, ensure_ascii=False),
