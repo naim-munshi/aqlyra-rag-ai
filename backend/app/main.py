@@ -82,6 +82,15 @@ def start_knowledge_index_worker() -> None:
             settings.VOICE_AGENT_NAME.strip(),
             urlsplit(settings.LIVEKIT_URL).hostname,
         )
+        # Non-blocking read-only provider auth proof, not config-only readiness.
+        # No room, participant, secret, or session token leaves this log.
+        from threading import Thread
+        from app.services.voice_session_service import probe_livekit_credentials_once
+        Thread(
+            target=probe_livekit_credentials_once,
+            name="aqlyra-livekit-auth-probe",
+            daemon=True,
+        ).start()
     if not voice_configured:
         logging.getLogger(__name__).warning(
             "voice_api_startup_missing_keys=%s",
