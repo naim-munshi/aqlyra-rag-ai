@@ -26,14 +26,14 @@ def _register_and_authenticate(client: TestClient, identity: str) -> dict[str, s
         "/api/v1/auth/register",
         json={
             "username": identity,
-            "email": f"{identity}@example.test",
+            "email": f"{identity}@example.com",
             "password": PASSWORD,
         },
     )
     assert registered.status_code == 201, registered.text
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": f"{identity}@example.test", "password": PASSWORD},
+        json={"email": f"{identity}@example.com", "password": PASSWORD},
     )
     assert login.status_code == 200, login.text
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
