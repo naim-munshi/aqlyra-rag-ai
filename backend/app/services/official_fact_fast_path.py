@@ -19,7 +19,7 @@ _US_ADMINISTRATION_HEADING = re.compile(
     r"([A-Z][A-Za-z.'-]+(?:\s+(?:[A-Z][A-Za-z.'-]+|[A-Z]\.)){1,4})"
     r"\s*$"
 )
-_BD_NAME = r"([\u0980-\u09ff]{2,}(?:\s+[\u0980-\u09ff]{2,}){1,4})"
+_BD_NAME = r"([\u0980-\u09ff]{2,}(?:[ \t]+[\u0980-\u09ff]{2,}){1,4})"
 _BD_PRIME_MINISTER_LABEL = re.compile(
     r"জনাব\s+" + _BD_NAME
     + r"\s*(?:\n|\|)\s*(?:মাননীয়\s+)?প্রধানমন্ত্রী(?=\s|$|[।|])"
@@ -52,6 +52,8 @@ def _extract_current_bd_name(page_text: str) -> str | None:
         match = pattern.search(page)
         if match:
             name = " ".join(match.group(1).split())
+            # Government directory links often append "details" after name.
+            name = re.sub(r"[ \t]+বিস্তারিত$", "", name).strip()
             if "প্রাক্তন" not in name and "সাবেক" not in name:
                 return name
     return None
