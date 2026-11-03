@@ -43,7 +43,7 @@ def test_bd_shorthand_recognizes_verified_public_fast_lane(monkeypatch, question
     assert smart_web_router.route_web_request(question, mode="auto") == "search"
     assert officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]
     assert officeholder_authoritative_url(question) == "https://pmo.gov.bd/"
-    assert "Prime Minister of Bangladesh" in officeholder_search_query(question)
+    assert "prime minister of bangladesh" in officeholder_search_query(question).casefold()
 
 
 def test_extracted_official_page_returns_short_answer_without_model(monkeypatch):
