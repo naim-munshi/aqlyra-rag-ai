@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api/backend";
 import {
   clearAccessToken,
+  clearRefreshToken,
   clearEmailVerificationToken,
   getAccessToken,
 } from "@/lib/auth/session";
@@ -26,6 +27,7 @@ export async function POST() {
   }
 
   await clearAccessToken();
+  await clearRefreshToken();
   await clearEmailVerificationToken();
 
   return NextResponse.json(
