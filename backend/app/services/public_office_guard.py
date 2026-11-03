@@ -87,6 +87,8 @@ def is_public_officeholder_question(question: str) -> bool:
     if _HISTORICAL.search(text):
         return False
     romanized = _TERMINAL_PUNCTUATION.sub("", text)
+    if _BD_PM_SHORT.fullmatch(romanized):
+        return True
     if _ROMANIZED_PUBLIC_NAME.fullmatch(romanized) or _ROMANIZED_COUNTRY_FIRST.fullmatch(romanized):
         return True
     if not _ROLE.search(text):
@@ -172,6 +174,18 @@ def unverified_officeholder_reply(question: str) -> str | None:
 
 # Select an official publisher by office and jurisdiction, not by politician
 # name. Keep this narrow: "us" alone in ordinary prose is a pronoun.
+_BD_PM_SHORT = re.compile(
+    r"^(?:(?:tell me|give me|what is|what's)\s+)?(?:the\s+)?"
+    r"(?:bd|bangladesh)\s+(?:pm|prime\s+minister)"
+    r"(?:\s+(?:name|nam))?\??$",
+    re.IGNORECASE,
+)
+_BD_PM_ROLE = re.compile(
+    r"\b(?:(?:bd|bangladesh)\s+(?:pm|prime\s+minister)"
+    r"|(?:pm|prime\s+minister)\s+(?:of\s+)?(?:bd|bangladesh))\b",
+    re.IGNORECASE,
+)
+
 _US_PRESIDENT = re.compile(
     r"\b(?:(?:current|present)\s+)?(?:the\s+)?"
     r"(?:u\.?s\.?a?\.?|united\s+states(?:\s+of\s+america)?|american)"
@@ -184,10 +198,23 @@ _US_PRESIDENT = re.compile(
 
 def officeholder_primary_domains(question: str) -> list[str] | None:
     """Server-owned official source scope; never trust a model-supplied URL."""
-    if is_public_officeholder_question(question) and _US_PRESIDENT.search(
-        _normalized(question)
-    ):
+    if not is_public_officeholder_question(question):
+        return None
+    normalized = _normalized(question)
+    if _US_PRESIDENT.search(normalized):
         return ["whitehouse.gov"]
+    if _BD_PM_ROLE.search(normalized):
+        return ["pmo.gov.bd", "cabinet.gov.bd"]
+    return None
+
+
+def officeholder_authoritative_url(question: str) -> str | None:
+    """Stable first-party endpoint. The live page must still be extracted."""
+    domains = officeholder_primary_domains(question)
+    if domains == ["whitehouse.gov"]:
+        return "https://www.whitehouse.gov/administration/"
+    if domains == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return "https://pmo.gov.bd/"
     return None
 
 
@@ -199,11 +226,18 @@ def officeholder_search_query(question: str) -> str:
     date = datetime.now(timezone.utc).date().isoformat()
     # A primary-source query is more precise than a generic officeholder query,
     # especially when the user misspells "president".
-    if officeholder_primary_domains(question):
+    official = officeholder_primary_domains(question)
+    if official == ["whitehouse.gov"]:
         return (
             "Who is the current president of the United States "
             f"as of {date}? White House administration president "
             "official government source"
+        )
+    if official == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return (
+            "Who is the current Prime Minister of Bangladesh "
+            f"as of {date}? Bangladesh Prime Minister's Office "
+            "official government website"
         )
     # Correct safe, role-only spelling variants in other public queries.
     return f"{_normalized(question)} current officeholder as of {date} official government source"
