@@ -496,10 +496,10 @@ def _research_web_tavily(
     # Zero-provider fast lane for a strictly validated role/name on the
     # actual extracted first-party page. Never infer from search snippets.
     if mode == "search" and pinned_official_url is not None and provider is None:
-        profile_question = (
-            "brief profile" in question.casefold()
-            or "brief background" in question.casefold()
-            or "tell me about" in question.casefold()
+        # A profile request should synthesize a relevant short biography,
+        # not collapse the user's intent to the one-name fast lane.
+        profile_question = bool(
+            re.search(r"\b(?:profile|background|biography|career|about)\b", question, re.I)
         )
         fast = None if profile_question else verified_officeholder_fast_answer(
             question, sources, extracted_urls=set(page_content),
