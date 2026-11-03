@@ -65,7 +65,7 @@ def test_extracted_official_page_returns_short_answer_without_model(monkeypatch)
         assert payload["urls"][0] == "https://pmo.gov.bd/"
         return httpx.Response(200, json={"results": [
             {"url": "https://pmo.gov.bd/",
-             "raw_content": "প্রধানমন্ত্রী\\nজনাব কল্পিত পরীক্ষা\\nপ্রধানমন্ত্রী\\nগণপ্রজাতন্ত্রী বাংলাদেশ সরকার"}
+             "raw_content": "প্রধানমন্ত্রী\nজনাব কল্পিত পরীক্ষা\nপ্রধানমন্ত্রী\nগণপ্রজাতন্ত্রী বাংলাদেশ সরকার"}
         ]})
 
     with httpx.Client(transport=httpx.MockTransport(synthetic_tavily)) as client:
@@ -95,7 +95,7 @@ def test_us_primary_page_fast_answer_requires_extracted_text(monkeypatch):
         ]
         return httpx.Response(200, json={"results": [
             {"url": "https://www.whitehouse.gov/administration/",
-             "raw_content": "# The Administration\\n## President Example Sample\\nPresident of the United States"}
+             "raw_content": "# The Administration\n## President Example Sample\nPresident of the United States"}
         ]})
 
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
@@ -133,7 +133,7 @@ def test_cached_search_result_alone_is_not_live_current_authority(monkeypatch):
 
 def test_wrong_page_role_does_not_become_a_fast_answer():
     url = "https://pmo.gov.bd/"
-    source = _source(url, "জনাব কল্পিত পরীক্ষা\\nপ্রাক্তন প্রধানমন্ত্রী")
+    source = _source(url, "জনাব কল্পিত পরীক্ষা\nপ্রাক্তন প্রধানমন্ত্রী")
     assert verified_officeholder_fast_answer(
         "Who is the prime minister of Bangladesh?",
         [source],
@@ -141,6 +141,6 @@ def test_wrong_page_role_does_not_become_a_fast_answer():
     ) is None
     assert verified_officeholder_fast_answer(
         "Who is the prime minister of Bangladesh?",
-        [_source("https://example.org/fake", "জনাব কল্পিত পরীক্ষা\\nপ্রধানমন্ত্রী")],
+        [_source("https://example.org/fake", "জনাব কল্পিত পরীক্ষা\nপ্রধানমন্ত্রী")],
         extracted_urls={"https://example.org/fake"},
     ) is None
