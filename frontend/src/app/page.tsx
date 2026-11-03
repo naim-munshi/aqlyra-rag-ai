@@ -28,8 +28,12 @@ async function getCurrentUser(): Promise<UserResponse | null> {
       },
     );
 
-    if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
       return null;
+    }
+    if (!response.ok) {
+      // An unavailable Render instance must not appear as a logout.
+      throw new Error("Aqlyra is temporarily unavailable. Please retry.");
     }
 
     const data =
@@ -46,7 +50,9 @@ async function getCurrentUser(): Promise<UserResponse | null> {
 
     return data;
   } catch {
-    return null;
+    // Keep HttpOnly cookies in place during a transient backend outage;
+    // treat 401 as auth failure, 5xx/network errors as temporary errors.
+    throw new Error("Aqlyra is temporarily unavailable. Please retry.");
   }
 }
 
