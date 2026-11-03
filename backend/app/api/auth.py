@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import (
     InvalidVerificationTokenError,
+    InvalidTokenError,
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token_with_version,
     create_email_verification_token,
     decode_email_verification_token,
 )
@@ -30,6 +33,7 @@ from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetMessage,
     TokenResponse,
+    RefreshTokenRequest,
     VerificationDispatchResponse,
 )
 from app.schemas.user import UserCreate, UserLogin, UserResponse
@@ -62,12 +66,28 @@ from app.services.user_service import (
     discard_new_registration_after_email_failure,
     get_or_create_google_user,
     get_user_by_email,
+    get_user_by_id,
 )
 
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+
+def _issued_session(user: User) -> TokenResponse:
+    """One backend read per login; keep refresh tokens server-side in BFF."""
+    return TokenResponse(
+        access_token=create_access_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
+        ),
+        refresh_token=create_refresh_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
+        ),
+        user=UserResponse.model_validate(user),
+    )
 
 
 @router.post(
@@ -214,14 +234,7 @@ def login_user(
             detail="Email verification required",
         )
 
-    access_token = create_access_token(
-        subject=str(user.id),
-        token_version=user.auth_epoch,
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-    )
+    return _issued_session(user)
 
 
 @router.post(
@@ -264,12 +277,7 @@ def verify_email(
             detail="User account is inactive",
         )
 
-    return TokenResponse(
-        access_token=create_access_token(
-            subject=str(user.id),
-            token_version=user.auth_epoch,
-        )
-    )
+    return _issued_session(user)
 
 
 @router.post(
@@ -299,12 +307,7 @@ def claim_pending_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    return TokenResponse(
-        access_token=create_access_token(
-            subject=str(user.id),
-            token_version=user.auth_epoch,
-        )
-    )
+    return _issued_session(user)
 
 
 @router.post(
@@ -412,11 +415,51 @@ def google_login(
             detail="User account is inactive",
         )
 
+    return _issued_session(user)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh_session(
+    request_data: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """Replace only the short-lived access token, not the 14-day deadline.
+
+    A compromised/stale ticket cannot bypass auth_epoch, disable, or email
+    verification checks. Refresh tokens are not valid normal API bearer JWTs.
+    """
+    try:
+        user_id, version = decode_refresh_token_with_version(
+            request_data.refresh_token,
+        )
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        ) from exc
+
+    user = get_user_by_id(db=db, user_id=user_id)
+    if user is None or user.auth_epoch != version or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        )
+    if settings.EMAIL_VERIFICATION_REQUIRED and user.email_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email verification required.",
+        )
+
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
             token_version=user.auth_epoch,
-        )
+        ),
+        user=UserResponse.model_validate(user),
     )
 
 
