@@ -255,6 +255,14 @@ _BD_CURRENT_GOVERNMENT_DIRECTORY = (
 )
 
 
+_BD_PMO_CURRENT_CABINET_ROSTER = (
+    "https://pmo.gov.bd/pages/static-pages/"
+    "%E0%A6%AE%E0%A6%A8%E0%A7%8D%E0%A6%A4%E0%A7%8D%E0%A6%B0"
+    "%E0%A6%BF%E0%A6%B8%E0%A6%AD%E0%A6%BE-"
+    "7wy8o4-699542d2f5e31263342f13b7"
+)
+
+
 def officeholder_additional_authoritative_urls(question: str) -> list[str]:
     """Actual current-government directory rather than an empty homepage.
 
@@ -262,7 +270,10 @@ def officeholder_additional_authoritative_urls(question: str) -> list[str]:
     first-party path that still must provide readable government evidence.
     """
     if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
-        return [_BD_CURRENT_GOVERNMENT_DIRECTORY]
+        return [
+            _BD_CURRENT_GOVERNMENT_DIRECTORY,
+            _BD_PMO_CURRENT_CABINET_ROSTER,
+        ]
     return []
 
 
