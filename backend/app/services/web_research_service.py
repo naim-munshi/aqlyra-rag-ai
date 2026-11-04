@@ -264,7 +264,12 @@ def _research_web_tavily(
             # Only explicit Deep Chat requests use a second bounded search
             # for independent primary-source evidence. All URLs still pass
             # existing HTTPS/domain checks and the same five-source cap.
-            queries = [question]
+            # Officeholder source discovery needs a short, high-signal
+            # search query, NOT the verbose verification instructions used
+            # by the answer model. This is still the same public question;
+            # private chat history, documents and memory are never sent.
+            from app.services.public_office_guard import officeholder_source_query
+            queries = [officeholder_source_query(question)]
             if iterative and mode == "deep":
                 queries.append(plan_second_query(question, planning_provider))
             seen: set[str] = set()
@@ -357,15 +362,34 @@ def _research_web_tavily(
                         # Prefer a more specific government office-head page
                         # returned by live search. If search is noisy or empty,
                         # the official cabinet homepage is still authoritative.
+                        # Prefer a live current-incumbent detail or Cabinet
+                        # minister directory over an uninformative homepage.
+                        # Never treat the *title* as the answer: /extract must
+                        # still substantiate the person and current role.
+                        def relevant_directory(item: dict[str, str | None]) -> bool:
+                            url = str(item["url"])
+                            parsed = urlsplit(url)
+                            if (parsed.hostname or "").lower() != host:
+                                return False
+                            if not parsed.path.startswith((
+                                "/pages/office-heads/",
+                                "/pages/static-pages/",
+                            )):
+                                return False
+                            title = str(item.get("title") or "").casefold()
+                            return (
+                                any(v in title for v in (
+                                    "প্রধানমন্ত্রী", "prime minister",
+                                    "মন্ত্রিগণ", "মন্ত্রিসভা", "cabinet",
+                                ))
+                                and not any(v in title for v in (
+                                    "সাবেক", "প্রাক্তন", "former",
+                                    "previous", "archive", "অতীত",
+                                ))
+                            )
+
                         cabinet_profile = next(
-                            (
-                                item for item in candidates
-                                if (urlsplit(str(item["url"])).hostname or "").lower()
-                                == host
-                                and "/pages/office-heads/" in urlsplit(
-                                    str(item["url"])
-                                ).path
-                            ),
+                            (item for item in candidates if relevant_directory(item)),
                             None,
                         )
                         extra = cabinet_profile or next(
