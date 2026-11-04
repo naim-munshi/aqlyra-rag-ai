@@ -32,14 +32,22 @@ def backfill_ready_semantic_embeddings(
         raise ValueError("Semantic backfill limit must be 1..3")
     provider = create_configured_embedding_provider()
     info = provider.info
-    indexed = exists(
-        select(EmbeddingRecord.id)
-        .join(DocumentChunk, DocumentChunk.id == EmbeddingRecord.chunk_id)
-        .where(
-            DocumentChunk.document_id == Document.id,
+    # A single embedding row is NOT proof that a whole document is indexed.
+    # Check each chunk for a current 384D vector from the configured model
+    # with the matching content hash; missing and stale rows both need repair.
+    current_vector = exists(
+        select(EmbeddingRecord.id).where(
+            EmbeddingRecord.chunk_id == DocumentChunk.id,
             EmbeddingRecord.provider_name == info.provider_name,
             EmbeddingRecord.model_name == info.model_name,
             EmbeddingRecord.dimension == 384,
+            EmbeddingRecord.content_hash == DocumentChunk.content_hash,
+        )
+    )
+    needs_repair = exists(
+        select(DocumentChunk.id).where(
+            DocumentChunk.document_id == Document.id,
+            ~current_vector,
         )
     )
     eligible = list(db.scalars(
@@ -56,7 +64,7 @@ def backfill_ready_semantic_embeddings(
             Document.file_extension.in_(
                 (".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv")
             ),
-            ~indexed,
+            needs_repair,
         )
         .order_by(Document.created_at, Document.id)
         .limit(limit)
