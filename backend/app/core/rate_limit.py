@@ -477,6 +477,26 @@ def limit_upload_request(
     )
 
 
+
+def limit_cloud_finalize_request(
+    request: Request,
+) -> None:
+    """Limit each verified cloud finalization independently of file intake.
+
+    A signed cloud upload performs both prepare and finalize requests.
+    Charging both against the shared upload-user budget unexpectedly burns
+    two slots per document (20 requests/hour permits only 10 files before
+    retries or other uploads fail).  Preserve owner-scoped Redis limits on
+    both stages without granting unlimited finalization attempts.
+    """
+    _enforce_user_limit(
+        request=request,
+        bucket="upload-finalize-user",
+        limit=settings.RATE_LIMIT_UPLOAD_USER_LIMIT,
+        window_seconds=settings.RATE_LIMIT_UPLOAD_USER_WINDOW_SECONDS,
+    )
+
+
 def limit_process_request(
     request: Request,
 ) -> None:
