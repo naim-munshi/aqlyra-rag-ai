@@ -242,11 +242,45 @@ def officeholder_authoritative_url(question: str) -> str | None:
 
 
 
+# Public directory locator verified independently against the real
+# Bangladesh Cabinet Division website (2026-11-04). This is a source URL,
+# never a hardcoded officeholder name. Search results take precedence when
+# the government publishes a new live listing.
+_BD_CURRENT_GOVERNMENT_DIRECTORY = (
+    "https://cabinet.gov.bd/pages/static-pages/"
+    "%E0%A6%AE%E0%A6%BE%E0%A6%A8%E0%A6%A8%E0%A7%80%E0%A7%9F-"
+    "%E0%A6%AA%E0%A7%8D%E0%A6%B0%E0%A6%A7%E0%A6%BE%E0%A6%A8"
+    "%E0%A6%AE%E0%A6%A8%E0%A7%8D%E0%A6%A4%E0%A7%8D%E0%A6%B0%E0%A7%80-"
+    "m7lus9-6993f46f91eb6d1a3a089524"
+)
+
+
 def officeholder_additional_authoritative_urls(question: str) -> list[str]:
-    """Current government directory fallback, rather than just PMO navigation."""
+    """Actual current-government directory rather than an empty homepage.
+
+    Keep the live search-result list first; this fallback is only a known
+    first-party path that still must provide readable government evidence.
+    """
     if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
-        return ["https://cabinet.gov.bd/"]
+        return [_BD_CURRENT_GOVERNMENT_DIRECTORY]
     return []
+
+
+def officeholder_source_query(question: str) -> str:
+    """Short high-precision search query, separate from answer instructions.
+
+    The model still receives the original public user's query and the
+    verified source excerpts; searching must not re-use verbose prompts.
+    """
+    if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return (
+            "বাংলাদেশ বর্তমান প্রধানমন্ত্রী মন্ত্রিপরিষদ বিভাগ "
+            "প্রধানমন্ত্রী ও মন্ত্রিগণ সরকারি তালিকা "
+            "cabinet.gov.bd"
+        )
+    if officeholder_primary_domains(question) == ["whitehouse.gov"]:
+        return "site:whitehouse.gov/administration/ current president of the United States"
+    return question
 
 
 def officeholder_search_query(question: str) -> str:
