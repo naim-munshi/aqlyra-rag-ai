@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { hasTrustedRequestOrigin } from "./lib/security/origin";
+import { hasTrustedRequestOrigin, isServerSemanticRelayRequest } from "./lib/security/origin";
 
 export function proxy(request: NextRequest) {
-  if (!hasTrustedRequestOrigin(request)) {
+  if (!hasTrustedRequestOrigin(request) && !isServerSemanticRelayRequest(request)) {
     return NextResponse.json(
       { detail: "Cross-origin request denied" },
       { status: 403, headers: { "Cache-Control": "no-store" } },
