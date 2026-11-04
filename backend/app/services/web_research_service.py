@@ -17,7 +17,10 @@ import httpx
 
 from app.config.settings import settings
 from app.services.research_query_planner import plan_second_query
-from app.services.official_fact_fast_path import verified_officeholder_fast_answer
+from app.services.official_fact_fast_path import (
+    verified_officeholder_fast_answer,
+    verified_current_office_short_profile,
+)
 from app.llms.registry import create_latency_bounded_web_provider
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
@@ -264,7 +267,12 @@ def _research_web_tavily(
             # Only explicit Deep Chat requests use a second bounded search
             # for independent primary-source evidence. All URLs still pass
             # existing HTTPS/domain checks and the same five-source cap.
-            queries = [question]
+            # Officeholder source discovery needs a short, high-signal
+            # search query, NOT the verbose verification instructions used
+            # by the answer model. This is still the same public question;
+            # private chat history, documents and memory are never sent.
+            from app.services.public_office_guard import officeholder_source_query
+            queries = [officeholder_source_query(question)]
             if iterative and mode == "deep":
                 queries.append(plan_second_query(question, planning_provider))
             seen: set[str] = set()
@@ -357,15 +365,34 @@ def _research_web_tavily(
                         # Prefer a more specific government office-head page
                         # returned by live search. If search is noisy or empty,
                         # the official cabinet homepage is still authoritative.
+                        # Prefer a live current-incumbent detail or Cabinet
+                        # minister directory over an uninformative homepage.
+                        # Never treat the *title* as the answer: /extract must
+                        # still substantiate the person and current role.
+                        def relevant_directory(item: dict[str, str | None]) -> bool:
+                            url = str(item["url"])
+                            parsed = urlsplit(url)
+                            if (parsed.hostname or "").lower() != host:
+                                return False
+                            if not parsed.path.startswith((
+                                "/pages/office-heads/",
+                                "/pages/static-pages/",
+                            )):
+                                return False
+                            title = str(item.get("title") or "").casefold()
+                            return (
+                                any(v in title for v in (
+                                    "প্রধানমন্ত্রী", "prime minister",
+                                    "মন্ত্রিগণ", "মন্ত্রিসভা", "cabinet",
+                                ))
+                                and not any(v in title for v in (
+                                    "সাবেক", "প্রাক্তন", "former",
+                                    "previous", "archive", "অতীত",
+                                ))
+                            )
+
                         cabinet_profile = next(
-                            (
-                                item for item in candidates
-                                if (urlsplit(str(item["url"])).hostname or "").lower()
-                                == host
-                                and "/pages/office-heads/" in urlsplit(
-                                    str(item["url"])
-                                ).path
-                            ),
+                            (item for item in candidates if relevant_directory(item)),
                             None,
                         )
                         extra = cabinet_profile or next(
@@ -378,6 +405,11 @@ def _research_web_tavily(
                         )
                         selected.append(extra)
                         pinned_official_urls.add(str(extra["url"]))
+                        # A relevant first-party detail was discovered by
+                        # live search; it supersedes fixed fallback indexes.
+                        # Keep the public evidence budget small.
+                        if cabinet_profile is not None:
+                            break
                     candidates = selected + [
                         item for item in candidates
                         if item["url"] not in pinned_official_urls
@@ -511,10 +543,21 @@ def _research_web_tavily(
         profile_question = bool(
             re.search(r"\b(?:profile|background|biography|career|about)\b", question, re.I)
         )
-        fast = None if profile_question else verified_officeholder_fast_answer(
-            question, sources, extracted_urls=set(page_content),
-            official_page_text=official_scan_text,
-            official_page_text_by_url=official_pages,
+        # For a short 'tell me about' question, a verified name and
+        # appointment date are already a useful answer. Don't spend another
+        # Groq request only to have it refuse already-grounded evidence.
+        fast = (
+            verified_current_office_short_profile(
+                question, sources,
+                extracted_urls=set(page_content),
+                official_page_text_by_url=official_pages,
+            )
+            if profile_question
+            else verified_officeholder_fast_answer(
+                question, sources, extracted_urls=set(page_content),
+                official_page_text=official_scan_text,
+                official_page_text_by_url=official_pages,
+            )
         )
         if fast is not None:
             fast_text, primary = fast
