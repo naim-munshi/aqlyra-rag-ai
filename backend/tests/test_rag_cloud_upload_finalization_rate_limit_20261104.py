@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 from app.config.settings import settings
 from app.core import rate_limit
-from app.main import app
+from app.api.cloud_uploads import router as cloud_upload_router
 
 
 class FakeRedis:
@@ -91,10 +91,14 @@ def test_finalization_quota_remains_isolated_by_authenticated_user(monkeypatch):
 
 
 def test_cloud_endpoint_rate_dependencies_remain_enforced():
-    routes = {route.path: route for route in app.routes if hasattr(route, "dependant")}
-    prepare = routes["/api/v1/documents/cloud/prepare"]
-    finalize = routes["/api/v1/documents/cloud/{intent_id}/finalize"]
-    proxy = routes["/api/v1/documents/cloud/proxy"]
+    routes = {
+        route.endpoint.__name__: route
+        for route in cloud_upload_router.routes
+        if hasattr(route, "dependant")
+    }
+    prepare = routes["prepare_cloud_upload"]
+    finalize = routes["finalize_cloud_upload_request"]
+    proxy = routes["small_private_cloud_upload"]
 
     assert any(
         dependency.call is rate_limit.limit_upload_request
