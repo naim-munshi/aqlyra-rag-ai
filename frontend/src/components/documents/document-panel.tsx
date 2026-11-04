@@ -282,7 +282,7 @@ export function DocumentPanel() {
         );
 
         await refreshDocuments();
-        return;
+        return false;
       }
 
       const processedDocument =
@@ -295,10 +295,12 @@ export function DocumentPanel() {
             : document,
         ),
       );
+      return true;
     } catch {
       setError(
         "Unable to connect to document processing service.",
       );
+      return false;
     } finally {
       setProcessingId(null);
     }
