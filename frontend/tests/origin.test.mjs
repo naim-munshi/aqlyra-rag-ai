@@ -144,7 +144,7 @@ test("relay exception never accepts browser provenance, cookies or malformed aut
       [name]: value,
     })), false, name);
   }
-  for (const authorization of ["Bearer short", "Basic xyz", "Bearer xyz\nbad"]) {
+  for (const authorization of ["Bearer short", "Basic xyz", "Bearer xyz,invalid"]) {
     assert.equal(isServerSemanticRelayRequest(relayRequest(actualRoute, {
       authorization,
     })), false);
