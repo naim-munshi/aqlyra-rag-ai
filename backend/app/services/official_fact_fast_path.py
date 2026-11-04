@@ -8,7 +8,7 @@ evidence-grounded synthesis rather than this one-line shortcut.
 from __future__ import annotations
 
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from app.schemas.web_research import WebResearchSource
 from app.services.public_office_guard import officeholder_authoritative_url
@@ -74,7 +74,14 @@ def _is_verified_bd_current_office_url(url: str) -> bool:
         return False
     host = (parsed.hostname or "").lower()
     if host == "pmo.gov.bd":
-        return parsed.path in ("", "/")
+        if parsed.path in ("", "/"):
+            return True
+        # The live cabinet roster is a current directory at PMO, not an
+        # old speech or political-news article. Decode only for path checks.
+        return (
+            parsed.path.startswith("/pages/static-pages/")
+            and "মন্ত্রিসভা" in unquote(parsed.path)
+        )
     if host == "cabinet.gov.bd":
         return parsed.path in ("", "/") or parsed.path.startswith(
             ("/pages/office-heads/", "/pages/static-pages/")
