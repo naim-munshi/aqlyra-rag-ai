@@ -187,3 +187,49 @@ def test_ready_document_without_chunks_is_skipped(
     calls = _record_calls(monkeypatch)
     assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
     assert calls == []
+
+
+def test_production_canary_requires_explicit_document_target(
+    db_session, monkeypatch,
+):
+    """Never allow an operator flag to scan every private production document."""
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", "",
+    )
+    _doc(db_session, "prod-unspecified")
+    calls = _record_calls(monkeypatch)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
+    assert calls == []
+
+
+def test_production_canary_reindexes_only_selected_verified_document(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    _doc(db_session, "other-owner")
+    intended = _doc(db_session, "selected-owner")
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID",
+        intended.id,
+    )
+    calls = _record_calls(monkeypatch)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session, limit=3) == 1
+    assert calls == [intended.id]
+
+
+def test_target_does_not_override_verified_cloud_intent_gate(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    unverified = _doc(db_session, "target-invalid", completed=False)
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID",
+        unverified.id,
+    )
+    calls = _record_calls(monkeypatch)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
+    assert calls == []
