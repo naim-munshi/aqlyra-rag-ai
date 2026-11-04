@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.config.settings import settings
-from app.core.rate_limit import limit_upload_request
+from app.core.rate_limit import limit_upload_request, limit_cloud_finalize_request
 from app.database.connection import get_db
 from app.models.user import User
 from app.models.cloud_upload_intent import CloudUploadIntent
@@ -86,7 +86,7 @@ def prepare_cloud_upload(
     "/{intent_id}/finalize",
     status_code=status.HTTP_201_CREATED,
     response_model=DocumentResponse,
-    dependencies=[Depends(limit_upload_request)],
+    dependencies=[Depends(limit_cloud_finalize_request)],
 )
 def finalize_cloud_upload_request(
     intent_id: str,
