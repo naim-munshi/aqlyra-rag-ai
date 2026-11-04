@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.embeddings import (
@@ -449,3 +449,97 @@ def test_db_hybrid_enriches_lexical_only_hit_and_isolates_user(
         result.document_id
         != other_document_id
     )
+
+
+
+def test_hybrid_keeps_real_lexical_only_document_without_vectors(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """Reproduce production embedding-429 indexing -> lexical-only corpus.
+
+    When worker later comes back online, RRF must keep existing matched
+    chunks instead of dropping evidence because no EmbeddingRecord exists.
+    """
+    owner_id, owner_headers = create_user(
+        client=client,
+        username="hybridfallbackowner",
+        email="hybridfallbackowner@example.com",
+    )
+    outsider_id, _ = create_user(
+        client=client,
+        username="hybridfallbackoutsider",
+        email="hybridfallbackoutsider@example.com",
+    )
+    doc_id = upload_and_process(
+        client=client,
+        headers=owner_headers,
+        filename="real-lexical-only.md",
+        content=(
+            "# Owner's internal knowledge\n\n"
+            "The access-control record contains "
+            f"the exact code {EXACT_TERM} and is private."
+        ),
+    )
+
+    # Simulate indexing while the embedding worker returned HTTP 429:
+    # the parsed document and chunks are durable, but no fake vectors.
+    chunk_ids = tuple(
+        db_session.scalars(
+            select(DocumentChunk.id).where(DocumentChunk.document_id == doc_id)
+        ).all()
+    )
+    assert chunk_ids
+    db_session.execute(
+        delete(EmbeddingRecord).where(EmbeddingRecord.chunk_id.in_(chunk_ids))
+    )
+    db_session.commit()
+
+    query = RetrievalQuery(
+        user_id=owner_id,
+        text=EXACT_TERM,
+        top_k=8,
+        document_ids=(doc_id,),
+    )
+    hits = search_hybrid_chunks(
+        db=db_session,
+        query=query,
+        provider=DeterministicHashEmbeddingProvider(),
+    )
+    assert hits, "Lexical matches must not disappear from live hybrid retrieval"
+    assert all(hit.document_id == doc_id for hit in hits)
+    assert any(EXACT_TERM in hit.content.casefold() for hit in hits)
+    assert all(
+        hit.metadata["retrieval_mode"] == "lexical_only"
+        and hit.metadata["semantic_similarity_available"] is False
+        and hit.metadata["semantic_similarity_score"] is None
+        and hit.metadata["retrieval_sources"] == ["lexical"]
+        for hit in hits
+    )
+    assert all(hit.ranking_score is not None for hit in hits)
+
+    # ACL filters are evaluated inside PostgreSQL before retrieval ranking.
+    assert search_hybrid_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=outsider_id,
+            text=EXACT_TERM,
+            top_k=8,
+            document_ids=(doc_id,),
+        ),
+        provider=DeterministicHashEmbeddingProvider(),
+    ) == []
+
+    # A caller explicitly requesting real cosine evidence cannot be
+    # downgraded to lexical or assigned a fictional 0.0 similarity.
+    assert search_hybrid_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=owner_id,
+            text=EXACT_TERM,
+            top_k=8,
+            document_ids=(doc_id,),
+            min_similarity=0.3,
+        ),
+        provider=DeterministicHashEmbeddingProvider(),
+    ) == []

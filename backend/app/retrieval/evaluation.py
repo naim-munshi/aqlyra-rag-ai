@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class RetrievalCaseMetrics:
     first_relevant_rank: int | None
     relevant_hits: tuple[str, ...]
     retrieved_chunk_ids: tuple[str, ...]
+    ndcg_at_k: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +56,7 @@ class RetrievalEvaluationSummary:
     mean_recall_at_k: float
     mrr_at_k: float
     cases: tuple[RetrievalCaseMetrics, ...]
+    mean_ndcg_at_k: float = 0.0
 
 
 def _unique_ranked_ids(
@@ -127,6 +130,20 @@ def evaluate_case(
         else 0.0
     )
 
+    # Binary-relevance NDCG@K: stable against duplicate IDs, measured
+    # against the ideal ordering of the existing annotated relevant set.
+    dcg = math.fsum(
+        1.0 / math.log2(rank + 1)
+        for rank, chunk_id in enumerate(ranked_ids, start=1)
+        if chunk_id in case.relevant_chunk_ids
+    )
+    ideal_count = min(k, len(case.relevant_chunk_ids))
+    idcg = math.fsum(
+        1.0 / math.log2(rank + 1)
+        for rank in range(1, ideal_count + 1)
+    )
+    ndcg_at_k = dcg / idcg
+
     return RetrievalCaseMetrics(
         query_id=case.query_id,
         hit_at_k=hit_at_k,
@@ -137,6 +154,7 @@ def evaluate_case(
         ),
         relevant_hits=relevant_hits,
         retrieved_chunk_ids=ranked_ids,
+        ndcg_at_k=ndcg_at_k,
     )
 
 
@@ -226,4 +244,8 @@ def evaluate_rankings(
         mean_recall_at_k=mean_recall,
         mrr_at_k=mrr,
         cases=case_metrics,
+        mean_ndcg_at_k=(
+            math.fsum(result.ndcg_at_k for result in case_metrics)
+            / case_count
+        ),
     )

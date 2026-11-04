@@ -179,3 +179,56 @@ def test_evaluation_rejects_invalid_input(
             rankings={},
             k=5,
         )
+
+def test_ndcg_at_k_rewards_correct_relevance_order() -> None:
+    case = RetrievalEvaluationCase(
+        query_id="multilingual-benchmark",
+        query="日本語のポリシーは？",
+        relevant_chunk_ids=frozenset({"a", "b"}),
+    )
+    ideal = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=("a", "b", "noise"),
+        k=3,
+    )
+    delayed = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=("noise", "a", "b"),
+        k=3,
+    )
+    assert ideal.ndcg_at_k == pytest.approx(1.0)
+    assert 0.0 < delayed.ndcg_at_k < ideal.ndcg_at_k
+
+
+def test_ndcg_is_bounded_and_ignores_duplicate_retrieval_ids() -> None:
+    case = RetrievalEvaluationCase(
+        query_id="dedup", query="find passage",
+        relevant_chunk_ids=frozenset({"target"}),
+    )
+    answer = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=("noise", "target", "target", "target"),
+        k=3,
+    )
+    assert answer.ndcg_at_k == pytest.approx(1.0 / __import__("math").log2(3))
+    assert answer.retrieved_chunk_ids == ("noise", "target")
+
+
+def test_mean_ndcg_handles_hits_and_abstention_misses() -> None:
+    cases = (
+        RetrievalEvaluationCase(
+            query_id="one", query="First query",
+            relevant_chunk_ids=frozenset({"target"}),
+        ),
+        RetrievalEvaluationCase(
+            query_id="two", query="Second query",
+            relevant_chunk_ids=frozenset({"unseen"}),
+        ),
+    )
+    report = evaluate_rankings(
+        cases=cases,
+        rankings={"one": ("target",), "two": ("noise",)},
+        k=3,
+    )
+    assert report.mean_ndcg_at_k == pytest.approx(0.5)
+    assert report.cases[1].ndcg_at_k == 0.0
