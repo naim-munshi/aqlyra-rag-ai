@@ -153,3 +153,55 @@ def verified_officeholder_fast_answer(
                 source,
             )
     return None
+
+
+def verified_current_office_short_profile(
+    question: str,
+    sources: list[WebResearchSource],
+    *,
+    extracted_urls: set[str],
+    official_page_text_by_url: dict[str, str],
+) -> tuple[str, WebResearchSource] | None:
+    """Answer a simple public profile with verified role/name/appointment.
+
+    This avoids a second model guessing an unfounded refusal despite strong
+    government evidence. Longer biographies still use normal grounded chat.
+    """
+    verified = verified_officeholder_fast_answer(
+        question,
+        sources,
+        extracted_urls=extracted_urls,
+        official_page_text_by_url=official_page_text_by_url,
+    )
+    if verified is None:
+        return None
+    answer, primary = verified
+    if officeholder_authoritative_url(question) != "https://pmo.gov.bd/":
+        return verified
+    matched = re.fullmatch(
+        r"The current Prime Minister of Bangladesh is (.+)\. \[W[1-9][0-9]*\]",
+        answer,
+    )
+    if not matched:
+        return verified
+    name = matched.group(1)
+    for source in sources:
+        if (
+            source.url not in extracted_urls
+            or not _is_verified_bd_current_office_url(source.url)
+        ):
+            continue
+        extracted = official_page_text_by_url.get(source.url, "")
+        if _extract_current_bd_name(extracted) != name:
+            continue
+        date = _official_appointment_date(extracted)
+        if date:
+            return (
+                f"Bangladesh's current Prime Minister is {name}. "
+                f"They took office on {date}. {source.citation}",
+                source,
+            )
+    return (
+        f"Bangladesh's current Prime Minister is {name}. {primary.citation}",
+        primary,
+    )
