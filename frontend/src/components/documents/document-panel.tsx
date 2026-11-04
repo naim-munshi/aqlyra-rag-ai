@@ -474,7 +474,7 @@ export function DocumentPanel() {
       setRecoveryNotice(
         `${saved}/${files.length} file(s) saved. ` +
         (queued > 0
-          ? `${queued} queued/processing. `
+          ? `${queued} file(s): File securely saved. Knowledge indexing is running in the background. `
           : "") +
         (indexingFailed > 0
           ? `${indexingFailed} saved but need indexing or retry. `
@@ -487,9 +487,15 @@ export function DocumentPanel() {
           failures.join("; "),
         );
       } else if (indexingFailed > 0) {
+        const proxyWithoutAutomaticIndex = (
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true"
+        );
         setError(
-          `${indexingFailed} file(s) were saved but indexing did not complete. ` +
-          "Check their status and use Retry indexing if available.",
+          proxyWithoutAutomaticIndex
+            ? "File saved privately. Automatic indexing is not available on this upload route."
+            : `${indexingFailed} file(s) were saved but indexing did not complete. ` +
+              "Check their status and use Retry indexing if available.",
         );
       } else {
         setError("");
