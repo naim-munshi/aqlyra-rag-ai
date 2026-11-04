@@ -84,3 +84,46 @@ def test_remote_rejects_error_without_leaking_response_body():
 def test_remote_rejects_short_token():
     with pytest.raises(EmbeddingValidationError):
         RemoteSemanticEmbeddingProvider(base_url=BASE, api_token="short")
+
+
+RELAY = "https://aqlyra-ai.vercel.app/api/internal/semantic"
+
+
+def test_exact_pinned_vercel_relay_remains_same_worker_contract():
+    from app.embeddings.remote_semantic_provider import MODEL
+    captured = []
+    def handler(req):
+        captured.append(req)
+        assert str(req.url) == RELAY + "/v1/embed"
+        assert req.headers["Authorization"] == "Bearer " + TOKEN
+        return httpx.Response(200, json={
+            "model": MODEL,
+            "dimension": 384,
+            "vectors": [[0.0, 3.0, 4.0] + [0.0] * 381],
+        })
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = RemoteSemanticEmbeddingProvider(
+            base_url=RELAY, api_token=TOKEN, client=client,
+        )
+        vector = provider.embed_query("Pilot Orion support hours")
+    assert len(captured) == 1
+    assert len(vector) == 384
+    assert sum(value * value for value in vector) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("untrusted", [
+    "https://not-aqlyra.vercel.app/api/internal/semantic",
+    "https://aqlyra-ai.vercel.app",
+    "https://aqlyra-ai.vercel.app/api/internal/semantic/",
+    "https://aqlyra-ai.vercel.app/api/internal/semantic/../admin",
+    "https://aqlyra-ai.vercel.app/api/internal/semantic?next=evil",
+    "https://aqlyra-ai.vercel.app:444/api/internal/semantic",
+    "https://aqlyra-ai.vercel.app@evil.com/api/internal/semantic",
+    "https://aqlyra-ai.vercel.app/api/internal/semantic#fragment",
+    "http://aqlyra-ai.vercel.app/api/internal/semantic",
+    "https://different.onrender.com",
+    "https://aqlyra-semantic-worker.onrender.com/other",
+])
+def test_vercel_relay_rejects_untrusted_redirects_and_other_hosts(untrusted):
+    with pytest.raises(EmbeddingValidationError):
+        RemoteSemanticEmbeddingProvider(base_url=untrusted, api_token=TOKEN)
