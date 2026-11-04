@@ -28,6 +28,12 @@ def backfill_ready_semantic_embeddings(
     if settings.EMBEDDING_PROVIDER != "remote_onnx":
         logger.warning("knowledge_semantic_backfill status=SKIPPED reason=provider")
         return 0
+    target = settings.KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID.strip()
+    if settings.APP_ENV.strip().lower() == "production" and not target:
+        logger.warning(
+            "knowledge_semantic_backfill status=SKIPPED reason=target_required"
+        )
+        return 0
     if not 1 <= limit <= 3:
         raise ValueError("Semantic backfill limit must be 1..3")
     provider = create_configured_embedding_provider()
@@ -50,7 +56,7 @@ def backfill_ready_semantic_embeddings(
             ~current_vector,
         )
     )
-    eligible = list(db.scalars(
+    statement = (
         select(Document)
         .join(
             CloudUploadIntent,
@@ -68,7 +74,10 @@ def backfill_ready_semantic_embeddings(
         )
         .order_by(Document.created_at, Document.id)
         .limit(limit)
-    ).all())
+    )
+    if target:
+        statement = statement.where(Document.id == target)
+    eligible = list(db.scalars(statement).all())
     processed = 0
     for doc in eligible:
         try:
