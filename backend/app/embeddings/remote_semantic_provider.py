@@ -64,16 +64,25 @@ class RemoteSemanticEmbeddingProvider:
     ):
         parsed = urlsplit(base_url.strip())
         host = (parsed.hostname or "").lower()
+        # Existing worker or a narrowly pinned Aqlyra-owned Vercel bridge.
+        # Never accept arbitrary Vercel preview hosts, ports or user URLs.
+        direct_worker = (
+            host == "aqlyra-semantic-worker.onrender.com"
+            and parsed.path in ("", "/")
+        )
+        existing_vercel_relay = (
+            host == "aqlyra-ai.vercel.app"
+            and parsed.path == "/api/internal/semantic"
+        )
         if (
             parsed.scheme != "https"
-            or not host.endswith(".onrender.com")
+            or not (direct_worker or existing_vercel_relay)
             or parsed.username is not None
             or parsed.password is not None
             or parsed.port not in (None, 443)
-            or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment
         ):
-            raise EmbeddingValidationError("Semantic worker requires trusted Render HTTPS URL")
+            raise EmbeddingValidationError("Semantic worker requires pinned Aqlyra HTTPS URL")
         if not api_token or len(api_token) < 32:
             raise EmbeddingValidationError("Semantic worker token missing or too short")
         if dimension != 384 or not 1 <= max_batch_size <= 8:
