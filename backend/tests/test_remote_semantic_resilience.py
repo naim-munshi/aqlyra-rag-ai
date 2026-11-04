@@ -198,3 +198,80 @@ def test_zero_semantic_vector_fails_closed():
     with httpx.Client(transport=httpx.MockTransport(handle)) as client:
         with pytest.raises(EmbeddingValidationError, match="magnitude"):
             provider(client).embed_query("test")
+
+
+def test_429_opens_bounded_circuit_without_retrying_or_logging_secrets(monkeypatch):
+    import time
+
+    calls = []
+    monkeypatch.setattr(
+        "app.embeddings.remote_semantic_provider.time.sleep",
+        lambda _: pytest.fail("A rate limited worker must not busy-retry"),
+    )
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "45"},
+            text="confidential edge response body",
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        subject = provider(client)
+        now = time.monotonic()
+        with pytest.raises(EmbeddingProviderRequestError) as failure:
+            subject.embed_query("private query")
+        assert len(calls) == 1, "429 should not trigger a second provider call"
+        assert now + 43 <= subject._circuit.open_until <= now + 48
+        assert subject._circuit.consecutive_failures >= 3
+        assert "private query" not in str(failure.value)
+        assert "confidential edge" not in str(failure.value)
+        with pytest.raises(EmbeddingProviderRequestError):
+            subject.embed_query("other user public query")
+        assert len(calls) == 1, "Shared circuit must stop repeated quota load"
+
+
+@pytest.mark.parametrize(
+    ("header", "minimum", "maximum"),
+    [("0", 9, 12), ("99999", 58, 62), ("tomorrow", 28, 32),
+     ("999999999999999", 28, 32)],
+)
+def test_retry_after_header_cannot_force_unbounded_cooldown(
+    header, minimum, maximum,
+):
+    import time
+
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _req: httpx.Response(
+                429, headers={"Retry-After": header},
+            )
+        )
+    ) as client:
+        subject = provider(client)
+        before = time.monotonic()
+        with pytest.raises(EmbeddingProviderRequestError):
+            subject.embed_query("synthetic")
+        duration = subject._circuit.open_until - before
+        assert minimum <= duration <= maximum
+
+
+def test_429_circuit_recovers_after_cooldown_without_fake_embedding():
+    calls = []
+
+    def handle(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429)
+        return good_response()
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        subject = provider(client)
+        with pytest.raises(EmbeddingProviderRequestError):
+            subject.embed_query("synthetic")
+        subject._circuit.open_until = 0.0  # Simulate elapsed cooldown.
+        fresh = subject.embed_query("synthetic")
+        assert len(calls) == 2
+        assert len(fresh) == 384
+        assert subject._circuit.consecutive_failures == 0
