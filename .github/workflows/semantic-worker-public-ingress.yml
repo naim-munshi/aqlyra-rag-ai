@@ -39,3 +39,23 @@ jobs:
             exit 1
           fi
           echo "PASS: Worker is reachable and rejects unauthenticated embeddings."
+
+          # Same model, free transport route. First request proves the
+          # Vercel handler itself is not an unauthenticated open proxy.
+          relay="https://aqlyra-ai.vercel.app/api/internal/semantic/v1/embed"
+          direct_unauth=$(curl --silent --show-error --max-time 110 --output /tmp/relay-direct.json --write-out "%{http_code}" -X POST -H 'Content-Type: application/json' --data '{"mode":"query","texts":["synthetic relay diagnostic"]}' "$relay") || direct_unauth="transport_error"
+          echo "Vercel relay no-bearer status=$direct_unauth (expected 401)"
+          if [[ "$direct_unauth" != "401" ]]; then
+            echo "::error::Free Vercel relay must reject missing bearer."
+            exit 1
+          fi
+          # The synthetic invalid bearer passes only Vercel's format guard.
+          # The REAL worker must still enforce exact token authentication.
+          fake_bearer="diagnostic-fake-token-NOT-production-0123456789"
+          forwarded=$(curl --silent --show-error --max-time 110 --output /tmp/relay-forwarded.json --write-out "%{http_code}" -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $fake_bearer" --data '{"mode":"query","texts":["synthetic invalid-token test"]}' "$relay") || forwarded="transport_error"
+          echo "Vercel-to-worker invalid bearer status=$forwarded (expected 401)"
+          if [[ "$forwarded" != "401" ]]; then
+            echo "::error::Relay did not reach the authenticated worker."
+            exit 1
+          fi
+          echo "PASS: Vercel relay public auth and worker delegation are intact."
