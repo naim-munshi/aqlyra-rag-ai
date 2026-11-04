@@ -405,6 +405,11 @@ def _research_web_tavily(
                         )
                         selected.append(extra)
                         pinned_official_urls.add(str(extra["url"]))
+                        # A relevant first-party detail was discovered by
+                        # live search; it supersedes fixed fallback indexes.
+                        # Keep the public evidence budget small.
+                        if cabinet_profile is not None:
+                            break
                     candidates = selected + [
                         item for item in candidates
                         if item["url"] not in pinned_official_urls
