@@ -13,7 +13,44 @@ from app.services.lexical_retrieval_service import (
     _extract_query_terms,
     search_lexical_chunks,
 )
-from tests.test_lexical_retrieval import create_user, upload_and_process
+def create_user(client: TestClient, username: str, email: str):
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "email": email,
+            "password": "SyntheticTestPass123!",
+        },
+    )
+    assert registered.status_code == 201
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "SyntheticTestPass123!"},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    profile = client.get("/api/v1/users/me", headers=headers)
+    assert profile.status_code == 200
+    return profile.json()["id"], headers
+
+
+def upload_and_process(
+    client: TestClient, headers: dict[str, str],
+    filename: str, content: str,
+):
+    uploaded = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": (filename, content.encode("utf-8"), "text/markdown")},
+    )
+    assert uploaded.status_code == 201
+    document_id = uploaded.json()["id"]
+    processed = client.post(
+        f"/api/v1/documents/{document_id}/process",
+        headers=headers,
+    )
+    assert processed.status_code == 200
+    return document_id
 
 
 def test_english_possessive_and_question_fillers_do_not_dominate_fts():
