@@ -1,0 +1,41 @@
+name: Semantic Worker Public Ingress Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/semantic-worker-public-ingress.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  unauthenticated_ingress_probe:
+    name: Bounded Render public health and auth-boundary probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe one health and one deliberately unauthenticated embed
+        shell: bash
+        run: |
+          set -uo pipefail
+          target="https://aqlyra-semantic-worker.onrender.com"
+          health=$(curl --silent --show-error --max-time 110 --output /tmp/semantic-health.json --dump-header /tmp/semantic-health.headers --write-out "%{http_code}" "$target/health") || health="transport_error"
+          echo "semantic GET /health status=$health"
+          grep -Ei '^(server|retry-after|content-type):' /tmp/semantic-health.headers || true
+          if [[ "$health" == "200" ]]; then
+            python3 -c 'import json; j=json.load(open("/tmp/semantic-health.json")); assert j.get("status") == "ready" and j.get("dimension") == 384'
+          fi
+          embed=$(curl --silent --show-error --max-time 110 --output /tmp/semantic-embed.json --dump-header /tmp/semantic-embed.headers --write-out "%{http_code}" -X POST -H 'Content-Type: application/json' --data '{"mode":"query","texts":["bounded diagnostic probe"]}' "$target/v1/embed") || embed="transport_error"
+          echo "semantic unauthenticated POST /v1/embed status=$embed (expected 401)"
+          grep -Ei '^(server|retry-after|content-type):' /tmp/semantic-embed.headers || true
+          if [[ "$health" == "429" || "$embed" == "429" ]]; then
+            echo "::error::Public Render ingress returned 429 before application authentication; investigate Render Free inbound rate limit."
+            exit 1
+          fi
+          if [[ "$health" != "200" || "$embed" != "401" ]]; then
+            echo "::error::Unexpected worker public status; inspect service state, cold starts and ingress."
+            exit 1
+          fi
+          echo "PASS: Worker is reachable and rejects unauthenticated embeddings."
