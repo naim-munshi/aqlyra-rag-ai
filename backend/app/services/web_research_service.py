@@ -17,7 +17,10 @@ import httpx
 
 from app.config.settings import settings
 from app.services.research_query_planner import plan_second_query
-from app.services.official_fact_fast_path import verified_officeholder_fast_answer
+from app.services.official_fact_fast_path import (
+    verified_officeholder_fast_answer,
+    verified_current_office_short_profile,
+)
 from app.llms.registry import create_latency_bounded_web_provider
 from app.llms import create_configured_llm_provider
 from app.llms.types import LLMProvider
@@ -535,10 +538,21 @@ def _research_web_tavily(
         profile_question = bool(
             re.search(r"\b(?:profile|background|biography|career|about)\b", question, re.I)
         )
-        fast = None if profile_question else verified_officeholder_fast_answer(
-            question, sources, extracted_urls=set(page_content),
-            official_page_text=official_scan_text,
-            official_page_text_by_url=official_pages,
+        # For a short 'tell me about' question, a verified name and
+        # appointment date are already a useful answer. Don't spend another
+        # Groq request only to have it refuse already-grounded evidence.
+        fast = (
+            verified_current_office_short_profile(
+                question, sources,
+                extracted_urls=set(page_content),
+                official_page_text_by_url=official_pages,
+            )
+            if profile_question
+            else verified_officeholder_fast_answer(
+                question, sources, extracted_urls=set(page_content),
+                official_page_text=official_scan_text,
+                official_page_text_by_url=official_pages,
+            )
         )
         if fast is not None:
             fast_text, primary = fast
