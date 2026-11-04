@@ -44,8 +44,8 @@ jobs:
           # Vercel handler itself is not an unauthenticated open proxy.
           relay="https://aqlyra-ai.vercel.app/api/internal/semantic/v1/embed"
           direct_unauth=$(curl --silent --show-error --max-time 110 --output /tmp/relay-direct.json --write-out "%{http_code}" -X POST -H 'Content-Type: application/json' --data '{"mode":"query","texts":["synthetic relay diagnostic"]}' "$relay") || direct_unauth="transport_error"
-          echo "Vercel relay no-bearer status=$direct_unauth (expected 401)"
-          if [[ "$direct_unauth" != "401" ]]; then
+          echo "Vercel relay no-bearer status=$direct_unauth (expected 401 or 403 from CSRF gate)"
+          if [[ "$direct_unauth" != "401" && "$direct_unauth" != "403" ]]; then
             echo "::error::Free Vercel relay must reject missing bearer."
             exit 1
           fi
