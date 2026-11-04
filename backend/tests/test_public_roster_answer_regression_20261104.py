@@ -134,3 +134,64 @@ def test_search_query_is_short_relevant_and_does_not_send_private_history():
 def test_evergreen_questions_keep_original_search_query():
     query = "What is an operating system?"
     assert officeholder_source_query(query) == query
+
+
+def test_pmo_roster_fallback_even_when_cabinet_page_cannot_be_extracted(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "synthetic-test-key")
+    monkeypatch.setattr(settings, "WEB_SEARCH_PROVIDER", "tavily")
+    pmo_cabinet_roster = officeholder_additional_authoritative_urls(
+        "tell me bd pm name"
+    )[1]
+
+    def handle(request: httpx.Request):
+        if request.url.path == "/search":
+            return httpx.Response(200, json={"results": [
+                {"url": "https://pmo.gov.bd/", "title": "PMO"},
+                {"url": "https://cabinet.gov.bd/", "title": "Cabinet"},
+            ]})
+        assert request.url.path == "/extract"
+        assert pmo_cabinet_roster in json.loads(request.content)["urls"]
+        # Actual extracted page format from PMO's public cabinet roster.
+        return httpx.Response(200, json={"results": [
+            {
+                "url": pmo_cabinet_roster,
+                "raw_content": (
+                    "## মন্ত্রিসভা\nমাননীয় প্রধানমন্ত্রী ও মন্ত্রীগণের তালিকা:\n"
+                    "| প্রধানমন্ত্রীজনাব " + NAME + " | মন্ত্রিপরিষদ বিভাগ\n"
+                ),
+            }
+        ]})
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        response = research_web(
+            officeholder_search_query("tell me bd pm name"),
+            include_domains=["pmo.gov.bd", "cabinet.gov.bd"],
+            max_sources=3,
+            client=client,
+        )
+    assert response.provider_name == "aqlyra-official-fact"
+    assert NAME in response.answer
+    assert response.sources[0].url == pmo_cabinet_roster
+    assert response.answer.endswith("[W1]")
+
+
+def test_irrelevant_old_news_is_not_allowed_to_fake_live_role():
+    from app.schemas.web_research import WebResearchSource
+    from app.services.official_fact_fast_path import (
+        verified_officeholder_fast_answer,
+    )
+    url = "https://pmo.gov.bd/pages/static-pages/old-speech"
+    source = WebResearchSource(
+        citation="[W1]", url=url, title="Old speech",
+        excerpt="প্রধানমন্ত্রীজনাব " + NAME,
+        published_date=None,
+    )
+    assert verified_officeholder_fast_answer(
+        "Who is the prime minister of Bangladesh?",
+        [source],
+        extracted_urls={url},
+        official_page_text_by_url={url: source.excerpt},
+    ) is None
