@@ -819,7 +819,12 @@ def generate_web_chat_reply(
     research = research_web(
         officeholder_search_query(message),
         max_sources=(
-            2 if research_mode == "search" and is_public_officeholder_question(message)
+            # Three independent first-party pages lets a short incumbent
+            # question succeed if a generic government homepage is empty.
+            3 if research_mode == "search" and official_domains == [
+                "pmo.gov.bd", "cabinet.gov.bd"
+            ]
+            else 2 if research_mode == "search" and is_public_officeholder_question(message)
             else 3 if research_mode == "search" else 5
         ),
         mode=research_mode,
