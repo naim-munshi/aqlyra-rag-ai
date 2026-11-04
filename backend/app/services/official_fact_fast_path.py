@@ -32,6 +32,42 @@ _BD_PRIME_MINISTER_HEADING = re.compile(
 )
 
 
+
+# Official government roster tables may name the incumbent in a table row
+# rather than a biography. Names are extracted from source text, never code.
+_BD_PRIME_MINISTER_ROSTER_ROW = re.compile(
+    r"(?m)^.{0,30}\|\s*(?:Image\s*\|\s*)?"
+    r"জনাব\s+" + _BD_NAME + r"\s*\|\s*প্রধানমন্ত্রী(?=\s|\||$)"
+)
+_BD_PRIME_MINISTER_ROSTER_PREFIX = re.compile(
+    r"(?m)^(?:\s*\|\s*)?প্রধানমন্ত্রী\s*জনাব\s+"
+    + _BD_NAME + r"(?=\s*\||\s*$)"
+)
+_BD_APPOINTED_DATE = re.compile(
+    r"(?:নিয়োগের তারিখ|নিয়োগের তারিখ)\s*[:：]\s*"
+    r"([০-৯0-9]{2}[-/][০-৯0-9]{2}[-/][০-৯0-9]{4})"
+)
+_BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+_MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
+def _official_appointment_date(page_text: str) -> str | None:
+    matched = _BD_APPOINTED_DATE.search(page_text)
+    if matched is None:
+        return None
+    day, month, year = (
+        int(part)
+        for part in re.split(r"[-/]", matched.group(1).translate(_BN_DIGITS))
+    )
+    if not (1 <= day <= 31 and 1 <= month <= 12 and 2020 <= year <= 2100):
+        return None
+    return f"{day} {_MONTH_NAMES[month - 1]} {year}"
+
+
+
 def _is_verified_bd_current_office_url(url: str) -> bool:
     parsed = urlsplit(url)
     if parsed.scheme != "https" or parsed.username or parsed.password:
@@ -48,7 +84,12 @@ def _is_verified_bd_current_office_url(url: str) -> bool:
 
 def _extract_current_bd_name(page_text: str) -> str | None:
     page = page_text.replace("\r\n", "\n").replace("\r", "\n")
-    for pattern in (_BD_PRIME_MINISTER_LABEL, _BD_PRIME_MINISTER_HEADING):
+    for pattern in (
+        _BD_PRIME_MINISTER_LABEL,
+        _BD_PRIME_MINISTER_HEADING,
+        _BD_PRIME_MINISTER_ROSTER_ROW,
+        _BD_PRIME_MINISTER_ROSTER_PREFIX,
+    ):
         match = pattern.search(page)
         if match:
             name = " ".join(match.group(1).split())
