@@ -23,6 +23,19 @@ _TEXT_SEARCH_CONFIG = literal_column(
 
 _MAX_QUERY_TERMS = 32
 
+# The lexical path must work even when the 384D semantic worker is rate
+# limited. Common English question framing can otherwise dominate OR-based
+# FTS rankings for short document questions ("What are ... support hours?").
+# Limit this list to function words; never omit topical terms, names, dates,
+# Japanese/Bengali characters or a query containing only these terms.
+_ENGLISH_QUESTION_FILLER = frozenset({
+    "a", "an", "are", "am", "be", "been", "can", "could", "did",
+    "do", "does", "for", "from", "how", "i", "in", "is", "it",
+    "its", "me", "my", "of", "on", "our", "please", "the",
+    "their", "to", "was", "were", "what", "when", "where",
+    "which", "who", "why", "will", "would", "you", "your",
+})
+
 _STRIP_CHARACTERS = (
     ".,;:!?()[]{}<>"
     "\"'`“”‘’"
@@ -58,29 +71,42 @@ class LexicalRetrievalHit:
 def _extract_query_terms(
     text: str,
 ) -> tuple[str, ...]:
+    """Retain informative words before constructing PostgreSQL FTS.
+
+    With the semantic provider unavailable, OR-ing all words in a question
+    such as "What are Pilot Orion's support hours?" causes weak documents
+    matching "what", "are" or "'s" to outrank the correct source.
+    """
     terms: list[str] = []
     seen: set[str] = set()
 
     for raw_term in text.split():
-        term = raw_term.strip(
-            _STRIP_CHARACTERS
-        )
-
+        term = raw_term.strip(_STRIP_CHARACTERS)
         if not term:
             continue
 
+        # English possessives should match the document's proper noun
+        # "Orion", not a PostgreSQL expression that also requires "s".
+        if term.casefold().endswith(("\u0027s", "\u2019s")) and len(term) > 2:
+            term = term[:-2]
         normalized = term.casefold()
 
-        if normalized in seen:
+        if not normalized or normalized in seen:
             continue
-
         seen.add(normalized)
         terms.append(term)
 
         if len(terms) >= _MAX_QUERY_TERMS:
             break
 
-    return tuple(terms)
+    informative = [
+        term for term in terms
+        if term.casefold() not in _ENGLISH_QUESTION_FILLER
+    ]
+
+    # Preserve previous behavior for a query containing only stopwords
+    # rather than turning it into a silent empty result.
+    return tuple(informative or terms)
 
 
 def _build_lexical_query(
