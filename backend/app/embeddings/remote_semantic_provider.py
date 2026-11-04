@@ -121,6 +121,33 @@ class RemoteSemanticEmbeddingProvider:
                     "remote_semantic_circuit_open duration_seconds=20"
                 )
 
+    def _mark_rate_limited(self, retry_after: str | None) -> None:
+        """Open a bounded, shared cooldown after a provider/ingress HTTP 429.
+
+        Retrying a clear quota response after 0.5 seconds multiplies calls
+        and increases contention. Do not sleep on the request path, disclose
+        upstream headers, or depend on untrusted Retry-After values.
+        """
+        seconds = 30
+        if (
+            retry_after is not None
+            and len(retry_after) <= 6
+            and retry_after.strip().isdigit()
+        ):
+            seconds = max(10, min(60, int(retry_after.strip())))
+        with self._circuit.lock:
+            self._circuit.consecutive_failures = max(
+                3, self._circuit.consecutive_failures,
+            )
+            self._circuit.open_until = max(
+                self._circuit.open_until,
+                time.monotonic() + seconds,
+            )
+        logger.warning(
+            "remote_semantic_rate_limit_circuit_open cooldown_seconds=%d",
+            seconds,
+        )
+
     def _embed(self, texts: Sequence[str], mode: str) -> list[list[float]]:
         values = validate_text_batch(texts, self.info.max_batch_size)
         if any(len(text) > 6000 for text in values):
@@ -156,6 +183,13 @@ class RemoteSemanticEmbeddingProvider:
 
             if response.status_code == 200:
                 break
+            if response.status_code == 429:
+                # Render's ingress can return 429 before the embedding app
+                # sees the request. One response is sufficient to back off.
+                self._mark_rate_limited(response.headers.get("Retry-After"))
+                raise EmbeddingProviderRequestError(
+                    "Isolated semantic worker is temporarily rate limited"
+                )
             if response.status_code not in _TRANSIENT_STATUSES:
                 raise EmbeddingProviderRequestError(
                     "Isolated semantic worker returned a non-retryable status"
