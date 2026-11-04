@@ -193,9 +193,26 @@ class RemoteSemanticEmbeddingProvider:
         for raw in body["vectors"]:
             if not isinstance(raw, list) or len(raw) != 384:
                 raise EmbeddingValidationError("Invalid semantic vector dimension")
-            vector = [float(v) for v in raw]
+            # JSON numbers only: reject strings, nulls and bools instead of
+            # coercing malformed provider responses into semantic vectors.
+            if any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                for value in raw
+            ):
+                raise EmbeddingValidationError(
+                    "Semantic worker returned a nonnumeric vector"
+                )
+            try:
+                vector = [float(value) for value in raw]
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise EmbeddingValidationError(
+                    "Semantic worker returned an invalid numeric vector"
+                ) from exc
             validate_embedding_vector(vector, expected_dimension=384)
-            vectors.append(normalize_vector(vector))
+            normalized = normalize_vector(vector)
+            validate_embedding_vector(normalized, expected_dimension=384)
+            vectors.append(normalized)
         self._mark_success()
         return vectors
 
