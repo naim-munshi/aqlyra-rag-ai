@@ -74,8 +74,9 @@ class StudyDocumentResponse(BaseModel):
 
 class StudyResearchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    topic: Literal["universities","admissions","scholarships","visa","embassy","predeparture"]
+    topic: Literal["universities","admissions","scholarships","visa","embassy","predeparture","language","costs","transfer"]
     confirm_share_profile: bool = False
+    focus_university_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 class StudyResearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -130,3 +131,46 @@ class StudyDocumentAnswer(BaseModel):
     citations: list[StudyDocumentCitation]
     searched_document_count: int
     note: str = "Only attached documents were consulted; this is not official visa or admission verification."
+
+
+class StudyAdvisorAction(BaseModel):
+    id: str
+    title: str
+    reason: str
+    urgency: Literal["urgent", "next", "later"]
+    research_topic: str | None = None
+    university_id: str | None = None
+
+
+class StudyAdvisorResearchSnapshot(BaseModel):
+    topic: str
+    searched_at: str
+    age_days: int
+    stale: bool
+    government_domain_sources: int
+    source_count: int
+    verification_status: Literal["needs_official_verification"]
+
+
+class StudyAdvisorDeadline(BaseModel):
+    university_id: str
+    university_name: str
+    user_entered_deadline: str
+    days_remaining: int
+    urgency: Literal["past", "soon"]
+    verification_status: Literal["user_entered_unverified"]
+
+
+class StudyAdvisorResponse(BaseModel):
+    case_id: str
+    reviewed_checklist_count: int
+    not_applicable_count: int
+    total_checklist_count: int
+    linked_document_count: int
+    shortlisted_university_count: int
+    research_freshness: list[StudyAdvisorResearchSnapshot]
+    deadline_warnings: list[StudyAdvisorDeadline]
+    next_actions: list[StudyAdvisorAction]
+    generated_at: str
+    verification_status: Literal["planning_only_not_eligibility_verified"]
+    disclaimer: str

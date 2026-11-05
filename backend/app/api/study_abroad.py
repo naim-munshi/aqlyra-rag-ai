@@ -22,11 +22,13 @@ from app.schemas.study_abroad import (
     StudyDocumentLink, StudyDocumentResponse, StudyResearchCreate, StudyResearchResponse,
     UniversityCreate, UniversityStatusUpdate, UniversityResponse,
     StudyDocumentQuestion, StudyDocumentCitation, StudyDocumentAnswer,
+    StudyAdvisorResponse,
 )
 from app.services.web_research_service import (
     WebResearchEvidenceError, WebResearchUnavailable, research_web, safe_public_url,
 )
 from app.study_abroad.workflows import WORKFLOWS, TOPICS, CHECKS, research_question, initial_checklist
+from app.study_abroad.advisor import build_study_advisor
 from app.study_abroad.evidence_policy import (
     GOVERNMENT_TOPICS, OfficialEvidenceMissing, UnsupportedStudyClaims,
     authority_domains, classify_sources, validate_study_citation_coverage,
@@ -232,6 +234,36 @@ def list_case_research(case_id: str, user: User = Depends(get_current_user),
         StudyResearchReport.case_id == case_id
     ).order_by(StudyResearchReport.searched_at.desc()).limit(30)).all())
 
+
+@router.get("/cases/{case_id}/advisor", response_model=StudyAdvisorResponse)
+def get_study_advisor(
+    case_id: str, user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyAdvisorResponse:
+    """Privacy-safe live planning guidance: only the requested owner's case."""
+    case = owned_case(db, str(user.id), case_id)
+    universities = list(db.scalars(
+        select(StudyUniversity).where(StudyUniversity.case_id == case.id)
+        .order_by(StudyUniversity.created_at.desc()).limit(40)
+    ).all())
+    reports = list(db.scalars(
+        select(StudyResearchReport).where(StudyResearchReport.case_id == case.id)
+        .order_by(StudyResearchReport.searched_at.desc()).limit(30)
+    ).all())
+    document_count = len(db.scalars(
+        select(StudyCaseDocument.document_id)
+        .join(Document, Document.id == StudyCaseDocument.document_id)
+        .where(
+            StudyCaseDocument.case_id == case.id,
+            Document.user_id == str(user.id),
+            Document.status == "ready",
+        ).limit(30)
+    ).all())
+    return StudyAdvisorResponse.model_validate(build_study_advisor(
+        case=case, universities=universities, reports=reports,
+        linked_document_count=document_count,
+    ))
+
 @router.post("/cases/{case_id}/research", response_model=StudyResearchResponse,
              dependencies=[Depends(limit_rag_request)])
 def research_study_topic(case_id: str, body: StudyResearchCreate,
@@ -242,7 +274,18 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
         raise HTTPException(422, "Confirm sharing limited study profile fields with the research provider")
     # Never send source document contents, passport numbers, or private attachments
     # to public search. The question only uses selected non-sensitive profile fields.
-    question = research_question(body.topic, case)
+    focus = None
+    if body.focus_university_id is not None:
+        selected = db.scalar(select(StudyUniversity).where(
+            StudyUniversity.id == body.focus_university_id,
+            StudyUniversity.case_id == case.id,
+        ))
+        if selected is None:
+            raise HTTPException(404, "Shortlisted university not found in this journey")
+        # Only the public university/program label is sent to search;
+        # never send university notes, private attachments or URL query secrets.
+        focus = (selected.name, selected.program)
+    question = research_question(body.topic, case, focus=focus)
     try:
         # Government guidance must come from a curated authority domain,
         # not from blogs or an LLM-selected "official-looking" site.
