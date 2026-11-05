@@ -17,6 +17,7 @@ from app.schemas.study_abroad import (
 )
 from app.services.web_research_service import safe_public_url
 from app.study_abroad.program_matcher import compare_programs, matching_source_host
+from app.study_abroad.requirement_extraction import draft_university_requirements
 
 router = APIRouter(prefix="/study-abroad", tags=["Study Abroad"])
 
@@ -134,3 +135,26 @@ def get_program_candidates(
             if len(results) >= 12:
                 return results
     return results
+
+
+
+@router.get("/cases/{case_id}/universities/{university_id}/requirement-suggestions")
+def requirement_suggestions(
+    case_id: str, university_id: str,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> list[dict]:
+    """Derive first-party excerpt-based drafts; never update requirement facts."""
+    owned_case(db, str(user.id), case_id)
+    school = db.scalar(select(StudyUniversity).where(
+        StudyUniversity.id == university_id,
+        StudyUniversity.case_id == case_id,
+    ))
+    if school is None:
+        raise HTTPException(404, "Program is not in your shortlist")
+    reports = list(db.scalars(select(StudyResearchReport).where(
+        StudyResearchReport.case_id == case_id,
+        StudyResearchReport.topic.in_(
+            ("universities", "admissions", "language", "costs", "transfer"),
+        ),
+    ).order_by(StudyResearchReport.searched_at.desc()).limit(30)).all())
+    return draft_university_requirements(university=school, reports=reports)
