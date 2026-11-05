@@ -10,6 +10,7 @@ import {
 import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
+import { StudyFitWorkbench } from "@/components/study-abroad/program-fit-workbench";
 
 type ChecklistItem = {
   title: string;
@@ -773,6 +774,17 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
+                <StudyFitWorkbench
+                  key={active.id}
+                  caseId={active.id}
+                  revision={advisorRevision}
+                  researchAllowed={researchConsent}
+                  onResearch={() => { void research("universities"); }}
+                  onUseCandidate={url => {
+                    setUniversityForm({ name: "", program: "", program_url: url, deadline: "" });
+                    setNotice("Research link placed in the university form. Check the exact degree and institution, then save.");
+                  }}
+                />
                 <section className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><Search size={18}/> Research universities, visas and embassies</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
