@@ -7,7 +7,8 @@ import {
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
   ShieldAlert, Trash2, Sparkles, Clock3,
 } from "lucide-react";
-import type { DocumentResponse } from "@/types/document";
+import type { DocumentListResponse, DocumentResponse } from "@/types/document";
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 
 type ChecklistItem = {
@@ -158,6 +159,8 @@ export function StudyAbroadWorkspace() {
   const [cases, setCases] = useState<StudyCase[]>([]);
   const [active, setActive] = useState<StudyCase | null>(null);
   const [documents, setDocuments] = useState<LinkedDocument[]>([]);
+  const [libraryDocs, setLibraryDocs] = useState<DocumentResponse[]>([]);
+  const [librarySelection, setLibrarySelection] = useState("");
   const [universities, setUniversities] = useState<StudyUniversity[]>([]);
   const [universityForm, setUniversityForm] = useState({
     name: "", program: "", program_url: "", deadline: "",
@@ -214,6 +217,66 @@ export function StudyAbroadWorkspace() {
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
   }, [activeId, advisorRevision]); // Also refresh after saved case changes
+
+  async function refreshLibraryDocs() {
+    const response = await fetch("/api/documents", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unable to refresh My Documents");
+    const data = (await response.json()) as DocumentListResponse;
+    if (!Array.isArray(data.items)) throw new Error("Invalid document library response");
+    setLibraryDocs(data.items);
+  }
+
+  // Reuse existing private documents instead of forcing a new upload.
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    void fetch("/api/documents", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Unable to fetch My Documents");
+        return await response.json() as DocumentListResponse;
+      })
+      .then(data => { if (!cancelled && Array.isArray(data.items)) setLibraryDocs(data.items); })
+      .catch(() => { if (!cancelled) setLibraryDocs([]); });
+    return () => { cancelled = true; };
+  }, [activeId]);
+
+  async function attachReadyDocument(documentId: string) {
+    if (!active || !documentId) return;
+    setBusy("attach"); setError(""); setNotice("");
+    try {
+      const attached = await api<LinkedDocument>(
+        "cases/" + active.id + "/documents", "POST",
+        { document_id: documentId, checklist_key: uploadKey },
+      );
+      setDocuments(previous => [
+        ...previous.filter(file => file.document_id !== attached.document_id), attached,
+      ]);
+      replaceCase(await api<StudyCase>("cases/" + active.id));
+      setLibrarySelection("");
+      setNotice("Existing ready document linked privately; original remains in My Documents.");
+      refreshAdvisor();
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function retrySavedDocument(documentId: string) {
+    if (!documentId) return;
+    setBusy("retry-index"); setError("");
+    try {
+      const response = await fetch(
+        "/api/documents/" + encodeURIComponent(documentId) + "/retry-index",
+        { method: "POST", cache: "no-store" },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as ApiFailure | null;
+        throw new Error(typeof data?.detail === "string"
+          ? data.detail : "Indexing is unavailable. The original file remains saved.");
+      }
+      await refreshLibraryDocs();
+      setNotice("Indexing retry requested. Refresh later to check readiness.");
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
 
   function replaceCase(updated: StudyCase) {
     setCases(previous => previous.map(item => item.id === updated.id ? updated : item));
@@ -343,43 +406,74 @@ export function StudyAbroadWorkspace() {
     if (!active || !file) return;
     setBusy("upload"); setError(""); setNotice("");
     try {
-      const payload = new FormData();
-      payload.append("file", file);
-      const result = await fetch("/api/documents/upload", {
-        method: "POST", body: payload,
-      });
-      const raw = await result.json() as DocumentResponse | {
-        detail?: { document_id?: string; message?: string } | string;
-      };
-      let documentId = "";
-      if (result.ok && "id" in raw) {
-        documentId = raw.id;
-      } else if ("detail" in raw && raw.detail &&
-        typeof raw.detail === "object" && raw.detail.document_id) {
-        documentId = raw.detail.document_id;
+      const cloudEnabled = process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true";
+      // Always use the existing 50 MiB direct upload grant when configured.
+      // Legacy multipart fallback may be limited to 3 MiB by the Vercel proxy.
+      const maxBytes = cloudEnabled ? 50 * 1024 * 1024 : 3 * 1024 * 1024;
+      if (!file.size || file.size > maxBytes) {
+        throw new Error(cloudEnabled
+          ? "Choose a supported file up to 50 MiB."
+          : "Proxy uploads accept at most 3 MiB. Use My Documents for existing files.");
+      }
+      let saved: DocumentResponse;
+      if (cloudEnabled) {
+        saved = await uploadViaPrivateCloud(file);
       } else {
-        throw new Error("Upload failed. Use a supported file under 25 MiB.");
+        const body = new FormData();
+        body.append("file", file);
+        const response = await fetch("/api/documents/upload", {
+          method: "POST", body, cache: "no-store",
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as ApiFailure | null;
+          throw new Error(typeof data?.detail === "string"
+            ? data.detail : "Unable to store private document");
+        }
+        saved = await response.json() as DocumentResponse;
       }
-      const process = await fetch(
-        "/api/documents/" + encodeURIComponent(documentId) + "/process",
-        { method: "POST" },
-      );
-      // Already-processed duplicates need not run again.
-      if (!process.ok && process.status !== 409) {
-        const detail = await process.json().catch(() => null) as ApiFailure | null;
-        throw new Error(typeof detail?.detail === "string"
-          ? detail.detail : "Document extraction failed.");
+      if (!saved.id) throw new Error("Invalid document upload response");
+      // A signed cloud upload may be queued/processing. Never claim it was
+      // indexed or attach it before the backend marks the file ready.
+      if (!cloudEnabled && saved.status === "uploaded" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED !== "true") {
+        const response = await fetch(
+          "/api/documents/" + encodeURIComponent(saved.id) + "/process",
+          { method: "POST", cache: "no-store" },
+        );
+        if (response.ok) saved = await response.json() as DocumentResponse;
+        // A 409/503 means bytes are stored, but indexing is not yet available.
+        // Preserve the original and offer a later retry through My Documents.
       }
-      const attached = await api<LinkedDocument>(
-        "cases/" + active.id + "/documents", "POST",
-        { document_id: documentId, checklist_key: uploadKey },
-      );
-      setDocuments(previous => [
-        ...previous.filter(d => d.document_id !== attached.document_id), attached,
-      ]);
-      replaceCase(await api<StudyCase>("cases/" + active.id));
-      setNotice("Document processed and linked privately. Review its contents before submission.");
-      refreshAdvisor();
+      try {
+        await refreshLibraryDocs();
+      } catch {
+        // Storage may have succeeded even when the library refresh is offline.
+        setLibraryDocs(previous => [saved, ...previous.filter(doc => doc.id !== saved.id)]);
+      }
+      if (saved.status === "ready") {
+        try {
+          const attached = await api<LinkedDocument>(
+            "cases/" + active.id + "/documents", "POST",
+            { document_id: saved.id, checklist_key: uploadKey },
+          );
+          setDocuments(previous => [
+            ...previous.filter(d => d.document_id !== attached.document_id), attached,
+          ]);
+          replaceCase(await api<StudyCase>("cases/" + active.id));
+          setNotice("Processed document linked privately to your journey.");
+          refreshAdvisor();
+        } catch {
+          // A case-link failure must not be reported as an upload failure.
+          setLibrarySelection(saved.id);
+          setNotice("File is safely stored and ready, but was not linked. Select it from My Documents to retry.");
+        }
+      } else {
+        setLibrarySelection(saved.id);
+        setNotice(
+          "File saved securely in My Documents, but indexing is not complete (" +
+          saved.status + "). Refresh its status below and attach it once ready.",
+        );
+      }
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -890,7 +984,7 @@ export function StudyAbroadWorkspace() {
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileUp size={18}/> Process private documents</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     PDF, DOCX, XLSX, PPTX, TXT, CSV and images supported by Aqlyra.
-                    Upload → extract/OCR → link to your checklist. Files stay in your existing authenticated document storage.
+                    Secure cloud upload (up to 50 MiB when enabled) → indexing → private linking. Files stay in your existing authenticated document storage.
                     This does not check authenticity or guarantee embassy acceptance.
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -910,7 +1004,48 @@ export function StudyAbroadWorkspace() {
                         className={fieldStyle + " mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-[var(--aq-blue-soft)] file:px-2 file:py-1 file:text-[var(--aq-blue)]"}/>
                     </label>
                   </div>
-                  {busy === "upload" && <p className="mt-2 text-xs text-[var(--aq-muted)]"><LoaderCircle size={14} className="mr-1 inline animate-spin"/> Processing file…</p>}
+                  {busy === "upload" && <p className="mt-2 text-xs text-[var(--aq-muted)]"><LoaderCircle size={14} className="mr-1 inline animate-spin"/> Saving and checking indexing…</p>}
+                  <div className="mt-4 rounded-xl border border-[var(--aq-border)] p-3">
+                    <h3 className="text-xs font-semibold">Attach from My Documents (no re-upload)</h3>
+                    <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">
+                      Only files marked ready can be attached. Queued or uploaded files must finish indexing first.
+                      The original file remains in My Documents if you unlink it from this journey.
+                    </p>
+                    <label className="mt-3 block text-xs text-[var(--aq-muted)]">
+                      Existing private file
+                      <select value={librarySelection} onChange={event => setLibrarySelection(event.target.value)}
+                        className={fieldStyle + " mt-1"}>
+                        <option value="">Choose a saved document</option>
+                        {libraryDocs.map(doc => (
+                          <option value={doc.id} key={doc.id}>
+                            {doc.original_filename} ({doc.status})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" disabled={busy !== "" ||
+                          libraryDocs.find(doc => doc.id === librarySelection)?.status !== "ready"}
+                        onClick={() => { void attachReadyDocument(librarySelection); }}
+                        className="rounded-lg bg-[var(--aq-blue)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                        Attach ready file
+                      </button>
+                      <button type="button" disabled={busy !== ""}
+                        onClick={() => { void refreshLibraryDocs().catch(e => setError(String(e))); }}
+                        className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs">
+                        Refresh document status
+                      </button>
+                      {(libraryDocs.find(doc => doc.id === librarySelection)?.status === "uploaded" ||
+                        libraryDocs.find(doc => doc.id === librarySelection)?.status === "failed") && (
+                        <button type="button" disabled={busy !== ""}
+                          onClick={() => { void retrySavedDocument(librarySelection); }}
+                          className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs">
+                          Retry indexing
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-3 space-y-2">
                     {documents.map(file => (
                       <div key={file.document_id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--aq-border)] p-2">
