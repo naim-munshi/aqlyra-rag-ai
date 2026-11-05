@@ -795,6 +795,7 @@ export function StudyAbroadWorkspace() {
                   revision={advisorRevision}
                   researchAllowed={researchConsent}
                   onResearch={() => { void research("universities"); }}
+                  onEvidenceUpdated={refreshAdvisor}
                   onUseCandidate={url => {
                     setUniversityForm({ name: "", program: "", program_url: url, deadline: "" });
                     setNotice("Research link placed in the university form. Check the exact degree and institution, then save.");

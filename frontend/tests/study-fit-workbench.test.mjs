@@ -59,3 +59,14 @@ test("application agent is an actual protected backend packet, never auto submit
   assert.match(source, /NOT SUBMITTED/);
   assert.match(source, /Copy review packet/);
 });
+
+
+test("university evidence refresh executes real opt-in scoped API, never autosaves criteria", () => {
+  assert.match(workbench, /"\/refresh-evidence"/);
+  assert.match(workbench, /confirm_share_program: true/);
+  assert.match(workbench, /!selected \|\| !researchAllowed/);
+  assert.match(workbench, /Fetch university-domain evidence/);
+  assert.match(workbench, /setSuggestions\(result\.suggestions\)/);
+  assert.match(workbench, /onEvidenceUpdated\(\)/);
+  assert.match(wrapper, /onEvidenceUpdated=\{refreshAdvisor\}/);
+});

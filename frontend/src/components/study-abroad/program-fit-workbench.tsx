@@ -71,19 +71,21 @@ function relevantSource(programUrl: string, sourceUrl: string): boolean {
 }
 
 export function StudyFitWorkbench({
-  caseId, revision, researchAllowed, onResearch, onUseCandidate,
+  caseId, revision, researchAllowed, onResearch, onUseCandidate, onEvidenceUpdated,
 }: {
   caseId: string;
   revision: number;
   researchAllowed: boolean;
   onResearch: () => void;
   onUseCandidate: (url: string) => void;
+  onEvidenceUpdated: () => void;
 }) {
   const [matches, setMatches] = useState<ComparisonResponse | null>(null);
   const [schools, setSchools] = useState<StudySchool[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [suggestions, setSuggestions] = useState<ExtractedDraft[]>([]);
+  const [evidenceTopic, setEvidenceTopic] = useState("admissions");
   const [selected, setSelected] = useState("");
   const [profile, setProfile] = useState({
     gpa: "", gpa_scale: "4", annual_budget: "", currency: "JPY",
@@ -135,7 +137,6 @@ export function StudyFitWorkbench({
   }, [caseId, revision, target]);
 
   useEffect(() => {
-    setSuggestions([]);
     const item = schools.find(s => s.id === selected);
     const req = item?.requirements ?? {};
     setRequirement({
@@ -187,6 +188,31 @@ export function StudyFitWorkbench({
       await api(target + "/applicant-facts", "PATCH", body);
       setMatches(await api<ComparisonResponse>(target + "/matches"));
       setNotice("Applicant facts saved. Program comparisons recalculated from your data.");
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(false); }
+  }
+
+
+  async function refreshOfficialSources() {
+    if (!selected || !researchAllowed) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api<{
+        report: SavedReport;
+        suggestions: ExtractedDraft[];
+        verification_status: string;
+        disclaimer: string;
+      }>(
+        target + "/universities/" + encodeURIComponent(selected) + "/refresh-evidence",
+        "POST", { topic: evidenceTopic, confirm_share_program: true },
+      );
+      setReports(previous => [result.report, ...previous]);
+      setSuggestions(result.suggestions);
+      setNotice(result.suggestions.length > 0
+        ? "Real university-domain research completed and draft thresholds extracted. Review the source and each criterion before saving."
+        : "University-domain research saved with citations; no explicit thresholds were found. Check the original source.");
+      // The advisor's saved research freshness should now refresh too.
+      onEvidenceUpdated();
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
@@ -345,6 +371,35 @@ export function StudyFitWorkbench({
       </button>
     </form>
 
+    {selected && <div className="mt-4 rounded-xl border border-[var(--aq-border)] p-3">
+      <h3 className="text-sm font-semibold">Research this exact university</h3>
+      <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">
+        Search live sources restricted to the shortlisted program&apos;s HTTPS hostname.
+        Only the university and program labels, country, intake and hostname are sent
+        externally after consent. The research may fail when official evidence is
+        unavailable. Source text remains unverified until you review the original page.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="min-w-40 flex-1 text-xs">
+          Source research focus
+          <select className={fieldClass + " mt-1"} value={evidenceTopic}
+            onChange={event => setEvidenceTopic(event.target.value)}>
+            {["admissions", "language", "costs", "transfer", "universities"].map(topic =>
+              <option key={topic} value={topic}>{topic}</option>)}
+          </select>
+        </label>
+        <button type="button" className={buttonClass}
+          disabled={!researchAllowed || busy || loading}
+          onClick={() => { void refreshOfficialSources(); }}
+          title={researchAllowed ? undefined : "Enable external research consent in the section below"}>
+          {busy ? "Researching…" : "Fetch university-domain evidence"}
+        </button>
+      </div>
+      {!researchAllowed && <p className="mt-2 text-[11px] text-[var(--aq-muted)]">
+        Enable external research consent in the Research section to use live sources.
+      </p>}
+    </div>}
+
     <form className="mt-4 rounded-xl border border-[var(--aq-border)] p-3" onSubmit={saveRequirements}>
       <h3 className="text-sm font-semibold">2. Compare actual program requirements</h3>
       <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">
@@ -352,7 +407,7 @@ export function StudyFitWorkbench({
         selecting a saved citation records provenance but does not validate the claim.
       </p>
       <label className="mt-3 block text-xs">Shortlisted program
-        <select value={selected} onChange={e => setSelected(e.target.value)}
+        <select value={selected} onChange={e => { setSelected(e.target.value); setSuggestions([]); }}
           className={fieldClass + " mt-1"}>
           {schools.length === 0 && <option value="">Add a university above to compare</option>}
           {schools.map(s => <option key={s.id} value={s.id}>{s.name} · {s.program}</option>)}
