@@ -251,6 +251,8 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP: bool = False
     # Production requires an explicit verified owner-linked document for canary recovery.
     KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID: str = ""
+    # A single recovery startup may embed at most 24 missing/stale chunks.
+    KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS: int = Field(default=8, ge=1, le=24)
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
     KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
     KNOWLEDGE_PDF_OCR_ENABLED: bool = False
