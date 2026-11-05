@@ -14,6 +14,8 @@ from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.embedding_record import EmbeddingRecord
 from app.models.user import User
+from app.embeddings import DeterministicHashEmbeddingProvider
+from app.services.embedding_reindex_service import reindex_missing_document_embeddings
 
 
 def _doc(db, suffix, *, completed=True, ext=".pdf", with_chunk=True):
@@ -95,10 +97,10 @@ def _vector(db, chunk, *, stale=False):
 
 def _record_calls(monkeypatch):
     calls = []
-    def fake_reindex(*, db, document, provider):
+    def fake_reindex(*, db, document, provider, max_chunks):
         calls.append(document.id)
         return SimpleNamespace(created_count=1)
-    monkeypatch.setattr(mod, "reindex_document_embeddings", fake_reindex)
+    monkeypatch.setattr(mod, "reindex_missing_document_embeddings", fake_reindex)
     return calls
 
 
@@ -122,10 +124,10 @@ def test_reindexes_only_owner_linked_ready_cloud_knowledge(db_session, monkeypat
             dimension=384,
         )),
     )
-    def fake_reindex(*, db, document, provider):
+    def fake_reindex(*, db, document, provider, max_chunks):
         calls.append(document.id)
         return SimpleNamespace(created_count=3)
-    monkeypatch.setattr(mod, "reindex_document_embeddings", fake_reindex)
+    monkeypatch.setattr(mod, "reindex_missing_document_embeddings", fake_reindex)
     assert mod.backfill_ready_semantic_embeddings(db=db_session, limit=1) == 1
     assert calls == [valid.id]
 
@@ -233,3 +235,92 @@ def test_target_does_not_override_verified_cloud_intent_gate(
     calls = _record_calls(monkeypatch)
     assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
     assert calls == []
+
+
+
+def test_incremental_recovery_keeps_current_vectors_and_resumes_per_batch(
+    db_session,
+):
+    """Regression: a large cloud document cannot force an unbounded startup."""
+    doc = _doc(db_session, "incremental")
+    for n in range(1, 13):
+        content = f"Unique test-only indexed text segment number {n}"
+        db_session.add(DocumentChunk(
+            document_id=doc.id,
+            chunk_index=n,
+            source_label=f"incremental-{n}",
+            content=content,
+            embedding_content=content,
+            content_hash=sha256(content.encode("utf-8")).hexdigest(),
+            token_count=7,
+            char_count=len(content),
+            word_count=7,
+        ))
+    db_session.commit()
+    provider = DeterministicHashEmbeddingProvider()
+    first = reindex_missing_document_embeddings(
+        db=db_session, document=doc, provider=provider, max_chunks=8,
+    )
+    assert first.created_count == 8
+    current_before = {
+        record.chunk_id: record.id
+        for record in db_session.scalars(
+            select(EmbeddingRecord).join(DocumentChunk).where(
+                DocumentChunk.document_id == doc.id,
+            )
+        )
+    }
+    assert len(current_before) == 8
+    second = reindex_missing_document_embeddings(
+        db=db_session, document=doc, provider=provider, max_chunks=8,
+    )
+    assert second.created_count == 5
+    current_after = {
+        record.chunk_id: record.id
+        for record in db_session.scalars(
+            select(EmbeddingRecord).join(DocumentChunk).where(
+                DocumentChunk.document_id == doc.id,
+            )
+        )
+    }
+    assert len(current_after) == 13
+    assert all(current_after[k] == v for k, v in current_before.items())
+    third = reindex_missing_document_embeddings(
+        db=db_session, document=doc, provider=provider, max_chunks=8,
+    )
+    assert third.created_count == 0
+    assert third.replaced_count == 0
+
+
+def test_incremental_repair_replaces_stale_hash_only(db_session):
+    doc = _doc(db_session, "stale-repair")
+    chunk = db_session.scalar(select(DocumentChunk).where(
+        DocumentChunk.document_id == doc.id,
+    ))
+    _vector(db_session, chunk, stale=True)
+    provider = DeterministicHashEmbeddingProvider()
+    result = reindex_missing_document_embeddings(
+        db=db_session, document=doc, provider=provider,
+    )
+    assert result.created_count == 1
+    # A separate-model stale vector remains intact (model-version isolation).
+    others = list(db_session.scalars(
+        select(EmbeddingRecord).where(EmbeddingRecord.chunk_id == chunk.id)
+    ))
+    assert len(others) == 2
+    assert any(row.content_hash == chunk.content_hash for row in others)
+    assert any(row.content_hash != chunk.content_hash for row in others)
+
+
+def test_incremental_recovery_rejects_unbounded_batch(db_session):
+    doc = _doc(db_session, "invalid-batch")
+    provider = DeterministicHashEmbeddingProvider()
+    for n in (0, 25):
+        try:
+            reindex_missing_document_embeddings(
+                db=db_session, document=doc, provider=provider, max_chunks=n,
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Unbounded recovery was accepted")

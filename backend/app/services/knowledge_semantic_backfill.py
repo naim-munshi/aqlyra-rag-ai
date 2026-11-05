@@ -14,7 +14,7 @@ from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.embedding_record import EmbeddingRecord
-from app.services.embedding_reindex_service import reindex_document_embeddings
+from app.services.embedding_reindex_service import reindex_missing_document_embeddings
 from app.services.retrieval_exclusions import permitted_retrieval_document
 
 
@@ -83,8 +83,9 @@ def backfill_ready_semantic_embeddings(
     processed = 0
     for doc in eligible:
         try:
-            result = reindex_document_embeddings(
+            result = reindex_missing_document_embeddings(
                 db=db, document=doc, provider=provider,
+                max_chunks=settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS,
             )
             if result.created_count > 0:
                 processed += 1
