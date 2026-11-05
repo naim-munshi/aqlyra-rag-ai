@@ -2,7 +2,7 @@
 from datetime import datetime
 import re
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.study_abroad.workflows import STATES, WORKFLOWS, TOPICS
 
@@ -59,6 +59,7 @@ class StudyCaseResponse(BaseModel):
     stage: str
     notes: str
     checklist: dict
+    applicant_facts: dict
     created_at: datetime
     updated_at: datetime
 
@@ -132,6 +133,7 @@ class UniversityResponse(BaseModel):
     deadline: str
     notes: str
     application_status: str
+    requirements: dict
     created_at: datetime
 
 class StudyDocumentQuestion(BaseModel):
@@ -196,3 +198,100 @@ class StudyAdvisorResponse(BaseModel):
     generated_at: str
     verification_status: Literal["planning_only_not_eligibility_verified"]
     disclaimer: str
+
+
+class LanguageCredential(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    test: Literal["IELTS", "TOEFL_iBT", "Duolingo", "JLPT"]
+    score: float | None = Field(default=None, ge=0, le=160)
+    level: Literal["N1", "N2", "N3", "N4", "N5"] | None = None
+
+    @model_validator(mode="after")
+    def valid_score(self):
+        maxima = {"IELTS": 9, "TOEFL_iBT": 120, "Duolingo": 160}
+        if self.test == "JLPT":
+            if self.level is None or self.score is not None:
+                raise ValueError("JLPT must use N1–N5 level without a numeric score")
+        elif self.score is None or self.level is not None or self.score > maxima[self.test]:
+            raise ValueError("Test score is missing or outside its valid range")
+        return self
+
+
+class StudyApplicantFacts(BaseModel):
+    """Only non-secret academic data; no passport/bank/account identifiers."""
+    model_config = ConfigDict(extra="forbid")
+    gpa: float | None = Field(default=None, ge=0, le=100)
+    gpa_scale: Literal[4, 5, 10, 100] | None = None
+    annual_budget: float | None = Field(default=None, ge=0, le=200000000)
+    currency: Literal["JPY", "USD", "EUR", "GBP", "AUD", "CAD", "BDT"] | None = None
+    language: LanguageCredential | None = None
+    transfer_requested: bool = False
+    completed_credits: int | None = Field(default=None, ge=0, le=400)
+
+    @model_validator(mode="after")
+    def paired_fields(self):
+        if (self.gpa is None) != (self.gpa_scale is None):
+            raise ValueError("GPA and grading scale must be provided together")
+        if self.gpa is not None and self.gpa > self.gpa_scale:
+            raise ValueError("GPA exceeds its grading scale")
+        if (self.annual_budget is None) != (self.currency is None):
+            raise ValueError("Annual budget and currency must be provided together")
+        return self
+
+
+class ProgramRequirements(BaseModel):
+    """Applicant-reviewed criteria; source linkage does NOT verify each claim."""
+    model_config = ConfigDict(extra="forbid")
+    minimum_gpa: float | None = Field(default=None, ge=0, le=100)
+    gpa_scale: Literal[4, 5, 10, 100] | None = None
+    minimum_language: LanguageCredential | None = None
+    annual_tuition: float | None = Field(default=None, ge=0, le=200000000)
+    currency: Literal["JPY", "USD", "EUR", "GBP", "AUD", "CAD", "BDT"] | None = None
+    transfer_policy: Literal["yes", "no", "unknown"] = "unknown"
+    evidence_report_id: str | None = Field(default=None, min_length=1, max_length=64)
+    evidence_citation: str | None = Field(default=None, pattern=r"^\[W[1-9][0-9]*\]$")
+
+    @model_validator(mode="after")
+    def paired_fields(self):
+        if (self.minimum_gpa is None) != (self.gpa_scale is None):
+            raise ValueError("Minimum GPA and scale must be provided together")
+        if self.minimum_gpa is not None and self.minimum_gpa > self.gpa_scale:
+            raise ValueError("Minimum GPA exceeds its scale")
+        if (self.annual_tuition is None) != (self.currency is None):
+            raise ValueError("Tuition and currency must be provided together")
+        if (self.evidence_report_id is None) != (self.evidence_citation is None):
+            raise ValueError("Both report ID and citation must be provided together")
+        return self
+
+
+class StudyProgramCriterion(BaseModel):
+    criterion: str
+    status: Literal["reported_match", "reported_gap", "unknown"]
+    detail: str
+
+
+class StudyProgramMatch(BaseModel):
+    university_id: str
+    university_name: str
+    program: str
+    program_url: str
+    assessment: Literal["potential_match_unverified", "possible_gaps", "insufficient_evidence"]
+    comparable_count: int
+    matched_count: int
+    gap_count: int
+    unknown_count: int
+    criteria: list[StudyProgramCriterion]
+    provenance: Literal["source_linked_unverified", "self_reported_unverified"]
+    evidence_url: str | None = None
+    evidence_searched_at: str | None = None
+    source_stale: bool
+    warning: str
+
+
+class StudyProgramMatches(BaseModel):
+    case_id: str
+    profile: StudyApplicantFacts
+    programs: list[StudyProgramMatch]
+    checked_at: str
+    disclaimer: str
+

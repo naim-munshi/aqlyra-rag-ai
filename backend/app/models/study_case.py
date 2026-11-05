@@ -22,6 +22,7 @@ class StudyCase(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     stage: Mapped[str] = mapped_column(String(32), nullable=False, default="profile")
     checklist: Mapped[dict] = mapped_column(JSON, nullable=False, default=initial_checklist)
+    applicant_facts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
 
@@ -52,4 +53,5 @@ class StudyUniversity(Base):
     application_status: Mapped[str] = mapped_column(String(24), nullable=False, default="researching")
     deadline: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    requirements: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
