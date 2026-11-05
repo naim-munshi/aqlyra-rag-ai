@@ -22,3 +22,13 @@ test("focus research shares only approved university/program and requires explic
   assert.match(source, /Tuition & living costs/);
   assert.match(source, /Language requirements/);
 });
+
+test("open-question research is bounded, consent gated and scoped to selected program", () => {
+  assert.match(source, /Ask a specific study question/);
+  assert.match(source, /specific_question: question\.trim\(\)/);
+  assert.match(source, /maxLength=\{160\}/);
+  assert.match(source, /minLength=\{12\}/);
+  assert.match(source, /!researchConsent \|\| specificQuestion\.trim\(\)\.length < 12/);
+  assert.match(source, /research\(customTopic, researchFocusId, specificQuestion\)/);
+  assert.match(source, /setSpecificQuestion\("")/);
+});

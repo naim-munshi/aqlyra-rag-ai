@@ -167,6 +167,8 @@ export function StudyAbroadWorkspace() {
   const [advisorError, setAdvisorError] = useState(false);
   const [advisorRevision, setAdvisorRevision] = useState(0);
   const [researchFocusId, setResearchFocusId] = useState("");
+  const [specificQuestion, setSpecificQuestion] = useState("");
+  const [customTopic, setCustomTopic] = useState("admissions");
   const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState("");
@@ -228,7 +230,7 @@ export function StudyAbroadWorkspace() {
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
-      setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setCreating(false);
       setNotice("Private student journey created.");
     } catch (e) { setError(String(e)); }
@@ -302,7 +304,7 @@ export function StudyAbroadWorkspace() {
     finally { setBusy(""); }
   }
 
-  async function research(topic: string, focusUniversityId = "") {
+  async function research(topic: string, focusUniversityId = "", question = "") {
     if (!active) return;
     setBusy("research"); setError(""); setNotice("");
     try {
@@ -310,10 +312,12 @@ export function StudyAbroadWorkspace() {
         "cases/" + active.id + "/research", "POST", {
           topic, confirm_share_profile: researchConsent,
           ...(focusUniversityId ? { focus_university_id: focusUniversityId } : {}),
+          ...(question.trim() ? { specific_question: question.trim() } : {}),
         },
       );
       setReports(previous => [result, ...previous]);
       setNotice("Research saved. Check each source against the official authority.");
+      if (question.trim()) setSpecificQuestion("");
       refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -402,7 +406,7 @@ export function StudyAbroadWorkspace() {
       setCases(remaining);
       setActive(remaining[0] ?? null);
       setDocuments([]); setReports([]); setUniversities([]);
-      setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -455,7 +459,7 @@ export function StudyAbroadWorkspace() {
                 <button key={item.id} type="button" disabled={busy !== ""} onClick={() => {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
-                    setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
+                    setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
@@ -710,6 +714,37 @@ export function StudyAbroadWorkspace() {
                       </button>
                     ))}
                   </div>
+
+                  <form className="mt-5 space-y-3 rounded-xl border border-[var(--aq-border)] p-3"
+                    onSubmit={event => { event.preventDefault(); void research(customTopic, researchFocusId, specificQuestion); }}>
+                    <h3 className="text-sm font-semibold">Ask a specific study question</h3>
+                    <p className="text-[11px] leading-5 text-[var(--aq-muted)]">
+                      Ask about academic credit transfer, admission eligibility, fees or funding.
+                      Source-based research requires your consent above. Do not enter passport
+                      numbers, bank accounts, personal email addresses or private URLs.
+                    </p>
+                    <label className="block text-xs text-[var(--aq-muted)]">
+                      Research category
+                      <select value={customTopic} onChange={event => setCustomTopic(event.target.value)}
+                        className={fieldStyle + " mt-1"}>
+                        {RESEARCH_TOPICS.map(topic => <option key={topic.id} value={topic.id}>
+                          {topic.label}
+                        </option>)}
+                      </select>
+                    </label>
+                    <label className="block text-xs text-[var(--aq-muted)]">
+                      My question
+                      <textarea required minLength={12} maxLength={160} rows={3}
+                        value={specificQuestion}
+                        onChange={event => setSpecificQuestion(event.target.value)}
+                        placeholder="Can I transfer credits from a Japanese university into year three?"
+                        className={fieldStyle + " mt-1 resize-y"}/>
+                    </label>
+                    <button type="submit" disabled={busy !== "" || !researchConsent || specificQuestion.trim().length < 12}
+                      className="rounded-lg bg-[var(--aq-blue)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
+                      {busy === "research" ? "Researching sources…" : "Research my question"}
+                    </button>
+                  </form>
                   {reports.length === 0 && <p className="mt-3 text-xs text-[var(--aq-muted)]">No research yet. Select a topic above to retrieve cited live evidence.</p>}
                   <div className="mt-4 space-y-3">
                     {reports.map(report => (
