@@ -30,5 +30,5 @@ test("open-question research is bounded, consent gated and scoped to selected pr
   assert.match(source, /minLength=\{12\}/);
   assert.match(source, /!researchConsent \|\| specificQuestion\.trim\(\)\.length < 12/);
   assert.match(source, /research\(customTopic, researchFocusId, specificQuestion\)/);
-  assert.match(source, /setSpecificQuestion\("")/);
+  assert.match(source, /setSpecificQuestion\(""\)/);
 });
