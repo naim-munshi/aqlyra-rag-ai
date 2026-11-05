@@ -14,8 +14,8 @@ from app.models.embedding_record import (
     EMBEDDING_DIMENSION,
     EmbeddingRecord,
 )
-from app.retrieval.types import (
 from app.services.retrieval_exclusions import permitted_retrieval_document
+from app.retrieval.types import (
     RetrievalHit,
     RetrievalProviderError,
     RetrievalQuery,
