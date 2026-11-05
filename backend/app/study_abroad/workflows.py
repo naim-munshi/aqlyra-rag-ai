@@ -43,7 +43,7 @@ STATES = frozenset(("needs_verification", "not_started", "in_progress", "uploade
 def initial_checklist() -> dict:
     return {key: {"title": title, "state": "needs_verification", "evidence_url": None, "document_id": None} for key,title in CHECKS}
 
-def research_question(topic: str, case: object, focus: tuple[str, str] | None = None) -> str:
+def research_question(topic: str, case: object, focus: tuple[str, str] | None = None, specific_question: str | None = None) -> str:
     if topic not in TOPICS:
         raise ValueError("Unknown research topic")
     prefix = (f"Nationality: {case.nationality}. Current residence: {case.residence_country}. "
@@ -52,5 +52,23 @@ def research_question(topic: str, case: object, focus: tuple[str, str] | None = 
     focus_text = (f" Focus university: {focus[0][:120]}; program: {focus[1][:120]}. "
                   if focus else "")
     suffix = " Cite live sources, report dates when available, and state unknowns; do not guarantee eligibility."
+    # A specific question is opt-in and must be kept intact in the request.
+    # Truncate only optional public profile labels to fit the 600-char
+    # provider budget; never send private documents or university URL tokens.
+    if specific_question:
+        compact = (
+            f"Nationality: {str(case.nationality)[:32]}. "
+            f"Residence: {str(case.residence_country)[:32]}. "
+            f"Destination: {str(case.destination_country)[:32]}. "
+            f"Degree: {str(case.degree_level)[:32]}. "
+            f"Field: {str(case.study_field)[:48]}. "
+            f"Intake: {str(case.intake)[:24]}. "
+        )
+        targeted = (f" University: {focus[0][:45]}; program: {focus[1][:45]}."
+                    if focus else "")
+        question_text = f" User's focused question: {specific_question}."
+        required_length = len(question_text) + len(suffix)
+        context_budget = max(0, 600 - required_length)
+        return (compact + targeted)[:context_budget] + question_text + suffix
     # Research provider accepts at most 600 characters; never cut away the safety suffix.
     return (prefix + focus_text + TOPICS[topic])[:600 - len(suffix)] + suffix
