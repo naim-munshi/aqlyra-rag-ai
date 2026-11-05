@@ -57,7 +57,7 @@ def test_real_two_jwt_match_engine_compares_without_unsupported_equivalences(cli
     beta = _jwt(client, "studymatchbeta")
     case = _case(client, alpha)
     other_case = _case(client, beta)
-    school = _school(client, alpha)
+    school = _school(client, alpha, case)
     root = f"/api/v1/study-abroad/cases/{case}"
     fact = {
         "gpa": 3.4, "gpa_scale": 4,
@@ -118,7 +118,7 @@ def test_source_citation_must_be_owner_case_and_first_party_university(client, m
     beta = _jwt(client, "studycitbeta")
     case_a = _case(client, alpha)
     case_b = _case(client, beta)
-    u = _school(client, alpha)
+    u = _school(client, alpha, case_a)
     q = []
     def synthetic_research(question, max_sources, *, mode, include_domains=None):
         q.append(question)
@@ -185,7 +185,7 @@ def test_source_citation_must_be_owner_case_and_first_party_university(client, m
 def test_jlpt_order_never_converts_to_ielts_and_empty_program_never_scores(client):
     alpha = _jwt(client, "studymatchjlpt")
     case = _case(client, alpha)
-    school = _school(client, alpha)
+    school = _school(client, alpha, case)
     base = f"/api/v1/study-abroad/cases/{case}"
     empty = client.get(base + "/matches", headers=alpha).json()["programs"][0]
     assert empty["assessment"] == "insufficient_evidence"
