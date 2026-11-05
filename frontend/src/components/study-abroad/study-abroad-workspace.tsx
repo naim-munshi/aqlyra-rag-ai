@@ -5,9 +5,10 @@ import Link from "next/link";
 import {
   ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileCheck2,
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
-  ShieldAlert, Trash2,
+  ShieldAlert, Trash2, Sparkles, Clock3,
 } from "lucide-react";
-import type { DocumentResponse } from "@/types/document";
+import type { DocumentListResponse, DocumentResponse } from "@/types/document";
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 
 type ChecklistItem = {
@@ -67,6 +68,34 @@ type LinkedDocument = {
   status: string;
   checklist_key: string;
 };
+type StudyAdvisor = {
+  case_id: string;
+  reviewed_checklist_count: number;
+  not_applicable_count: number;
+  total_checklist_count: number;
+  linked_document_count: number;
+  shortlisted_university_count: number;
+  research_freshness: {
+    topic: string; searched_at: string; age_days: number;
+    stale: boolean; source_count: number;
+    government_domain_sources: number;
+    verification_status: string;
+  }[];
+  deadline_warnings: {
+    university_id: string; university_name: string;
+    user_entered_deadline: string; days_remaining: number;
+    urgency: "past" | "soon"; verification_status: string;
+  }[];
+  next_actions: {
+    id: string; title: string; reason: string;
+    urgency: "urgent" | "next" | "later";
+    research_topic: string | null;
+    university_id: string | null;
+  }[];
+  generated_at: string;
+  verification_status: string;
+  disclaimer: string;
+};
 type ApiFailure = { detail?: unknown };
 
 const RESEARCH_TOPICS = [
@@ -76,6 +105,9 @@ const RESEARCH_TOPICS = [
   { id: "visa", label: "Student visa / permit" },
   { id: "embassy", label: "Embassy / consulate" },
   { id: "predeparture", label: "Pre-departure rules" },
+  { id: "language", label: "Language requirements" },
+  { id: "costs", label: "Tuition & living costs" },
+  { id: "transfer", label: "Transfer / credit admissions" },
 ] as const;
 
 const STAGES = [
@@ -127,11 +159,20 @@ export function StudyAbroadWorkspace() {
   const [cases, setCases] = useState<StudyCase[]>([]);
   const [active, setActive] = useState<StudyCase | null>(null);
   const [documents, setDocuments] = useState<LinkedDocument[]>([]);
+  const [libraryDocs, setLibraryDocs] = useState<DocumentResponse[]>([]);
+  const [librarySelection, setLibrarySelection] = useState("");
   const [universities, setUniversities] = useState<StudyUniversity[]>([]);
   const [universityForm, setUniversityForm] = useState({
     name: "", program: "", program_url: "", deadline: "",
   });
   const [reports, setReports] = useState<StudyReport[]>([]);
+  const [advisor, setAdvisor] = useState<StudyAdvisor | null>(null);
+  const [advisorError, setAdvisorError] = useState(false);
+  const [advisorRevision, setAdvisorRevision] = useState(0);
+  const [researchFocusId, setResearchFocusId] = useState("");
+  const [specificQuestion, setSpecificQuestion] = useState("");
+  const [customTopic, setCustomTopic] = useState("admissions");
+  const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -165,14 +206,77 @@ export function StudyAbroadWorkspace() {
       api<LinkedDocument[]>("cases/" + id + "/documents"),
       api<StudyReport[]>("cases/" + id + "/research"),
       api<StudyUniversity[]>("cases/" + id + "/universities"),
-    ]).then(([files, research, shortlist]) => {
+      api<StudyAdvisor>("cases/" + id + "/advisor").catch(() => null),
+    ]).then(([files, research, shortlist, guidance]) => {
       if (disposed) return;
       setDocuments(files);
       setReports(research);
       setUniversities(shortlist);
+      setAdvisor(guidance);
+      setAdvisorError(guidance === null);
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
-  }, [activeId]); // Reload only when switching cases
+  }, [activeId, advisorRevision]); // Also refresh after saved case changes
+
+  async function refreshLibraryDocs() {
+    const response = await fetch("/api/documents", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unable to refresh My Documents");
+    const data = (await response.json()) as DocumentListResponse;
+    if (!Array.isArray(data.items)) throw new Error("Invalid document library response");
+    setLibraryDocs(data.items);
+  }
+
+  // Reuse existing private documents instead of forcing a new upload.
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    void fetch("/api/documents", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Unable to fetch My Documents");
+        return await response.json() as DocumentListResponse;
+      })
+      .then(data => { if (!cancelled && Array.isArray(data.items)) setLibraryDocs(data.items); })
+      .catch(() => { if (!cancelled) setLibraryDocs([]); });
+    return () => { cancelled = true; };
+  }, [activeId]);
+
+  async function attachReadyDocument(documentId: string) {
+    if (!active || !documentId) return;
+    setBusy("attach"); setError(""); setNotice("");
+    try {
+      const attached = await api<LinkedDocument>(
+        "cases/" + active.id + "/documents", "POST",
+        { document_id: documentId, checklist_key: uploadKey },
+      );
+      setDocuments(previous => [
+        ...previous.filter(file => file.document_id !== attached.document_id), attached,
+      ]);
+      replaceCase(await api<StudyCase>("cases/" + active.id));
+      setLibrarySelection("");
+      setNotice("Existing ready document linked privately; original remains in My Documents.");
+      refreshAdvisor();
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function retrySavedDocument(documentId: string) {
+    if (!documentId) return;
+    setBusy("retry-index"); setError("");
+    try {
+      const response = await fetch(
+        "/api/documents/" + encodeURIComponent(documentId) + "/retry-index",
+        { method: "POST", cache: "no-store" },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as ApiFailure | null;
+        throw new Error(typeof data?.detail === "string"
+          ? data.detail : "Indexing is unavailable. The original file remains saved.");
+      }
+      await refreshLibraryDocs();
+      setNotice("Indexing retry requested. Refresh later to check readiness.");
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
 
   function replaceCase(updated: StudyCase) {
     setCases(previous => previous.map(item => item.id === updated.id ? updated : item));
@@ -189,6 +293,7 @@ export function StudyAbroadWorkspace() {
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setCreating(false);
       setNotice("Private student journey created.");
     } catch (e) { setError(String(e)); }
@@ -200,6 +305,7 @@ export function StudyAbroadWorkspace() {
     setBusy("stage"); setError("");
     try {
       replaceCase(await api<StudyCase>("cases/" + active.id, "PATCH", { stage: value }));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -213,6 +319,7 @@ export function StudyAbroadWorkspace() {
           state, ...(evidenceUrl !== undefined ? { evidence_url: evidenceUrl } : {}),
         },
       ));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -228,6 +335,7 @@ export function StudyAbroadWorkspace() {
       setUniversities(previous => [added, ...previous]);
       setUniversityForm({ name: "", program: "", program_url: "", deadline: "" });
       setNotice("University shortlisted. Verify program details and deadlines directly.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -242,6 +350,7 @@ export function StudyAbroadWorkspace() {
       );
       setUniversities(previous => previous.map(value =>
         value.id === result.id ? result : value));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -252,19 +361,27 @@ export function StudyAbroadWorkspace() {
     try {
       await api<void>("cases/" + active.id + "/universities/" + item.id, "DELETE");
       setUniversities(previous => previous.filter(value => value.id !== item.id));
+      if (researchFocusId === item.id) setResearchFocusId("");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
 
-  async function research(topic: string) {
+  async function research(topic: string, focusUniversityId = "", question = "") {
     if (!active) return;
     setBusy("research"); setError(""); setNotice("");
     try {
       const result = await api<StudyReport>(
-        "cases/" + active.id + "/research", "POST", { topic, confirm_share_profile: researchConsent },
+        "cases/" + active.id + "/research", "POST", {
+          topic, confirm_share_profile: researchConsent,
+          ...(focusUniversityId ? { focus_university_id: focusUniversityId } : {}),
+          ...(question.trim() ? { specific_question: question.trim() } : {}),
+        },
       );
       setReports(previous => [result, ...previous]);
       setNotice("Research saved. Check each source against the official authority.");
+      if (question.trim()) setSpecificQuestion("");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -289,42 +406,74 @@ export function StudyAbroadWorkspace() {
     if (!active || !file) return;
     setBusy("upload"); setError(""); setNotice("");
     try {
-      const payload = new FormData();
-      payload.append("file", file);
-      const result = await fetch("/api/documents/upload", {
-        method: "POST", body: payload,
-      });
-      const raw = await result.json() as DocumentResponse | {
-        detail?: { document_id?: string; message?: string } | string;
-      };
-      let documentId = "";
-      if (result.ok && "id" in raw) {
-        documentId = raw.id;
-      } else if ("detail" in raw && raw.detail &&
-        typeof raw.detail === "object" && raw.detail.document_id) {
-        documentId = raw.detail.document_id;
+      const cloudEnabled = process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true";
+      // Always use the existing 50 MiB direct upload grant when configured.
+      // Legacy multipart fallback may be limited to 3 MiB by the Vercel proxy.
+      const maxBytes = cloudEnabled ? 50 * 1024 * 1024 : 3 * 1024 * 1024;
+      if (!file.size || file.size > maxBytes) {
+        throw new Error(cloudEnabled
+          ? "Choose a supported file up to 50 MiB."
+          : "Proxy uploads accept at most 3 MiB. Use My Documents for existing files.");
+      }
+      let saved: DocumentResponse;
+      if (cloudEnabled) {
+        saved = await uploadViaPrivateCloud(file);
       } else {
-        throw new Error("Upload failed. Use a supported file under 25 MiB.");
+        const body = new FormData();
+        body.append("file", file);
+        const response = await fetch("/api/documents/upload", {
+          method: "POST", body, cache: "no-store",
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as ApiFailure | null;
+          throw new Error(typeof data?.detail === "string"
+            ? data.detail : "Unable to store private document");
+        }
+        saved = await response.json() as DocumentResponse;
       }
-      const process = await fetch(
-        "/api/documents/" + encodeURIComponent(documentId) + "/process",
-        { method: "POST" },
-      );
-      // Already-processed duplicates need not run again.
-      if (!process.ok && process.status !== 409) {
-        const detail = await process.json().catch(() => null) as ApiFailure | null;
-        throw new Error(typeof detail?.detail === "string"
-          ? detail.detail : "Document extraction failed.");
+      if (!saved.id) throw new Error("Invalid document upload response");
+      // A signed cloud upload may be queued/processing. Never claim it was
+      // indexed or attach it before the backend marks the file ready.
+      if (!cloudEnabled && saved.status === "uploaded" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED !== "true") {
+        const response = await fetch(
+          "/api/documents/" + encodeURIComponent(saved.id) + "/process",
+          { method: "POST", cache: "no-store" },
+        );
+        if (response.ok) saved = await response.json() as DocumentResponse;
+        // A 409/503 means bytes are stored, but indexing is not yet available.
+        // Preserve the original and offer a later retry through My Documents.
       }
-      const attached = await api<LinkedDocument>(
-        "cases/" + active.id + "/documents", "POST",
-        { document_id: documentId, checklist_key: uploadKey },
-      );
-      setDocuments(previous => [
-        ...previous.filter(d => d.document_id !== attached.document_id), attached,
-      ]);
-      replaceCase(await api<StudyCase>("cases/" + active.id));
-      setNotice("Document processed and linked privately. Review its contents before submission.");
+      try {
+        await refreshLibraryDocs();
+      } catch {
+        // Storage may have succeeded even when the library refresh is offline.
+        setLibraryDocs(previous => [saved, ...previous.filter(doc => doc.id !== saved.id)]);
+      }
+      if (saved.status === "ready") {
+        try {
+          const attached = await api<LinkedDocument>(
+            "cases/" + active.id + "/documents", "POST",
+            { document_id: saved.id, checklist_key: uploadKey },
+          );
+          setDocuments(previous => [
+            ...previous.filter(d => d.document_id !== attached.document_id), attached,
+          ]);
+          replaceCase(await api<StudyCase>("cases/" + active.id));
+          setNotice("Processed document linked privately to your journey.");
+          refreshAdvisor();
+        } catch {
+          // A case-link failure must not be reported as an upload failure.
+          setLibrarySelection(saved.id);
+          setNotice("File is safely stored and ready, but was not linked. Select it from My Documents to retry.");
+        }
+      } else {
+        setLibrarySelection(saved.id);
+        setNotice(
+          "File saved securely in My Documents, but indexing is not complete (" +
+          saved.status + "). Refresh its status below and attach it once ready.",
+        );
+      }
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -337,6 +486,7 @@ export function StudyAbroadWorkspace() {
       setDocuments(previous => previous.filter(d => d.document_id !== documentId));
       replaceCase(await api<StudyCase>("cases/" + active.id));
       setNotice("Link removed. Original document is still in My Documents.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -350,6 +500,7 @@ export function StudyAbroadWorkspace() {
       setCases(remaining);
       setActive(remaining[0] ?? null);
       setDocuments([]); setReports([]); setUniversities([]);
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -402,6 +553,7 @@ export function StudyAbroadWorkspace() {
                 <button key={item.id} type="button" disabled={busy !== ""} onClick={() => {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
+                    setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
@@ -456,6 +608,91 @@ export function StudyAbroadWorkspace() {
             {notice && <p role="status" className="rounded-lg border border-[var(--aq-border)] p-3 text-xs text-[var(--aq-muted)]">{notice}</p>}
             {active && (
               <>
+                <section className={cardStyle} aria-label="Personalized Study Advisor">
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    <Sparkles size={18} className="text-[var(--aq-blue)]"/> Smart Study Advisor
+                  </h2>
+                  <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    Your private planning assistant prioritizes steps using this journey&apos;s saved checklist,
+                    research freshness and university deadlines. It does not predict acceptance or visa approval.
+                  </p>
+                  {advisor ? (
+                    <>
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {([
+                          ["Self-reviewed", advisor.reviewed_checklist_count + "/" + advisor.total_checklist_count],
+                          ["Shortlisted", String(advisor.shortlisted_university_count)],
+                          ["Linked files", String(advisor.linked_document_count)],
+                        ] as const).map(([label, value]) => (
+                          <div key={label} className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3">
+                            <span className="block text-[11px] text-[var(--aq-muted)]">{label}</span>
+                            <strong className="mt-1 block text-lg">{value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      {advisor.deadline_warnings.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {advisor.deadline_warnings.map(warning => (
+                            <div key={warning.university_id}
+                              className="flex items-start gap-2 rounded-lg border border-amber-500/30 p-3 text-xs leading-5">
+                              <Clock3 size={16} className="mt-0.5 shrink-0 text-amber-400"/>
+                              <span>
+                                <strong>{warning.university_name}</strong>: {warning.user_entered_deadline}
+                                {" · "}{warning.days_remaining < 0 ? "Possibly past" : warning.days_remaining + " days away"}
+                                <span className="block text-[var(--aq-muted)]">
+                                  User-entered date — check current official admissions deadlines before acting.
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <h3 className="mt-5 text-sm font-semibold">Recommended next steps</h3>
+                      <ol className="mt-2 space-y-2">
+                        {advisor.next_actions.map((action, index) => (
+                          <li key={action.id} className="rounded-xl border border-[var(--aq-border)] p-3">
+                            <div className="flex items-center gap-2 text-xs">
+                              <strong>{index + 1}. {action.title}</strong>
+                              {action.urgency === "urgent" && <span className="text-amber-400">Time-sensitive</span>}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">{action.reason}</p>
+                            {action.research_topic && (
+                              <button type="button"
+                                disabled={busy !== "" || !researchConsent}
+                                onClick={() => { if (action.research_topic) void research(
+                                  action.research_topic, action.university_id ?? researchFocusId,
+                                ); }}
+                                title={!researchConsent ? "Enable research consent below first" : undefined}
+                                className="mt-2 rounded-lg border border-[var(--aq-blue)]/50 px-3 py-2 text-[11px] text-[var(--aq-blue)] disabled:opacity-40">
+                                Research with cited sources
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                      {advisor.research_freshness.length > 0 && (
+                        <div className="mt-4 text-[11px] text-[var(--aq-muted)]">
+                          <strong className="block text-xs text-[var(--aq-text)]">Saved research freshness</strong>
+                          {advisor.research_freshness.map(report => (
+                            <p className="mt-1" key={report.topic}>
+                              {RESEARCH_TOPICS.find(t => t.id === report.topic)?.label ?? report.topic}
+                              {" · "}{report.age_days} days old
+                              {report.stale ? " · Recheck required" : " · Recent snapshot"}
+                              {" · "}Still needs official verification
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-3 text-[11px] leading-5 text-[var(--aq-muted)]">
+                        {advisor.disclaimer}
+                      </p>
+                    </>
+                  ) : <div role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
+                    {advisorError ? "Advisor temporarily unavailable. Your saved study data is still accessible." : "Loading private guidance…"}
+                    {advisorError && <button type="button" className="ml-2 underline"
+                      onClick={refreshAdvisor}>Retry guidance</button>}
+                  </div>}
+                </section>
                 <section className={cardStyle}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -548,19 +785,61 @@ export function StudyAbroadWorkspace() {
                       className="mt-1"/>
                     I consent to share this plan&apos;s nationality, residence country, target country, degree,
                     study subject and intake with the configured external web research/AI providers.
-                    No uploaded document content is sent.
+                    No uploaded document content is sent. If a focused program is selected,
+                    its university and program names are also shared; private notes and files are not.
+                  </label>
+                  <label className="mt-4 block text-xs text-[var(--aq-muted)]">
+                    Focus research on one shortlisted program (optional)
+                    <select value={researchFocusId} onChange={event => setResearchFocusId(event.target.value)}
+                      className={fieldStyle + " mt-1"}>
+                      <option value="">General research for this study plan</option>
+                      {universities.map(item => <option key={item.id} value={item.id}>
+                        {item.name} · {item.program}
+                      </option>)}
+                    </select>
                   </label>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     {RESEARCH_TOPICS.map(topic => (
                       <button type="button" key={topic.id} disabled={busy !== "" || !researchConsent}
-                        onClick={() => { void research(topic.id); }}
+                        onClick={() => { void research(topic.id, researchFocusId); }}
                         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-left text-xs transition hover:bg-[var(--aq-card)] disabled:opacity-50">
                         {busy === "research" ? <LoaderCircle size={16} className="animate-spin"/> : <Globe2 size={16} className="text-[var(--aq-blue)]"/>}
                         {topic.label}
                       </button>
                     ))}
                   </div>
-                  {reports.length === 0 && <p className="mt-3 text-xs text-[var(--aq-muted)]">No research yet. Select one of the six topics.</p>}
+
+                  <form className="mt-5 space-y-3 rounded-xl border border-[var(--aq-border)] p-3"
+                    onSubmit={event => { event.preventDefault(); void research(customTopic, researchFocusId, specificQuestion); }}>
+                    <h3 className="text-sm font-semibold">Ask a specific study question</h3>
+                    <p className="text-[11px] leading-5 text-[var(--aq-muted)]">
+                      Ask about academic credit transfer, admission eligibility, fees or funding.
+                      Source-based research requires your consent above. Do not enter passport
+                      numbers, bank accounts, personal email addresses or private URLs.
+                    </p>
+                    <label className="block text-xs text-[var(--aq-muted)]">
+                      Research category
+                      <select value={customTopic} onChange={event => setCustomTopic(event.target.value)}
+                        className={fieldStyle + " mt-1"}>
+                        {RESEARCH_TOPICS.map(topic => <option key={topic.id} value={topic.id}>
+                          {topic.label}
+                        </option>)}
+                      </select>
+                    </label>
+                    <label className="block text-xs text-[var(--aq-muted)]">
+                      My question
+                      <textarea required minLength={12} maxLength={160} rows={3}
+                        value={specificQuestion}
+                        onChange={event => setSpecificQuestion(event.target.value)}
+                        placeholder="Can I transfer credits from a Japanese university into year three?"
+                        className={fieldStyle + " mt-1 resize-y"}/>
+                    </label>
+                    <button type="submit" disabled={busy !== "" || !researchConsent || specificQuestion.trim().length < 12}
+                      className="rounded-lg bg-[var(--aq-blue)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
+                      {busy === "research" ? "Researching sources…" : "Research my question"}
+                    </button>
+                  </form>
+                  {reports.length === 0 && <p className="mt-3 text-xs text-[var(--aq-muted)]">No research yet. Select a topic above to retrieve cited live evidence.</p>}
                   <div className="mt-4 space-y-3">
                     {reports.map(report => (
                       <details key={report.id} className="rounded-xl border border-[var(--aq-border)] p-3">
@@ -705,7 +984,7 @@ export function StudyAbroadWorkspace() {
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileUp size={18}/> Process private documents</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     PDF, DOCX, XLSX, PPTX, TXT, CSV and images supported by Aqlyra.
-                    Upload → extract/OCR → link to your checklist. Files stay in your existing authenticated document storage.
+                    Secure cloud upload (up to 50 MiB when enabled) → indexing → private linking. Files stay in your existing authenticated document storage.
                     This does not check authenticity or guarantee embassy acceptance.
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -725,7 +1004,48 @@ export function StudyAbroadWorkspace() {
                         className={fieldStyle + " mt-1 file:mr-3 file:rounded-md file:border-0 file:bg-[var(--aq-blue-soft)] file:px-2 file:py-1 file:text-[var(--aq-blue)]"}/>
                     </label>
                   </div>
-                  {busy === "upload" && <p className="mt-2 text-xs text-[var(--aq-muted)]"><LoaderCircle size={14} className="mr-1 inline animate-spin"/> Processing file…</p>}
+                  {busy === "upload" && <p className="mt-2 text-xs text-[var(--aq-muted)]"><LoaderCircle size={14} className="mr-1 inline animate-spin"/> Saving and checking indexing…</p>}
+                  <div className="mt-4 rounded-xl border border-[var(--aq-border)] p-3">
+                    <h3 className="text-xs font-semibold">Attach from My Documents (no re-upload)</h3>
+                    <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">
+                      Only files marked ready can be attached. Queued or uploaded files must finish indexing first.
+                      The original file remains in My Documents if you unlink it from this journey.
+                    </p>
+                    <label className="mt-3 block text-xs text-[var(--aq-muted)]">
+                      Existing private file
+                      <select value={librarySelection} onChange={event => setLibrarySelection(event.target.value)}
+                        className={fieldStyle + " mt-1"}>
+                        <option value="">Choose a saved document</option>
+                        {libraryDocs.map(doc => (
+                          <option value={doc.id} key={doc.id}>
+                            {doc.original_filename} ({doc.status})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" disabled={busy !== "" ||
+                          libraryDocs.find(doc => doc.id === librarySelection)?.status !== "ready"}
+                        onClick={() => { void attachReadyDocument(librarySelection); }}
+                        className="rounded-lg bg-[var(--aq-blue)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                        Attach ready file
+                      </button>
+                      <button type="button" disabled={busy !== ""}
+                        onClick={() => { void refreshLibraryDocs().catch(e => setError(String(e))); }}
+                        className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs">
+                        Refresh document status
+                      </button>
+                      {(libraryDocs.find(doc => doc.id === librarySelection)?.status === "uploaded" ||
+                        libraryDocs.find(doc => doc.id === librarySelection)?.status === "failed") && (
+                        <button type="button" disabled={busy !== ""}
+                          onClick={() => { void retrySavedDocument(librarySelection); }}
+                          className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-xs">
+                          Retry indexing
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-3 space-y-2">
                     {documents.map(file => (
                       <div key={file.document_id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--aq-border)] p-2">
