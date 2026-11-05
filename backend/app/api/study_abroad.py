@@ -285,7 +285,8 @@ def research_study_topic(case_id: str, body: StudyResearchCreate,
         # Only the public university/program label is sent to search;
         # never send university notes, private attachments or URL query secrets.
         focus = (selected.name, selected.program)
-    question = research_question(body.topic, case, focus=focus)
+    question = research_question(body.topic, case, focus=focus,
+                                 specific_question=body.specific_question)
     try:
         # Government guidance must come from a curated authority domain,
         # not from blogs or an LLM-selected "official-looking" site.

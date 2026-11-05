@@ -1,5 +1,6 @@
 """Strict student profile inputs; no sensitive identity numbers."""
 from datetime import datetime
+import re
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -77,6 +78,27 @@ class StudyResearchCreate(BaseModel):
     topic: Literal["universities","admissions","scholarships","visa","embassy","predeparture","language","costs","transfer"]
     confirm_share_profile: bool = False
     focus_university_id: str | None = Field(default=None, min_length=1, max_length=64)
+    specific_question: str | None = Field(default=None, min_length=12, max_length=160)
+
+    @field_validator("specific_question")
+    @classmethod
+    def validate_specific_question(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.split())
+        if len(cleaned) < 12:
+            raise ValueError("Specific question is too short")
+        # Do not send links, email addresses or long identity/account
+        # numbers to public external research on the applicant's behalf.
+        if (re.search(r"https?://|www\.", cleaned, re.I)
+                or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", cleaned)
+                or re.search(r"(?<!\d)\d{9,}(?!\d)", cleaned)
+                or any(ord(ch) < 32 for ch in cleaned)):
+            raise ValueError(
+                "Do not put links, email addresses or identity/account numbers "
+                "in public study research questions"
+            )
+        return cleaned
 
 class StudyResearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
