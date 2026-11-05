@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.retrieval import RetrievalQuery
+from app.services.retrieval_exclusions import permitted_retrieval_document
 
 
 _TEXT_SEARCH_CONFIG = literal_column(
@@ -185,6 +186,7 @@ def _fallback_unicode_chunks(db: Session, query: RetrievalQuery) -> list[Lexical
         .where(
             Document.user_id == query.user_id,
             Document.status == "ready",
+            permitted_retrieval_document(),
             or_(*conditions),
         )
     )
@@ -271,6 +273,7 @@ def search_lexical_chunks(
             == query.user_id,
             Document.status
             == "ready",
+            permitted_retrieval_document(),
             search_vector.op("@@")(
                 lexical_query
             ),
