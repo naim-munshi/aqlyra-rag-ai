@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { ExternalLink, RefreshCw, Scale, ShieldCheck } from "lucide-react";
+import { StudyApplicationPacket } from "@/components/study-abroad/application-packet";
 
 type Language = { test: "IELTS" | "TOEFL_iBT" | "Duolingo" | "JLPT"; score?: number; level?: string };
 type Applicant = {
@@ -503,6 +504,7 @@ export function StudyFitWorkbench({
       </p>}
     </div>
 
+    <StudyApplicationPacket caseId={caseId} universityId={selected} />
     {candidates.length > 0 && <div className="mt-4 rounded-xl border border-[var(--aq-border)] p-3">
       <h3 className="text-sm font-semibold">4. Real researched links to review</h3>
       <p className="mt-1 text-[11px] text-[var(--aq-muted)]">

@@ -48,3 +48,14 @@ test("academic document audit calls actual linked-file RAG only with permission"
   assert.match(wrapper, /Mark anything unmentioned as unknown/);
   assert.match(wrapper, /Analyze my transcripts & identify missing evidence/);
 });
+
+test("application agent is an actual protected backend packet, never auto submit", () => {
+  const source = readFileSync(
+    new URL("../src/components/study-abroad/application-packet.tsx", import.meta.url), "utf8",
+  );
+  assert.match(workbench, /<StudyApplicationPacket caseId=\{caseId\}/);
+  assert.match(source, /"\/application-preview"/);
+  assert.match(source, /submission_status !== "not_submitted"/);
+  assert.match(source, /NOT SUBMITTED/);
+  assert.match(source, /Copy review packet/);
+});
