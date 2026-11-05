@@ -164,6 +164,7 @@ export function StudyAbroadWorkspace() {
   });
   const [reports, setReports] = useState<StudyReport[]>([]);
   const [advisor, setAdvisor] = useState<StudyAdvisor | null>(null);
+  const [advisorError, setAdvisorError] = useState(false);
   const [advisorRevision, setAdvisorRevision] = useState(0);
   const [researchFocusId, setResearchFocusId] = useState("");
   const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
@@ -200,13 +201,14 @@ export function StudyAbroadWorkspace() {
       api<LinkedDocument[]>("cases/" + id + "/documents"),
       api<StudyReport[]>("cases/" + id + "/research"),
       api<StudyUniversity[]>("cases/" + id + "/universities"),
-      api<StudyAdvisor>("cases/" + id + "/advisor"),
+      api<StudyAdvisor>("cases/" + id + "/advisor").catch(() => null),
     ]).then(([files, research, shortlist, guidance]) => {
       if (disposed) return;
       setDocuments(files);
       setReports(research);
       setUniversities(shortlist);
       setAdvisor(guidance);
+      setAdvisorError(guidance === null);
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
   }, [activeId, advisorRevision]); // Also refresh after saved case changes
@@ -226,7 +228,7 @@ export function StudyAbroadWorkspace() {
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
-      setAdvisor(null); setResearchFocusId("");
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
       setCreating(false);
       setNotice("Private student journey created.");
     } catch (e) { setError(String(e)); }
@@ -400,7 +402,7 @@ export function StudyAbroadWorkspace() {
       setCases(remaining);
       setActive(remaining[0] ?? null);
       setDocuments([]); setReports([]); setUniversities([]);
-      setAdvisor(null); setResearchFocusId("");
+      setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -453,7 +455,7 @@ export function StudyAbroadWorkspace() {
                 <button key={item.id} type="button" disabled={busy !== ""} onClick={() => {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
-                    setAdvisor(null); setResearchFocusId("");
+                    setAdvisor(null); setAdvisorError(false); setResearchFocusId("");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
@@ -587,9 +589,11 @@ export function StudyAbroadWorkspace() {
                         {advisor.disclaimer}
                       </p>
                     </>
-                  ) : <p role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
-                    Loading private guidance…
-                  </p>}
+                  ) : <div role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
+                    {advisorError ? "Advisor temporarily unavailable. Your saved study data is still accessible." : "Loading private guidance…"}
+                    {advisorError && <button type="button" className="ml-2 underline"
+                      onClick={refreshAdvisor}>Retry guidance</button>}
+                  </div>}
                 </section>
                 <section className={cardStyle}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
