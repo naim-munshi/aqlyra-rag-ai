@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileCheck2,
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
-  ShieldAlert, Trash2,
+  ShieldAlert, Trash2, Sparkles, Clock3,
 } from "lucide-react";
 import type { DocumentResponse } from "@/types/document";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
@@ -67,6 +67,34 @@ type LinkedDocument = {
   status: string;
   checklist_key: string;
 };
+type StudyAdvisor = {
+  case_id: string;
+  reviewed_checklist_count: number;
+  not_applicable_count: number;
+  total_checklist_count: number;
+  linked_document_count: number;
+  shortlisted_university_count: number;
+  research_freshness: {
+    topic: string; searched_at: string; age_days: number;
+    stale: boolean; source_count: number;
+    government_domain_sources: number;
+    verification_status: string;
+  }[];
+  deadline_warnings: {
+    university_id: string; university_name: string;
+    user_entered_deadline: string; days_remaining: number;
+    urgency: "past" | "soon"; verification_status: string;
+  }[];
+  next_actions: {
+    id: string; title: string; reason: string;
+    urgency: "urgent" | "next" | "later";
+    research_topic: string | null;
+    university_id: string | null;
+  }[];
+  generated_at: string;
+  verification_status: string;
+  disclaimer: string;
+};
 type ApiFailure = { detail?: unknown };
 
 const RESEARCH_TOPICS = [
@@ -76,6 +104,9 @@ const RESEARCH_TOPICS = [
   { id: "visa", label: "Student visa / permit" },
   { id: "embassy", label: "Embassy / consulate" },
   { id: "predeparture", label: "Pre-departure rules" },
+  { id: "language", label: "Language requirements" },
+  { id: "costs", label: "Tuition & living costs" },
+  { id: "transfer", label: "Transfer / credit admissions" },
 ] as const;
 
 const STAGES = [
@@ -132,6 +163,10 @@ export function StudyAbroadWorkspace() {
     name: "", program: "", program_url: "", deadline: "",
   });
   const [reports, setReports] = useState<StudyReport[]>([]);
+  const [advisor, setAdvisor] = useState<StudyAdvisor | null>(null);
+  const [advisorRevision, setAdvisorRevision] = useState(0);
+  const [researchFocusId, setResearchFocusId] = useState("");
+  const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -165,14 +200,16 @@ export function StudyAbroadWorkspace() {
       api<LinkedDocument[]>("cases/" + id + "/documents"),
       api<StudyReport[]>("cases/" + id + "/research"),
       api<StudyUniversity[]>("cases/" + id + "/universities"),
-    ]).then(([files, research, shortlist]) => {
+      api<StudyAdvisor>("cases/" + id + "/advisor"),
+    ]).then(([files, research, shortlist, guidance]) => {
       if (disposed) return;
       setDocuments(files);
       setReports(research);
       setUniversities(shortlist);
+      setAdvisor(guidance);
     }).catch(e => { if (!disposed) setError(String(e)); });
     return () => { disposed = true; };
-  }, [activeId]); // Reload only when switching cases
+  }, [activeId, advisorRevision]); // Also refresh after saved case changes
 
   function replaceCase(updated: StudyCase) {
     setCases(previous => previous.map(item => item.id === updated.id ? updated : item));
@@ -189,6 +226,7 @@ export function StudyAbroadWorkspace() {
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
+      setAdvisor(null); setResearchFocusId("");
       setCreating(false);
       setNotice("Private student journey created.");
     } catch (e) { setError(String(e)); }
@@ -200,6 +238,7 @@ export function StudyAbroadWorkspace() {
     setBusy("stage"); setError("");
     try {
       replaceCase(await api<StudyCase>("cases/" + active.id, "PATCH", { stage: value }));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -213,6 +252,7 @@ export function StudyAbroadWorkspace() {
           state, ...(evidenceUrl !== undefined ? { evidence_url: evidenceUrl } : {}),
         },
       ));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -228,6 +268,7 @@ export function StudyAbroadWorkspace() {
       setUniversities(previous => [added, ...previous]);
       setUniversityForm({ name: "", program: "", program_url: "", deadline: "" });
       setNotice("University shortlisted. Verify program details and deadlines directly.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -242,6 +283,7 @@ export function StudyAbroadWorkspace() {
       );
       setUniversities(previous => previous.map(value =>
         value.id === result.id ? result : value));
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -252,19 +294,25 @@ export function StudyAbroadWorkspace() {
     try {
       await api<void>("cases/" + active.id + "/universities/" + item.id, "DELETE");
       setUniversities(previous => previous.filter(value => value.id !== item.id));
+      if (researchFocusId === item.id) setResearchFocusId("");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
 
-  async function research(topic: string) {
+  async function research(topic: string, focusUniversityId = "") {
     if (!active) return;
     setBusy("research"); setError(""); setNotice("");
     try {
       const result = await api<StudyReport>(
-        "cases/" + active.id + "/research", "POST", { topic, confirm_share_profile: researchConsent },
+        "cases/" + active.id + "/research", "POST", {
+          topic, confirm_share_profile: researchConsent,
+          ...(focusUniversityId ? { focus_university_id: focusUniversityId } : {}),
+        },
       );
       setReports(previous => [result, ...previous]);
       setNotice("Research saved. Check each source against the official authority.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -325,6 +373,7 @@ export function StudyAbroadWorkspace() {
       ]);
       replaceCase(await api<StudyCase>("cases/" + active.id));
       setNotice("Document processed and linked privately. Review its contents before submission.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -337,6 +386,7 @@ export function StudyAbroadWorkspace() {
       setDocuments(previous => previous.filter(d => d.document_id !== documentId));
       replaceCase(await api<StudyCase>("cases/" + active.id));
       setNotice("Link removed. Original document is still in My Documents.");
+      refreshAdvisor();
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -350,6 +400,7 @@ export function StudyAbroadWorkspace() {
       setCases(remaining);
       setActive(remaining[0] ?? null);
       setDocuments([]); setReports([]); setUniversities([]);
+      setAdvisor(null); setResearchFocusId("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
@@ -402,6 +453,7 @@ export function StudyAbroadWorkspace() {
                 <button key={item.id} type="button" disabled={busy !== ""} onClick={() => {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
+                    setAdvisor(null); setResearchFocusId("");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
@@ -456,6 +508,89 @@ export function StudyAbroadWorkspace() {
             {notice && <p role="status" className="rounded-lg border border-[var(--aq-border)] p-3 text-xs text-[var(--aq-muted)]">{notice}</p>}
             {active && (
               <>
+                <section className={cardStyle} aria-label="Personalized Study Advisor">
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    <Sparkles size={18} className="text-[var(--aq-blue)]"/> Smart Study Advisor
+                  </h2>
+                  <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    Your private planning assistant prioritizes steps using this journey&apos;s saved checklist,
+                    research freshness and university deadlines. It does not predict acceptance or visa approval.
+                  </p>
+                  {advisor ? (
+                    <>
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {([
+                          ["Self-reviewed", advisor.reviewed_checklist_count + "/" + advisor.total_checklist_count],
+                          ["Shortlisted", String(advisor.shortlisted_university_count)],
+                          ["Linked files", String(advisor.linked_document_count)],
+                        ] as const).map(([label, value]) => (
+                          <div key={label} className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3">
+                            <span className="block text-[11px] text-[var(--aq-muted)]">{label}</span>
+                            <strong className="mt-1 block text-lg">{value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      {advisor.deadline_warnings.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {advisor.deadline_warnings.map(warning => (
+                            <div key={warning.university_id}
+                              className="flex items-start gap-2 rounded-lg border border-amber-500/30 p-3 text-xs leading-5">
+                              <Clock3 size={16} className="mt-0.5 shrink-0 text-amber-400"/>
+                              <span>
+                                <strong>{warning.university_name}</strong>: {warning.user_entered_deadline}
+                                {" · "}{warning.days_remaining < 0 ? "Possibly past" : warning.days_remaining + " days away"}
+                                <span className="block text-[var(--aq-muted)]">
+                                  User-entered date — check current official admissions deadlines before acting.
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <h3 className="mt-5 text-sm font-semibold">Recommended next steps</h3>
+                      <ol className="mt-2 space-y-2">
+                        {advisor.next_actions.map((action, index) => (
+                          <li key={action.id} className="rounded-xl border border-[var(--aq-border)] p-3">
+                            <div className="flex items-center gap-2 text-xs">
+                              <strong>{index + 1}. {action.title}</strong>
+                              {action.urgency === "urgent" && <span className="text-amber-400">Time-sensitive</span>}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-5 text-[var(--aq-muted)]">{action.reason}</p>
+                            {action.research_topic && (
+                              <button type="button"
+                                disabled={busy !== "" || !researchConsent}
+                                onClick={() => { if (action.research_topic) void research(
+                                  action.research_topic, action.university_id ?? researchFocusId,
+                                ); }}
+                                title={!researchConsent ? "Enable research consent below first" : undefined}
+                                className="mt-2 rounded-lg border border-[var(--aq-blue)]/50 px-3 py-2 text-[11px] text-[var(--aq-blue)] disabled:opacity-40">
+                                Research with cited sources
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                      {advisor.research_freshness.length > 0 && (
+                        <div className="mt-4 text-[11px] text-[var(--aq-muted)]">
+                          <strong className="block text-xs text-[var(--aq-text)]">Saved research freshness</strong>
+                          {advisor.research_freshness.map(report => (
+                            <p className="mt-1" key={report.topic}>
+                              {RESEARCH_TOPICS.find(t => t.id === report.topic)?.label ?? report.topic}
+                              {" · "}{report.age_days} days old
+                              {report.stale ? " · Recheck required" : " · Recent snapshot"}
+                              {" · "}Still needs official verification
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-3 text-[11px] leading-5 text-[var(--aq-muted)]">
+                        {advisor.disclaimer}
+                      </p>
+                    </>
+                  ) : <p role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
+                    Loading private guidance…
+                  </p>}
+                </section>
                 <section className={cardStyle}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -548,19 +683,30 @@ export function StudyAbroadWorkspace() {
                       className="mt-1"/>
                     I consent to share this plan&apos;s nationality, residence country, target country, degree,
                     study subject and intake with the configured external web research/AI providers.
-                    No uploaded document content is sent.
+                    No uploaded document content is sent. If a focused program is selected,
+                    its university and program names are also shared; private notes and files are not.
+                  </label>
+                  <label className="mt-4 block text-xs text-[var(--aq-muted)]">
+                    Focus research on one shortlisted program (optional)
+                    <select value={researchFocusId} onChange={event => setResearchFocusId(event.target.value)}
+                      className={fieldStyle + " mt-1"}>
+                      <option value="">General research for this study plan</option>
+                      {universities.map(item => <option key={item.id} value={item.id}>
+                        {item.name} · {item.program}
+                      </option>)}
+                    </select>
                   </label>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     {RESEARCH_TOPICS.map(topic => (
                       <button type="button" key={topic.id} disabled={busy !== "" || !researchConsent}
-                        onClick={() => { void research(topic.id); }}
+                        onClick={() => { void research(topic.id, researchFocusId); }}
                         className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[var(--aq-border)] px-3 py-2 text-left text-xs transition hover:bg-[var(--aq-card)] disabled:opacity-50">
                         {busy === "research" ? <LoaderCircle size={16} className="animate-spin"/> : <Globe2 size={16} className="text-[var(--aq-blue)]"/>}
                         {topic.label}
                       </button>
                     ))}
                   </div>
-                  {reports.length === 0 && <p className="mt-3 text-xs text-[var(--aq-muted)]">No research yet. Select one of the six topics.</p>}
+                  {reports.length === 0 && <p className="mt-3 text-xs text-[var(--aq-muted)]">No research yet. Select a topic above to retrieve cited live evidence.</p>}
                   <div className="mt-4 space-y-3">
                     {reports.map(report => (
                       <details key={report.id} className="rounded-xl border border-[var(--aq-border)] p-3">
