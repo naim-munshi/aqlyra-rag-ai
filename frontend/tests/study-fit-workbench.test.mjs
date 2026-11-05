@@ -40,3 +40,11 @@ test("untrusted excerpts only prefill drafts with a user click, not silent backe
   assert.match(workbench, /Confirm the full university page/);
   assert.match(workbench, /Save criteria to persist/);
 });
+
+test("academic document audit calls actual linked-file RAG only with permission", () => {
+  assert.match(wrapper, /async function analyzeLinkedAcademicRecords\(\)/);
+  assert.match(wrapper, /"\/ask-documents", "POST"/);
+  assert.match(wrapper, /confirm_share_documents: documentConsent/);
+  assert.match(wrapper, /Mark anything unmentioned as unknown/);
+  assert.match(wrapper, /Analyze my transcripts & identify missing evidence/);
+});
