@@ -15,6 +15,7 @@ from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.embedding_record import EmbeddingRecord
 from app.services.embedding_reindex_service import reindex_document_embeddings
+from app.services.retrieval_exclusions import permitted_retrieval_document
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def backfill_ready_semantic_embeddings(
         )
         .where(
             Document.status == "ready",
+            permitted_retrieval_document(),
             Document.storage_path.like("cloud://%"),
             CloudUploadIntent.status == "completed",
             Document.file_extension.in_(
