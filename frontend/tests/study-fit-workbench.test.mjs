@@ -31,3 +31,12 @@ test("UI requires deliberate submission of profile and criteria, never predicts 
   assert.match(workbench, /not an acceptance score or an eligibility decision/);
   assert.match(workbench, /Source attachment is not official verification/);
 });
+
+test("untrusted excerpts only prefill drafts with a user click, not silent backend writes", () => {
+  assert.match(workbench, /requirement-suggestions/);
+  assert.match(workbench, /loadEvidenceDrafts/);
+  assert.match(workbench, /reviewSuggestion\(draft\)/);
+  assert.match(workbench, /Open original evidence/);
+  assert.match(workbench, /Confirm the full university page/);
+  assert.match(workbench, /Save criteria to persist/);
+});

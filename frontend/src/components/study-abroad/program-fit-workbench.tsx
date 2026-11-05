@@ -31,6 +31,10 @@ type Comparison = {
   provenance: string; evidence_url: string | null; source_stale: boolean;
   criteria: { criterion: string; status: "reported_match" | "reported_gap" | "unknown"; detail: string }[];
 };
+type ExtractedDraft = {
+  report_id: string; citation: string; source_url: string; stale: boolean;
+  suggested_facts: Partial<Requirements>; status: string; note: string;
+};
 type ComparisonResponse = {
   profile: Applicant; programs: Comparison[]; disclaimer: string;
 };
@@ -78,6 +82,7 @@ export function StudyFitWorkbench({
   const [schools, setSchools] = useState<StudySchool[]>([]);
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [suggestions, setSuggestions] = useState<ExtractedDraft[]>([]);
   const [selected, setSelected] = useState("");
   const [profile, setProfile] = useState({
     gpa: "", gpa_scale: "4", annual_budget: "", currency: "JPY",
@@ -129,6 +134,7 @@ export function StudyFitWorkbench({
   }, [caseId, revision, target]);
 
   useEffect(() => {
+    setSuggestions([]);
     const item = schools.find(s => s.id === selected);
     const req = item?.requirements ?? {};
     setRequirement({
@@ -182,6 +188,37 @@ export function StudyFitWorkbench({
       setNotice("Applicant facts saved. Program comparisons recalculated from your data.");
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
+  }
+
+  async function loadEvidenceDrafts() {
+    if (!selected) return;
+    setBusy(true); setError("");
+    try {
+      const data = await api<ExtractedDraft[]>(
+        target + "/universities/" + encodeURIComponent(selected) + "/requirement-suggestions",
+      );
+      setSuggestions(data);
+      setNotice(data.length === 0
+        ? "No explicit GPA, language or tuition thresholds detected in saved first-party excerpts. Research the program and enter only facts you can confirm."
+        : "Source-based draft values found. Open the official pages and review before using any criterion.");
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(false); }
+  }
+
+  function reviewSuggestion(draft: ExtractedDraft) {
+    const fact = draft.suggested_facts;
+    setRequirement(prev => ({
+      ...prev,
+      minimum_gpa: fact.minimum_gpa?.toString() ?? prev.minimum_gpa,
+      gpa_scale: fact.gpa_scale?.toString() ?? prev.gpa_scale,
+      annual_tuition: fact.annual_tuition?.toString() ?? prev.annual_tuition,
+      currency: fact.currency ?? prev.currency,
+      test: fact.minimum_language?.test ?? prev.test,
+      score: fact.minimum_language?.score?.toString() ?? prev.score,
+      level: fact.minimum_language?.level ?? prev.level,
+      source: draft.report_id + "|" + draft.citation,
+    }));
+    setNotice("Draft values placed in the editable form. Confirm the full university page and click Save criteria to persist.");
   }
 
   async function saveRequirements(event: FormEvent<HTMLFormElement>) {
@@ -389,6 +426,35 @@ export function StudyFitWorkbench({
       <button type="submit" className={buttonClass + " mt-3"} disabled={busy || !selected}>
         Save criteria & run gap analysis
       </button>
+      <button type="button" className={buttonClass + " mt-3 ml-2"} disabled={!selected || busy}
+        onClick={() => { void loadEvidenceDrafts(); }}>
+        Extract draft thresholds from saved sources
+      </button>
+      {suggestions.length > 0 && <div className="mt-3 space-y-2" role="region"
+        aria-label="Suggested criteria from first party sources">
+        {suggestions.map(draft => (
+          <div key={draft.report_id + draft.citation}
+            className="rounded-lg border border-[var(--aq-border)] p-3 text-xs">
+            <p className="font-semibold">{draft.citation} · Unverified excerpt proposal
+              {draft.stale && <span className="ml-2 text-amber-400">Old source</span>}
+            </p>
+            <p className="mt-1 break-words text-[var(--aq-muted)]">
+              {Object.entries(draft.suggested_facts).map(([key, value]) =>
+                key + ": " + (typeof value === "object" ? JSON.stringify(value) : String(value))
+              ).join(" · ")}
+            </p>
+            <p className="mt-1 text-[var(--aq-muted)]">{draft.note}</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <a href={draft.source_url} target="_blank" rel="noopener noreferrer"
+                className="text-[var(--aq-blue)]">Open original evidence</a>
+              <button type="button" className={buttonClass} onClick={() => reviewSuggestion(draft)}>
+                Review values in editable form
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>}
+
     </form>
 
     <div className="mt-4 space-y-3" aria-label="Computed university comparisons">
