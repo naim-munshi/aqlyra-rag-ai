@@ -9,7 +9,8 @@ from app.api.dependencies import get_current_user
 from app.api.study_abroad import owned_case
 from app.core.datetime_utils import utc_now_naive
 from app.database.connection import get_db
-from app.models.study_case import StudyUniversity, StudyResearchReport
+from app.models.document import Document
+from app.models.study_case import StudyCaseDocument, StudyUniversity, StudyResearchReport
 from app.models.user import User
 from app.schemas.study_abroad import (
     StudyApplicantFacts, ProgramRequirements, StudyProgramMatches,
@@ -158,3 +159,77 @@ def requirement_suggestions(
         ),
     ).order_by(StudyResearchReport.searched_at.desc()).limit(30)).all())
     return draft_university_requirements(university=school, reports=reports)
+
+
+
+@router.get("/cases/{case_id}/universities/{university_id}/application-preview")
+def build_application_review_packet(
+    case_id: str, university_id: str,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Build a real owner-scoped form-preparation packet, never submit anything.
+
+    A checklist and user-provided profile facts are informational only.
+    No private document body or external provider is called by this endpoint.
+    """
+    case = owned_case(db, str(user.id), case_id)
+    school = db.scalar(select(StudyUniversity).where(
+        StudyUniversity.case_id == case_id,
+        StudyUniversity.id == university_id,
+    ))
+    if school is None:
+        raise HTTPException(404, "Program is not in your shortlist")
+    rows = list(db.execute(
+        select(StudyCaseDocument, Document).join(
+            Document, Document.id == StudyCaseDocument.document_id,
+        ).where(
+            StudyCaseDocument.case_id == case_id,
+            Document.user_id == str(user.id),
+            Document.status == "ready",
+        ).limit(30)
+    ).all())
+    categories = sorted({link.checklist_key for link, _ in rows})
+    checklist = case.checklist if isinstance(case.checklist, dict) else {}
+    pending = [
+        {"key": key, "title": str(value.get("title") or key)[:140],
+         "state": str(value.get("state") or "needs_verification")}
+        for key, value in checklist.items()
+        if isinstance(value, dict)
+        and value.get("state") not in ("reviewed", "not_applicable")
+    ]
+    applicant = case.applicant_facts or {}
+    comparison = compare_programs(
+        case=case, universities=[school], reports=[],
+    )["programs"][0]
+    gaps = [item for item in comparison["criteria"]
+            if item["status"] != "reported_match"]
+    return {
+        "case_id": case.id,
+        "university_id": school.id,
+        "university_name": school.name,
+        "program": school.program,
+        "program_url": school.program_url,
+        "applicant_draft": {
+            "nationality": case.nationality,
+            "current_residence": case.residence_country,
+            "destination": case.destination_country,
+            "study_field": case.study_field,
+            "target_degree": case.degree_level,
+            "intake": case.intake,
+            "academic_gpa": applicant.get("gpa"),
+            "gpa_scale": applicant.get("gpa_scale"),
+            "language": applicant.get("language"),
+            "transfer_requested": applicant.get("transfer_requested", False),
+            "completed_credits": applicant.get("completed_credits"),
+        },
+        "ready_document_categories": categories,
+        "outstanding_checklist": pending,
+        "unresolved_program_criteria": gaps,
+        "requires_explicit_user_review": True,
+        "submission_status": "not_submitted",
+        "disclaimer": (
+            "Applicant draft only. Verify official form, source documents, grades "
+            "and any country-specific requirements. No external university "
+            "application has been opened, submitted or approved."
+        ),
+    }

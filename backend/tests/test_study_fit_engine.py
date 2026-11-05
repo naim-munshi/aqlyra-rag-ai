@@ -220,3 +220,28 @@ def test_safe_source_host_rejects_lookalikes_and_credentials():
         "https://example.edu:8999/requirements",
     ):
         assert not matching_source_host("https://example.edu/program", bad)
+
+
+
+def test_application_packet_is_real_private_draft_never_submission(client):
+    alice = _jwt(client, "studyapplyalice")
+    bob = _jwt(client, "studyapplybob")
+    case = _case(client, alice)
+    uni = _school(client, alice, case)
+    root = f"/api/v1/study-abroad/cases/{case}"
+    assert client.patch(root + "/applicant-facts", headers=alice, json={
+        "gpa": 3.3, "gpa_scale": 4,
+    }).status_code == 200
+    url = root + f"/universities/{uni}/application-preview"
+    assert client.get(url, headers=bob).status_code == 404
+    result = client.get(url, headers=alice)
+    assert result.status_code == 200, result.text
+    data = result.json()
+    assert data["submission_status"] == "not_submitted"
+    assert data["requires_explicit_user_review"]
+    assert data["applicant_draft"]["academic_gpa"] == 3.3
+    assert data["applicant_draft"]["nationality"] == "Bangladesh"
+    assert data["ready_document_categories"] == []
+    assert any(i["key"] == "academic" for i in data["outstanding_checklist"])
+    assert all("status" in i for i in data["unresolved_program_criteria"])
+    assert "No external university application" in data["disclaimer"]
