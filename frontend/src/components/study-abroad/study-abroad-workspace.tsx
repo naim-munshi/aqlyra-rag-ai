@@ -180,6 +180,7 @@ function sourceHost(url: string): string {
 
 export function StudyAbroadWorkspace() {
   const [cases, setCases] = useState<StudyCase[]>([]);
+  const [casesLoaded, setCasesLoaded] = useState(false);
   const [active, setActive] = useState<StudyCase | null>(null);
   const [documents, setDocuments] = useState<LinkedDocument[]>([]);
   const [libraryDocs, setLibraryDocs] = useState<DocumentResponse[]>([]);
@@ -223,7 +224,8 @@ export function StudyAbroadWorkspace() {
       if (disposed) return;
       setCases(items);
       if (items.length) setActive(items[0]);
-    }).catch(e => { if (!disposed) setError(String(e)); });
+      setCasesLoaded(true);
+    }).catch(e => { if (!disposed) { setError(String(e)); setCasesLoaded(true); } });
     return () => { disposed = true; };
   }, []);
 
@@ -660,6 +662,19 @@ export function StudyAbroadWorkspace() {
                 </span>}
               </div>
               {!active ? (
+                !casesLoaded ? (
+                  <div className="mt-5 rounded-xl border border-[var(--aq-border)] p-5 text-xs text-[var(--aq-muted)]" role="status">
+                    Loading your saved study plans…
+                  </div>
+                ) : creating ? (
+                  <div className="mt-5 text-sm text-[var(--aq-muted)]">
+                    Complete the guided setup form below, or{" "}
+                    <button type="button" onClick={() => setCreating(false)}
+                      className="text-[var(--aq-blue)] underline">
+                      return to chat setup
+                    </button>.
+                  </div>
+                ) : (
                 <div className="mt-5">
                   <div className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-4">
                     <p className="text-xs text-[var(--aq-muted)]">Aqlyra · Step {setupStep + 1} of {CHAT_SETUP_STEPS.length}</p>
@@ -702,7 +717,7 @@ export function StudyAbroadWorkspace() {
                     </button>
                   </div>
                 </div>
-              ) : (
+              )) : (
                 <div className="mt-5">
                   <div className="flex flex-wrap gap-2" role="group" aria-label="Answer source">
                     <button type="button" aria-pressed={chatSource === "research"} onClick={() => setChatSource("research")}
@@ -851,8 +866,8 @@ export function StudyAbroadWorkspace() {
                       </p>
                       <button type="submit"
                         disabled={busy !== "" || (chatSource === "research"
-                          ? !researchConsent || chatQuestion.trim().length < 12
-                          : !documentConsent || documents.length === 0 || chatQuestion.trim().length < 5)}
+                          ? !researchConsent || chatQuestion.trim().length < 12 || chatQuestion.trim().length > 160
+                          : !documentConsent || documents.length === 0 || chatQuestion.trim().length < 5 || chatQuestion.trim().length > 1200)}
                         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--aq-blue)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                         <Send size={15} aria-hidden="true"/>
                         {busy === "research" || busy === "ask-documents" ? "Checking…" : "Ask Aqlyra"}
