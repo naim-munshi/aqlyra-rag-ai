@@ -43,7 +43,10 @@ test("Document chat reuses owner-isolated RAG without implicitly consenting", ()
 });
 
 test("Conversational setup saves only after all six answers and keeps original form", () => {
-  assert.equal((ui.match(/question: "What is|question: "Which|question: "Where|question: "When/g) ?? []).length, 6);
+  for (const key of ["nationality", "residence_country", "destination_country",
+    "degree_level", "study_field", "intake"]) {
+    assert.match(ui, new RegExp('key: "' + key + '"'));
+  }
   assert.match(ui, /async function submitSetupReply\(event: FormEvent<HTMLFormElement>\)/);
   assert.match(ui, /setupStep === CHAT_SETUP_STEPS\.length - 1/);
   assert.match(ui, /await saveStudyCase\(updated\)/);

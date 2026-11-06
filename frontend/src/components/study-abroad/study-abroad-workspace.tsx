@@ -10,6 +10,7 @@ import {
 import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
+import { StudyFitWorkbench } from "@/components/study-abroad/program-fit-workbench";
 
 type ChecklistItem = {
   title: string;
@@ -474,6 +475,21 @@ export function StudyAbroadWorkspace() {
       const answer = await api<CaseRagAnswer>(
         "cases/" + active.id + "/ask-documents", "POST",
         { question: documentQuestion.trim(), confirm_share_documents: documentConsent },
+      );
+      setDocumentAnswer(answer);
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(""); }
+  }
+
+  async function analyzeLinkedAcademicRecords() {
+    if (!active || !documentConsent || documents.length === 0) return;
+    setBusy("analyze-records"); setError(""); setDocumentAnswer(null);
+    try {
+      const answer = await api<CaseRagAnswer>(
+        "cases/" + active.id + "/ask-documents", "POST", {
+          question: "Review ONLY my attached academic records for explicitly stated GPA and its scale, institution, degree, language test score, completed credits, dates and any missing evidence. Cite each fact to the attached document and its section. Mark anything unmentioned as unknown; do not invent equivalences, admission eligibility or immigration rules.",
+          confirm_share_documents: documentConsent,
+        },
       );
       setDocumentAnswer(answer);
     } catch (e) { setError(String(e)); }
@@ -1043,6 +1059,12 @@ export function StudyAbroadWorkspace() {
                     Save official program links, manually verify admission deadlines and track applications.
                     Search results do not automatically prove eligibility or acceptance.
                   </p>
+                  <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                    <input type="checkbox" className="mt-1" checked={researchConsent}
+                      onChange={event => setResearchConsent(event.target.checked)}/>
+                    Allow opt-in university-source research using this plan&apos;s nationality, residence, destination,
+                    study subject, degree and intake. Uploaded files are never sent.
+                  </label>
                   <form onSubmit={event => { void addUniversity(event); }}
                     className="mt-4 grid gap-2 sm:grid-cols-2">
                     {([
@@ -1095,6 +1117,20 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
+                {activePanel === "universities" && (
+                  <StudyFitWorkbench
+                    key={active.id}
+                    caseId={active.id}
+                    revision={advisorRevision}
+                    researchAllowed={researchConsent}
+                    onResearch={() => { void research("universities"); }}
+                    onEvidenceUpdated={refreshAdvisor}
+                    onUseCandidate={url => {
+                      setUniversityForm({ name: "", program: "", program_url: url, deadline: "" });
+                      setNotice("Research link placed in the university form. Check the exact degree and institution, then save.");
+                    }}
+                  />
+                )}
                 <section hidden={activePanel !== "research"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><Search size={18}/> Research universities, visas and embassies</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
@@ -1226,6 +1262,12 @@ export function StudyAbroadWorkspace() {
                         documentQuestion.trim().length < 5}
                       className="rounded-lg bg-[var(--aq-blue)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
                       {busy === "ask-documents" ? "Checking evidence…" : "Ask attached documents"}
+                    </button>
+                    <button type="button"
+                      disabled={busy !== "" || !documentConsent || documents.length === 0}
+                      onClick={() => { void analyzeLinkedAcademicRecords(); }}
+                      className="ml-2 rounded-lg border border-[var(--aq-blue)] px-4 py-2 text-xs text-[var(--aq-blue)] disabled:opacity-50">
+                      {busy === "analyze-records" ? "Analyzing attached records…" : "Analyze my transcripts & identify missing evidence"}
                     </button>
                     {documents.length === 0 && <p className="text-xs text-[var(--aq-muted)]">
                       Attach and process a file below before asking a question.
