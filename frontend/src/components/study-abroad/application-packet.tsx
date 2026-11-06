@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Packet = {
   university_name: string;
@@ -20,11 +20,6 @@ export function StudyApplicationPacket({
   const [packet, setPacket] = useState<Packet | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    setPacket(null);
-    setMessage("");
-  }, [caseId, universityId]);
 
   async function generate() {
     if (!universityId) return;
