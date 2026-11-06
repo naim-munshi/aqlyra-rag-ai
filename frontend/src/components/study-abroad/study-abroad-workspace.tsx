@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileCheck2,
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
-  ShieldAlert, Trash2, Sparkles, Clock3, MessageCircle, Send, SlidersHorizontal,
+  Trash2, Sparkles, Clock3, MessageCircle, Send,
 } from "lucide-react";
 import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
@@ -720,17 +720,18 @@ export function StudyAbroadWorkspace() {
                     </button>
                   </div>
                   <div className="mt-4 max-h-[440px] min-h-[170px] space-y-4 overflow-y-auto rounded-xl border border-[var(--aq-border)] bg-[var(--aq-bg)] p-3 sm:p-4" role="log" aria-label="Study research answers">
-                    {reports.length === 0 && !documentAnswer && (
+                    {(chatSource === "research" ? reports.length === 0 : !documentAnswer) && (
                       <div className="py-6 text-center">
                         <Sparkles size={24} aria-hidden="true" className="mx-auto mb-3 text-[var(--aq-blue)]"/>
                         <p className="text-sm font-medium">What would you like to know?</p>
                         <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--aq-muted)]">
-                          Ask about universities, fees, scholarships, admission or visa rules.
-                          Answers include sources to verify, and research is saved to this plan.
+                          {chatSource === "research"
+                            ? "Ask about universities, fees, scholarships, admission or visa rules. Answers include verifiable sources and are saved to your plan."
+                            : "Ask about an attached document. Answers cite the files linked to this journey."}
                         </p>
                       </div>
                     )}
-                    {reports.slice(0, 5).reverse().map(report => (
+                    {chatSource === "research" && reports.slice(0, 5).reverse().map(report => (
                       <article key={report.id} className="space-y-2">
                         <div className="ml-auto max-w-[95%] rounded-2xl rounded-br-md bg-[var(--aq-blue-soft)] px-3 py-2 text-xs text-[var(--aq-text)] sm:max-w-[85%]">
                           <span className="font-semibold">Study question</span>
@@ -753,7 +754,7 @@ export function StudyAbroadWorkspace() {
                         </div>
                       </article>
                     ))}
-                    {documentAnswer && (
+                    {chatSource === "documents" && documentAnswer && (
                       <article className="space-y-2">
                         <div className="ml-auto max-w-[95%] rounded-2xl rounded-br-md bg-[var(--aq-blue-soft)] p-3 text-xs sm:max-w-[85%]">
                           {lastDocumentChatQuestion || documentAnswer.question}
