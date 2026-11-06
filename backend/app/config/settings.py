@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # Admin monitoring is disabled unless explicitly assigned to verified
     # immutable user UUIDs. Never use emails/usernames as admin identities.
     ADMIN_USER_IDS: str = ""
+    # An exact, verified mailbox can be granted operator access without
+    # relying on a public frontend variable or a mutable username.
+    # Empty by default. Existing UUID allowlist stays independently valid.
+    ADMIN_OWNER_EMAIL: str = ""
+    # Irreversible deletion must be enabled separately AFTER recovery/storage
+    # acceptance; disabled accounts can be restored while this is false.
+    ADMIN_ACCOUNT_DELETION_ENABLED: bool = False
 
     # Verified identity
     EMAIL_VERIFICATION_REQUIRED: bool = True
@@ -832,6 +839,17 @@ class Settings(BaseSettings):
         except ValueError as exc:
             raise ValueError("Neon private storage does not use custom ports") from exc
         return self
+
+    @field_validator("ADMIN_OWNER_EMAIL")
+    @classmethod
+    def validate_admin_owner_email(cls, value: str) -> str:
+        from pydantic import EmailStr, TypeAdapter
+
+        email = value.strip().lower()
+        if not email:
+            return ""
+        # No wildcard/list/username or unverified identities are accepted.
+        return str(TypeAdapter(EmailStr).validate_python(email)).lower()
 
     @field_validator("ADMIN_USER_IDS")
     @classmethod
