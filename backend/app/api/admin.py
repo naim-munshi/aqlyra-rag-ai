@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.auth.admin_access import is_admin_user
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.core.monitoring import admin_http_snapshot
@@ -25,9 +26,7 @@ def get_current_admin(
     user: User = Depends(get_current_user),
 ) -> User:
     """Explicit immutable user-ID allowlist; disabled if not configured."""
-    if user.id not in settings.ADMIN_USER_IDS.split(","):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if user.email_verified_at is None:
+    if not is_admin_user(user):
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
 
