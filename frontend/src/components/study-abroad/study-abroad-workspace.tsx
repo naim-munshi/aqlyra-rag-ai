@@ -607,7 +607,7 @@ export function StudyAbroadWorkspace() {
           </div>
         </header>
         <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <aside className={cardStyle + " h-fit"}>
+          <aside className={cardStyle + " order-2 h-fit lg:order-1"}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">My journeys</h2>
               <button type="button" onClick={() => setCreating(value => !value)}
@@ -640,7 +640,7 @@ export function StudyAbroadWorkspace() {
               ))}
             </div>
           </aside>
-          <div className="min-w-0 space-y-5">
+          <div className="order-1 min-w-0 space-y-5 lg:order-2">
 
             <section className={cardStyle} aria-label="Ask Aqlyra study assistant">
               <div className="flex flex-wrap items-center justify-between gap-3">
