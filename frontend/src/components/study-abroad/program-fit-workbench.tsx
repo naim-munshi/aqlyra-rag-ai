@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ExternalLink, RefreshCw, Scale, ShieldCheck } from "lucide-react";
 import { StudyApplicationPacket } from "@/components/study-abroad/application-packet";
 
@@ -46,6 +46,21 @@ const fieldClass = "min-w-0 w-full rounded-lg border border-[var(--aq-border)] b
 const buttonClass = "min-h-10 rounded-lg border border-[var(--aq-blue)] px-4 py-2 text-xs font-semibold text-[var(--aq-blue)] disabled:opacity-40";
 const cleanNumber = (v: string): number | undefined => v.trim() === "" ? undefined : Number(v);
 
+function requirementFormFrom(req: Partial<Requirements> = {}) {
+  return {
+    minimum_gpa: req.minimum_gpa?.toString() ?? "",
+    gpa_scale: req.gpa_scale?.toString() ?? "4",
+    annual_tuition: req.annual_tuition?.toString() ?? "",
+    currency: req.currency ?? "JPY",
+    test: req.minimum_language?.test ?? "",
+    score: req.minimum_language?.score?.toString() ?? "",
+    level: req.minimum_language?.level ?? "N2",
+    transfer_policy: req.transfer_policy ?? "unknown",
+    source: req.evidence_report_id && req.evidence_citation
+      ? req.evidence_report_id + "|" + req.evidence_citation : "",
+  };
+}
+
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch("/api/study-abroad/" + path, {
     method, cache: "no-store",
@@ -87,6 +102,7 @@ export function StudyFitWorkbench({
   const [suggestions, setSuggestions] = useState<ExtractedDraft[]>([]);
   const [evidenceTopic, setEvidenceTopic] = useState("admissions");
   const [selected, setSelected] = useState("");
+  const selectedRef = useRef("");
   const [profile, setProfile] = useState({
     gpa: "", gpa_scale: "4", annual_budget: "", currency: "JPY",
     test: "", score: "", level: "N2",
@@ -100,13 +116,11 @@ export function StudyFitWorkbench({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const target = "cases/" + encodeURIComponent(caseId);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setError("");
     void Promise.all([
       api<ComparisonResponse>(target + "/matches"),
       api<StudySchool[]>(target + "/universities"),
@@ -114,6 +128,7 @@ export function StudyFitWorkbench({
       api<Candidate[]>(target + "/program-candidates"),
     ]).then(([comparison, programs, found, suggestions]) => {
       if (!alive) return;
+      setError("");
       setMatches(comparison);
       setSchools(programs);
       setReports(found);
@@ -130,28 +145,14 @@ export function StudyFitWorkbench({
         transfer_requested: p.transfer_requested ?? false,
         completed_credits: p.completed_credits?.toString() ?? "",
       });
-      setSelected(old => programs.some(v => v.id === old) ? old : programs[0]?.id ?? "");
+      const preferred = programs.find(v => v.id === selectedRef.current) ?? programs[0];
+      selectedRef.current = preferred?.id ?? "";
+      setSelected(selectedRef.current);
+      setRequirement(requirementFormFrom(preferred?.requirements));
     }).catch(e => { if (alive) setError(String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [caseId, revision, target]);
-
-  useEffect(() => {
-    const item = schools.find(s => s.id === selected);
-    const req = item?.requirements ?? {};
-    setRequirement({
-      minimum_gpa: req.minimum_gpa?.toString() ?? "",
-      gpa_scale: req.gpa_scale?.toString() ?? "4",
-      annual_tuition: req.annual_tuition?.toString() ?? "",
-      currency: req.currency ?? "JPY",
-      test: req.minimum_language?.test ?? "",
-      score: req.minimum_language?.score?.toString() ?? "",
-      level: req.minimum_language?.level ?? "N2",
-      transfer_policy: req.transfer_policy ?? "unknown",
-      source: req.evidence_report_id && req.evidence_citation
-        ? req.evidence_report_id + "|" + req.evidence_citation : "",
-    });
-  }, [schools, selected]);
 
   const selectedSchool = schools.find(item => item.id === selected);
   const evidence = reports.flatMap(report => (
@@ -407,7 +408,13 @@ export function StudyFitWorkbench({
         selecting a saved citation records provenance but does not validate the claim.
       </p>
       <label className="mt-3 block text-xs">Shortlisted program
-        <select value={selected} onChange={e => { setSelected(e.target.value); setSuggestions([]); }}
+        <select value={selected} onChange={e => {
+          const id = e.target.value;
+          selectedRef.current = id;
+          setSelected(id);
+          setRequirement(requirementFormFrom(schools.find(item => item.id === id)?.requirements));
+          setSuggestions([]);
+        }}
           className={fieldClass + " mt-1"}>
           {schools.length === 0 && <option value="">Add a university above to compare</option>}
           {schools.map(s => <option key={s.id} value={s.id}>{s.name} · {s.program}</option>)}
@@ -559,7 +566,7 @@ export function StudyFitWorkbench({
       </p>}
     </div>
 
-    <StudyApplicationPacket caseId={caseId} universityId={selected} />
+    <StudyApplicationPacket caseId={caseId} key={caseId + ":" + selected} universityId={selected} />
     {candidates.length > 0 && <div className="mt-4 rounded-xl border border-[var(--aq-border)] p-3">
       <h3 className="text-sm font-semibold">4. Real researched links to review</h3>
       <p className="mt-1 text-[11px] text-[var(--aq-muted)]">
