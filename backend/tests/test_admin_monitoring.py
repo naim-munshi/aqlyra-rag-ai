@@ -148,3 +148,83 @@ def test_prometheus_metrics_are_private_to_verified_admin(
     assert revoked.status_code == 403
     assert "aqlyra_http_requests_total" not in revoked.text
     assert ordinary_id not in revoked.text
+
+
+def test_admin_chat_activity_is_distinct_and_privacy_preserving(
+    client: TestClient, db_session, monkeypatch,
+) -> None:
+    from datetime import timedelta
+
+    from app.core.datetime_utils import utc_now_naive
+    from app.models.conversation import Conversation
+    from app.models.message import Message
+
+    admin_id, admin_token = _new_user(client, "activityowner")
+    other_id, other_token = _new_user(client, "activityother")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+
+    owner_chat = Conversation(user_id=admin_id, mode="normal", title="Private owner")
+    other_chat = Conversation(user_id=other_id, mode="normal", title="Private other")
+    old_chat = Conversation(user_id=other_id, mode="normal", title="Older private")
+    db_session.add_all([owner_chat, other_chat, old_chat])
+    db_session.flush()
+
+    now = utc_now_naive()
+    db_session.add_all([
+        Message(conversation_id=owner_chat.id, role="user", mode="normal",
+                content="very private chat content A", created_at=now - timedelta(minutes=10)),
+        Message(conversation_id=owner_chat.id, role="user", mode="normal",
+                content="very private chat content B", created_at=now - timedelta(minutes=5)),
+        Message(conversation_id=owner_chat.id, role="assistant", mode="normal",
+                content="private assistant response", created_at=now - timedelta(minutes=4)),
+        Message(conversation_id=other_chat.id, role="user", mode="normal",
+                content="very private chat content C", created_at=now - timedelta(days=2)),
+        Message(conversation_id=old_chat.id, role="user", mode="normal",
+                content="very old private chat", created_at=now - timedelta(days=9)),
+    ])
+    db_session.flush()
+
+    forbidden = client.get(
+        "/api/v1/admin/overview",
+        headers={"Authorization": "Bearer " + other_token},
+    )
+    assert forbidden.status_code == 403
+
+    response = client.get(
+        "/api/v1/admin/overview",
+        headers={"Authorization": "Bearer " + admin_token},
+    )
+    assert response.status_code == 200
+    activity = response.json()["chat_activity"]
+    assert activity["scope"] == "persisted_authenticated_user_messages"
+    assert activity["active_users_last_24h"] == 1
+    assert activity["active_users_last_7d"] == 2
+    assert activity["user_messages_last_24h"] == 2
+    assert activity["user_messages_last_7d"] == 3
+    assert len(activity["daily_last_7_utc_days"]) == 7
+    assert sum(row["messages"] for row in activity["daily_last_7_utc_days"]) == 3
+    assert all(row["users"] <= row["messages"] for row in activity["daily_last_7_utc_days"])
+    for forbidden_data in (
+        admin_id, other_id, "very private chat content", "private assistant",
+        "Private owner", "Private other",
+    ):
+        assert forbidden_data not in response.text
+
+
+def test_admin_chat_activity_zero_for_new_accounts(
+    client: TestClient, monkeypatch,
+) -> None:
+    admin_id, token = _new_user(client, "emptyactivity")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+    response = client.get(
+        "/api/v1/admin/overview",
+        headers={"Authorization": "Bearer " + token},
+    )
+    assert response.status_code == 200
+    activity = response.json()["chat_activity"]
+    assert activity["active_users_last_24h"] == 0
+    assert activity["active_users_last_7d"] == 0
+    assert activity["user_messages_last_24h"] == 0
+    assert activity["user_messages_last_7d"] == 0
+    assert all(day["users"] == 0 and day["messages"] == 0
+               for day in activity["daily_last_7_utc_days"])

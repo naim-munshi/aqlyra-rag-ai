@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.auth.admin_access import is_admin_user
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.core.monitoring import admin_http_snapshot
@@ -14,6 +15,7 @@ from app.database.connection import get_db
 from app.models.conversation import Conversation
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
+from app.models.message import Message
 from app.models.user import User
 
 
@@ -24,9 +26,7 @@ def get_current_admin(
     user: User = Depends(get_current_user),
 ) -> User:
     """Explicit immutable user-ID allowlist; disabled if not configured."""
-    if user.id not in settings.ADMIN_USER_IDS.split(","):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if user.email_verified_at is None:
+    if not is_admin_user(user):
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
 
@@ -71,6 +71,56 @@ def admin_overview(
         for day in range(7)
     ]
 
+
+    # Activity means an authenticated user sent a message that persisted.
+    # It is NOT a count of unique site visitors, open sessions, or guest users.
+    now = utc_now_naive()
+    rolling_day = now - timedelta(hours=24)
+    rolling_week = now - timedelta(days=7)
+    summary = db.execute(
+        select(
+            func.count(func.distinct(Conversation.user_id)).label("users_7d"),
+            func.count(func.distinct(Conversation.user_id))
+            .filter(Message.created_at >= rolling_day)
+            .label("users_24h"),
+            func.count(Message.id).label("messages_7d"),
+            func.count(Message.id)
+            .filter(Message.created_at >= rolling_day)
+            .label("messages_24h"),
+        )
+        .select_from(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(Message.role == "user", Message.created_at >= rolling_week)
+    ).one()
+
+    daily_activity = db.execute(
+        select(
+            func.date(Message.created_at).label("day"),
+            func.count(func.distinct(Conversation.user_id)).label("users"),
+            func.count(Message.id).label("messages"),
+        )
+        .select_from(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(Message.role == "user", Message.created_at >= start)
+        .group_by(func.date(Message.created_at))
+    ).all()
+    activity_by_day = {
+        str(row.day): (int(row.users), int(row.messages))
+        for row in daily_activity
+    }
+    chat_days = [
+        {
+            "date": (first_day + timedelta(days=offset)).isoformat(),
+            "users": activity_by_day.get(
+                (first_day + timedelta(days=offset)).isoformat(), (0, 0)
+            )[0],
+            "messages": activity_by_day.get(
+                (first_day + timedelta(days=offset)).isoformat(), (0, 0)
+            )[1],
+        }
+        for offset in range(7)
+    ]
+
     # Aggregate storage lifecycle indicators only. No object keys, filenames
     # or tenant IDs are returned to browsers, even for administrators.
     stale_since = utc_now_naive() - timedelta(minutes=5)
@@ -108,6 +158,14 @@ def admin_overview(
                 "documents_total": int(total_documents),
                 "conversations_total": int(total_conversations),
                 "signups_last_7_days": signup_days,
+            },
+            "chat_activity": {
+                "active_users_last_24h": int(summary.users_24h),
+                "active_users_last_7d": int(summary.users_7d),
+                "user_messages_last_24h": int(summary.messages_24h),
+                "user_messages_last_7d": int(summary.messages_7d),
+                "daily_last_7_utc_days": chat_days,
+                "scope": "persisted_authenticated_user_messages",
             },
             "traffic": admin_http_snapshot(),
             "cloud_storage": {

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_current_user
 from app.models.user import User
-from app.config.settings import settings
+from app.auth.admin_access import is_admin_user
 from app.schemas.user import UserResponse
 
 
@@ -22,9 +22,6 @@ def read_current_user(
     response = UserResponse.model_validate(current_user)
     return response.model_copy(
         update={
-            "is_admin": (
-                current_user.email_verified_at is not None
-                and current_user.id in settings.ADMIN_USER_IDS.split(",")
-            ),
+            "is_admin": is_admin_user(current_user),
         }
     )
