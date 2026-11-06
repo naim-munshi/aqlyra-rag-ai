@@ -39,7 +39,7 @@ test("Document chat reuses owner-isolated RAG without implicitly consenting", ()
   assert.match(ui, /confirm_share_documents: documentConsent/);
   assert.match(ui, /chatSource === "documents" && documentAnswer/);
   assert.match(ui, /setLastDocumentChatQuestion\(question\)/);
-  assert.match(ui, /setDocumentAnswer\(null\); setResearchConsent\(false\)/); // isolated when switching plans
+  assert.match(ui, /setDocumentAnswer\(null\); setDocumentConsent\(false\); setResearchConsent\(false\)/); // isolated when switching plans
 });
 
 test("Conversational setup saves only after all six answers and keeps original form", () => {
