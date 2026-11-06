@@ -76,11 +76,16 @@ def voice_status(
 )
 def create_voice_session_endpoint(
     request: VoiceSessionCreate,
+    response: Response,
     current_user: User = Depends(
         get_current_user
     ),
     db: Session = Depends(get_db),
 ) -> VoiceSessionResponse:
+    # The returned participant JWT grants entry to a private RTC room.
+    # Keep it out of HTTP caches (including shared reverse proxies).
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
     try:
         result = create_voice_session(
             db=db,
