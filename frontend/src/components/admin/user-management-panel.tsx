@@ -277,6 +277,7 @@ export function UserManagementPanel() {
                   className="mt-2 w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm text-white" />
               </>
             )}
+            {error && <p role="alert" className="mt-4 rounded-lg border border-amber-500/40 p-3 text-xs text-amber-200">{error}</p>}
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" onClick={() => { setSelected(null); setError(""); }}
                 disabled={saving} className="rounded-lg border border-white/15 px-4 py-2 text-sm">Cancel</button>
