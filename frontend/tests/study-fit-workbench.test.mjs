@@ -70,3 +70,14 @@ test("university evidence refresh executes real opt-in scoped API, never autosav
   assert.match(workbench, /onEvidenceUpdated\(\)/);
   assert.match(wrapper, /onEvidenceUpdated=\{refreshAdvisor\}/);
 });
+
+
+test("program fit integrates without replacing chat-first navigation", () => {
+  const chat = wrapper.indexOf('aria-label="Ask Aqlyra study assistant"');
+  const nav = wrapper.indexOf('aria-label="Study plan navigation"');
+  const fit = wrapper.indexOf("<StudyFitWorkbench");
+  assert.ok(chat > 0 && nav > chat && fit > nav);
+  assert.ok(wrapper.includes('activePanel === "universities" && ('));
+  assert.ok(wrapper.includes("researchAllowed={researchConsent}"));
+  assert.ok(wrapper.includes("onEvidenceUpdated={refreshAdvisor}"));
+});
