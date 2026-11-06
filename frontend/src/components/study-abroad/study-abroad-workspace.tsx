@@ -898,13 +898,29 @@ export function StudyAbroadWorkspace() {
             {notice && <p role="status" className="rounded-lg border border-[var(--aq-border)] p-3 text-xs text-[var(--aq-muted)]">{notice}</p>}
             {active && (
               <>
-                <section className={cardStyle} aria-label="Personalized Study Advisor">
+                <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Study plan navigation">
+                  {([
+                    ["overview", "My plan"],
+                    ["universities", "Universities"],
+                    ["research", "Explore topics"],
+                    ["documents", "Documents"],
+                  ] as const).map(([key, label]) => (
+                    <button type="button" key={key} aria-pressed={activePanel === key}
+                      onClick={() => setActivePanel(key)}
+                      className={"min-h-10 shrink-0 rounded-lg border px-4 py-2 text-xs font-semibold transition " +
+                        (activePanel === key
+                          ? "border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]"
+                          : "border-[var(--aq-border)] text-[var(--aq-muted)] hover:bg-[var(--aq-card)]")}>
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                <section hidden={activePanel !== "overview"} className={cardStyle} aria-label="Personalized Study Advisor">
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <Sparkles size={18} className="text-[var(--aq-blue)]"/> Smart Study Advisor
                   </h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
-                    Your private planning assistant prioritizes steps using this journey&apos;s saved checklist,
-                    research freshness and university deadlines. It does not predict acceptance or visa approval.
+                    Suggested next steps based on this plan. Dates and requirements need official verification; Aqlyra does not predict acceptance or visa approval.
                   </p>
                   {advisor ? (
                     <>
@@ -983,7 +999,7 @@ export function StudyAbroadWorkspace() {
                       onClick={refreshAdvisor}>Retry guidance</button>}
                   </div>}
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "overview"} className={cardStyle}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <h2 className="text-lg font-semibold">{active.study_field} · {active.degree_level}</h2>
@@ -1003,7 +1019,7 @@ export function StudyAbroadWorkspace() {
                     {STAGES.map(([key,label]) => <option key={key} value={key}>{label}</option>)}
                   </select>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "universities"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <GraduationCap size={18}/> My university shortlist
                   </h2>
@@ -1063,7 +1079,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "research"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><Search size={18}/> Research universities, visas and embassies</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     Uses opt-in live public Web Research. The search does not send your uploaded files.
@@ -1165,7 +1181,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <BookOpen size={18}/> Ask your case documents (private RAG)
                   </h2>
@@ -1224,7 +1240,7 @@ export function StudyAbroadWorkspace() {
                     </div>
                   )}
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileCheck2 size={18}/> Document readiness</h2>
                   <p className="mt-2 text-xs text-[var(--aq-muted)]">
                     These are common planning prompts, not a government-approved checklist. Select each status manually after checking official requirements.
@@ -1270,7 +1286,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileUp size={18}/> Process private documents</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     PDF, DOCX, XLSX, PPTX, TXT, CSV and images supported by Aqlyra.
