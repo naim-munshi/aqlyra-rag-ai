@@ -37,3 +37,16 @@ test("monitor shows only process-local API traffic, not unique visitors", () => 
   assert.match(ui, /not unique website visitors/i);
   assert.doesNotMatch(ui, /localStorage|document\.cookie/);
 });
+
+test("chat monitoring is backward compatible and uses aggregated account activity", () => {
+  const ui = get("../src/components/admin/admin-monitor.tsx");
+  const types = get("../src/types/admin.ts");
+  assert.match(ui, /data\.chat_activity \?/);
+  assert.match(ui, /Chat activity is not yet available on this backend release/);
+  assert.match(ui, /active_users_last_24h/);
+  assert.match(ui, /user_messages_last_7d/);
+  assert.match(ui, /not live-online users or unique website visitors/);
+  assert.match(types, /chat_activity\?: AdminChatActivity/);
+  assert.match(types, /persisted_authenticated_user_messages/);
+  assert.doesNotMatch(ui, /user\.email|message\.content|document\.content/);
+});
