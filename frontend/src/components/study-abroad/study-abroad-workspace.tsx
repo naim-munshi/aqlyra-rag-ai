@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileCheck2,
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
-  ShieldAlert, Trash2, Sparkles, Clock3,
+  Trash2, Sparkles, Clock3, MessageCircle, Send,
 } from "lucide-react";
 import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
@@ -130,6 +130,29 @@ const CHECK_STATES = [
   ["not_applicable", "Not applicable"],
 ] as const;
 
+
+const CHAT_SETUP_STEPS = [
+  { key: "nationality", question: "What is your citizenship / nationality?", hint: "Example: Bangladesh" },
+  { key: "residence_country", question: "Which country do you currently live in?", hint: "Example: Japan" },
+  { key: "destination_country", question: "Where do you want to study?", hint: "Example: Germany" },
+  { key: "degree_level", question: "Which degree do you want to pursue?", hint: "Example: Master's" },
+  { key: "study_field", question: "What subject do you want to study?", hint: "Example: AI / Computer Science" },
+  { key: "intake", question: "When do you plan to start?", hint: "Example: Winter 2028" },
+] as const;
+
+function inferResearchTopic(text: string): typeof RESEARCH_TOPICS[number]["id"] {
+  const q = text.toLowerCase();
+  if (/scholarship|funding|financial aid|grant|奨学金|বৃত্তি|স্কলারশিপ/i.test(q)) return "scholarships";
+  if (/visa|immigration|permit|residence status|ビザ|ভিসা/i.test(q)) return "visa";
+  if (/embassy|consulate|appointment|大使館|দূতাবাস/i.test(q)) return "embassy";
+  if (/transfer|credit|2nd year|3rd year|編入|単位|ট্রান্সফার/i.test(q)) return "transfer";
+  if (/ielts|toefl|jlpt|language|german proficiency|日本語|英語|ভাষা/i.test(q)) return "language";
+  if (/tuition|living cost|fees|budget|費用|学費|খরচ/i.test(q)) return "costs";
+  if (/university|universities|college|program list|大学|বিশ্ববিদ্যালয়/i.test(q)) return "universities";
+  if (/arrival|housing|before departure|travel insurance|出発|বাসা/i.test(q)) return "predeparture";
+  return "admissions";
+}
+
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch("/api/study-abroad/" + path, {
     method,
@@ -157,6 +180,7 @@ function sourceHost(url: string): string {
 
 export function StudyAbroadWorkspace() {
   const [cases, setCases] = useState<StudyCase[]>([]);
+  const [casesLoaded, setCasesLoaded] = useState(false);
   const [active, setActive] = useState<StudyCase | null>(null);
   const [documents, setDocuments] = useState<LinkedDocument[]>([]);
   const [libraryDocs, setLibraryDocs] = useState<DocumentResponse[]>([]);
@@ -174,6 +198,13 @@ export function StudyAbroadWorkspace() {
   const [customTopic, setCustomTopic] = useState("admissions");
   const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
   const [creating, setCreating] = useState(false);
+  const [activePanel, setActivePanel] = useState<"overview" | "universities" | "research" | "documents">("overview");
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatSource, setChatSource] = useState<"research" | "documents">("research");
+  const [chatTopic, setChatTopic] = useState<"auto" | typeof RESEARCH_TOPICS[number]["id"]>("auto");
+  const [lastDocumentChatQuestion, setLastDocumentChatQuestion] = useState("");
+  const [setupStep, setSetupStep] = useState(0);
+  const [setupReply, setSetupReply] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -193,7 +224,8 @@ export function StudyAbroadWorkspace() {
       if (disposed) return;
       setCases(items);
       if (items.length) setActive(items[0]);
-    }).catch(e => { if (!disposed) setError(String(e)); });
+      setCasesLoaded(true);
+    }).catch(e => { if (!disposed) { setError(String(e)); setCasesLoaded(true); } });
     return () => { disposed = true; };
   }, []);
 
@@ -283,21 +315,43 @@ export function StudyAbroadWorkspace() {
     setActive(updated);
   }
 
-  async function createCase(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveStudyCase(values: typeof form): Promise<boolean> {
     setBusy("create"); setError(""); setNotice("");
     try {
       const created = await api<StudyCase>("cases", "POST", {
-        workflow: "student", ...form,
+        workflow: "student", ...values,
       });
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
       setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
-      setCreating(false);
-      setNotice("Private student journey created.");
-    } catch (e) { setError(String(e)); }
+      setLastDocumentChatQuestion(""); setChatQuestion("");
+      setCreating(false); setSetupStep(0); setSetupReply("");
+      setNotice("Private study plan created. Ask Aqlyra a study question below.");
+      return true;
+    } catch (e) { setError(String(e)); return false; }
     finally { setBusy(""); }
+  }
+
+  async function createCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveStudyCase(form);
+  }
+
+  async function submitSetupReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy !== "") return;
+    const answer = setupReply.trim();
+    const step = CHAT_SETUP_STEPS[setupStep];
+    if (!step || answer.length < 2 || answer.length > (step.key === "study_field" ? 120 : 80)) return;
+    const updated = { ...form, [step.key]: answer };
+    setForm(updated);
+    if (setupStep === CHAT_SETUP_STEPS.length - 1) {
+      await saveStudyCase(updated);
+      return;
+    }
+    setSetupStep(value => value + 1);
+    setSetupReply("");
   }
 
   async function updateStage(value: string) {
@@ -367,8 +421,8 @@ export function StudyAbroadWorkspace() {
     finally { setBusy(""); }
   }
 
-  async function research(topic: string, focusUniversityId = "", question = "") {
-    if (!active) return;
+  async function research(topic: string, focusUniversityId = "", question = ""): Promise<boolean> {
+    if (!active || !researchConsent) return false;
     setBusy("research"); setError(""); setNotice("");
     try {
       const result = await api<StudyReport>(
@@ -379,9 +433,35 @@ export function StudyAbroadWorkspace() {
         },
       );
       setReports(previous => [result, ...previous]);
-      setNotice("Research saved. Check each source against the official authority.");
+      setNotice("Research saved to this journey. Verify important details with official sources.");
       if (question.trim()) setSpecificQuestion("");
       refreshAdvisor();
+      return true;
+    } catch (e) { setError(String(e)); return false; }
+    finally { setBusy(""); }
+  }
+
+  async function sendStudyChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!active || busy !== "") return;
+    const question = chatQuestion.trim();
+    if (chatSource === "research") {
+      if (!researchConsent || question.length < 12 || question.length > 160) return;
+      const topic = chatTopic === "auto" ? inferResearchTopic(question) : chatTopic;
+      const success = await research(topic, researchFocusId, question);
+      if (success) setChatQuestion("");
+      return;
+    }
+    if (!documentConsent || documents.length === 0 || question.length < 5 || question.length > 1200) return;
+    setBusy("ask-documents"); setError(""); setNotice(""); setDocumentAnswer(null);
+    try {
+      const result = await api<CaseRagAnswer>(
+        "cases/" + active.id + "/ask-documents", "POST",
+        { question, confirm_share_documents: documentConsent },
+      );
+      setDocumentAnswer(result);
+      setLastDocumentChatQuestion(question);
+      setChatQuestion("");
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -502,6 +582,7 @@ export function StudyAbroadWorkspace() {
       setDocuments([]); setReports([]); setUniversities([]);
       setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
+      setChatQuestion(""); setLastDocumentChatQuestion(""); setActivePanel("overview");
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -515,31 +596,20 @@ export function StudyAbroadWorkspace() {
           <Link href="/" className="inline-flex items-center gap-2 text-xs text-[var(--aq-muted)] hover:text-[var(--aq-blue)]">
             <ArrowLeft size={16}/> Back to Aqlyra
           </Link>
-          <span className="rounded-full border border-[var(--aq-border)] px-3 py-1.5 text-[11px] text-[var(--aq-muted)]">
-            Private planning • Not an embassy submission portal
-          </span>
         </div>
-        <header className="mt-6 mb-7 flex items-start gap-3">
+        <header className="mb-5 mt-5 flex items-start gap-3">
           <span className="rounded-2xl bg-[var(--aq-blue-soft)] p-3 text-[var(--aq-blue)]">
-            <GraduationCap size={26}/>
+            <GraduationCap size={25}/>
           </span>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Study Abroad</h1>
             <p className="mt-1 text-sm text-[var(--aq-muted)]">
-              Your university-to-embassy research and document workspace
+              Ask questions naturally, or use guided steps to plan your next move.
             </p>
           </div>
         </header>
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[var(--aq-blue-soft)] px-3 py-2 text-xs font-semibold text-[var(--aq-blue)]">Student Visa · Available</span>
-          <span aria-disabled="true" className="rounded-full border border-[var(--aq-border)] px-3 py-2 text-xs text-[var(--aq-muted)]">Job Visa · Planned</span>
-        </div>
-        <div className="mb-6 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-5 text-[var(--aq-muted)]">
-          <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-400"/>
-          <p>Requirements vary by citizenship, residence, university, degree and current law. All checklist items start unverified. Use official government, embassy and university sources before applying. Aqlyra does not guarantee admission, visa issuance, deadlines or appointments.</p>
-        </div>
-        <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
-          <aside className={cardStyle + " h-fit"}>
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className={cardStyle + " order-2 h-fit lg:order-1"}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">My journeys</h2>
               <button type="button" onClick={() => setCreating(value => !value)}
@@ -554,6 +624,7 @@ export function StudyAbroadWorkspace() {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
                     setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
+                    setChatQuestion(""); setLastDocumentChatQuestion(""); setActivePanel("overview");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
@@ -571,8 +642,243 @@ export function StudyAbroadWorkspace() {
               ))}
             </div>
           </aside>
-          <div className="min-w-0 space-y-5">
-            {(creating || cases.length === 0) && (
+          <div className="order-1 min-w-0 space-y-5 lg:order-2">
+
+            <section className={cardStyle} aria-label="Ask Aqlyra study assistant">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-xl bg-[var(--aq-blue-soft)] p-2.5 text-[var(--aq-blue)]">
+                    <MessageCircle size={20} aria-hidden="true"/>
+                  </span>
+                  <div>
+                    <h2 className="text-lg font-semibold">Ask Aqlyra</h2>
+                    <p className="text-xs text-[var(--aq-muted)]">
+                      {active ? "Ask about your study journey in one place" : "Create your private study plan with a short conversation"}
+                    </p>
+                  </div>
+                </div>
+                {active && <span className="max-w-full truncate rounded-full border border-[var(--aq-border)] px-3 py-1 text-[11px] text-[var(--aq-muted)]">
+                  {active.destination_country} · {active.study_field}
+                </span>}
+              </div>
+              {!active ? (
+                !casesLoaded ? (
+                  <div className="mt-5 rounded-xl border border-[var(--aq-border)] p-5 text-xs text-[var(--aq-muted)]" role="status">
+                    Loading your saved study plans…
+                  </div>
+                ) : creating ? (
+                  <div className="mt-5 text-sm text-[var(--aq-muted)]">
+                    Complete the guided setup form below, or{" "}
+                    <button type="button" onClick={() => setCreating(false)}
+                      className="text-[var(--aq-blue)] underline">
+                      return to chat setup
+                    </button>.
+                  </div>
+                ) : (
+                <div className="mt-5">
+                  <div className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-4">
+                    <p className="text-xs text-[var(--aq-muted)]">Aqlyra · Step {setupStep + 1} of {CHAT_SETUP_STEPS.length}</p>
+                    <p className="mt-2 text-sm font-medium">{CHAT_SETUP_STEPS[setupStep]?.question}</p>
+                    <p className="mt-1 text-xs text-[var(--aq-muted)]">
+                      Answer one question at a time. A private plan is saved only after all steps.
+                    </p>
+                  </div>
+                  {setupStep > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {CHAT_SETUP_STEPS.slice(0, setupStep).map(step => (
+                        <div key={step.key} className="rounded-xl border border-[var(--aq-border)] px-3 py-2 text-xs">
+                          <span className="text-[var(--aq-muted)]">{step.question}</span>
+                          <p className="mt-1 font-semibold">{form[step.key]}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={event => { void submitSetupReply(event); }}>
+                    <label htmlFor="study-chat-setup" className="sr-only">{CHAT_SETUP_STEPS[setupStep]?.question}</label>
+                    <input id="study-chat-setup" required minLength={2}
+                      maxLength={CHAT_SETUP_STEPS[setupStep]?.key === "study_field" ? 120 : 80}
+                      placeholder={CHAT_SETUP_STEPS[setupStep]?.hint}
+                      className={fieldStyle + " flex-1"}
+                      value={setupReply} onChange={event => setSetupReply(event.target.value)} />
+                    <button type="submit" disabled={busy !== "" || setupReply.trim().length < 2}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--aq-blue)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                      {busy === "create" ? "Saving…" : setupStep === CHAT_SETUP_STEPS.length - 1 ? "Create plan" : "Next"}
+                      <Send size={14} aria-hidden="true"/>
+                    </button>
+                  </form>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    {setupStep > 0 && <button type="button" onClick={() => {
+                      setSetupStep(s => s - 1);
+                      setSetupReply("");
+                    }} className="text-xs text-[var(--aq-blue)] underline">Previous question</button>}
+                    <button type="button" onClick={() => setCreating(true)}
+                      className="text-xs text-[var(--aq-blue)] underline">
+                      Prefer a form? Use guided setup
+                    </button>
+                  </div>
+                </div>
+              )) : (
+                <div className="mt-5">
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="Answer source">
+                    <button type="button" aria-pressed={chatSource === "research"} onClick={() => setChatSource("research")}
+                      className={"rounded-lg border px-3 py-2 text-xs " + (chatSource === "research"
+                        ? "border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]"
+                        : "border-[var(--aq-border)] text-[var(--aq-muted)]")}>
+                      Web research
+                    </button>
+                    <button type="button" aria-pressed={chatSource === "documents"}
+                      onClick={() => setChatSource("documents")}
+                      className={"rounded-lg border px-3 py-2 text-xs " + (chatSource === "documents"
+                        ? "border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]"
+                        : "border-[var(--aq-border)] text-[var(--aq-muted)]")}>
+                      My documents {documents.length ? "(" + documents.length + ")" : ""}
+                    </button>
+                  </div>
+                  <div className="mt-4 max-h-[440px] min-h-[170px] space-y-4 overflow-y-auto rounded-xl border border-[var(--aq-border)] bg-[var(--aq-bg)] p-3 sm:p-4" role="log" aria-label="Study research answers">
+                    {(chatSource === "research" ? reports.length === 0 : !documentAnswer) && (
+                      <div className="py-6 text-center">
+                        <Sparkles size={24} aria-hidden="true" className="mx-auto mb-3 text-[var(--aq-blue)]"/>
+                        <p className="text-sm font-medium">What would you like to know?</p>
+                        <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--aq-muted)]">
+                          {chatSource === "research"
+                            ? "Ask about universities, fees, scholarships, admission or visa rules. Answers include verifiable sources and are saved to your plan."
+                            : "Ask about an attached document. Answers cite the files linked to this journey."}
+                        </p>
+                      </div>
+                    )}
+                    {chatSource === "research" && reports.slice(0, 5).reverse().map(report => (
+                      <article key={report.id} className="space-y-2">
+                        <div className="ml-auto max-w-[95%] rounded-2xl rounded-br-md bg-[var(--aq-blue-soft)] px-3 py-2 text-xs text-[var(--aq-text)] sm:max-w-[85%]">
+                          <span className="font-semibold">Study question</span>
+                          <p className="mt-1 whitespace-pre-wrap break-words">{report.question}</p>
+                        </div>
+                        <div className="max-w-full rounded-2xl rounded-bl-md border border-[var(--aq-border)] bg-[var(--aq-card)] p-3 text-sm leading-relaxed">
+                          <MarkdownMessage content={report.answer}/>
+                          {report.sources.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--aq-border)] pt-3">
+                              {report.sources.slice(0, 5).map(source => (
+                                <a key={source.citation} href={source.url} target="_blank" rel="noopener noreferrer"
+                                  className="max-w-full truncate rounded-md border border-[var(--aq-border)] px-2 py-1 text-[11px] text-[var(--aq-blue)] hover:underline"
+                                  title={source.title}>
+                                  {source.citation} · {sourceHost(source.url)}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          <p className="mt-2 text-[11px] text-[var(--aq-muted)]">Saved research · verify details with official sources</p>
+                        </div>
+                      </article>
+                    ))}
+                    {chatSource === "documents" && documentAnswer && (
+                      <article className="space-y-2">
+                        <div className="ml-auto max-w-[95%] rounded-2xl rounded-br-md bg-[var(--aq-blue-soft)] p-3 text-xs sm:max-w-[85%]">
+                          {lastDocumentChatQuestion || documentAnswer.question}
+                        </div>
+                        <div className="rounded-2xl rounded-bl-md border border-[var(--aq-border)] bg-[var(--aq-card)] p-3 text-sm">
+                          <MarkdownMessage content={documentAnswer.answer}/>
+                          {documentAnswer.citations.map(source => (
+                            <p key={source.source_id} className="mt-2 break-words text-[11px] text-[var(--aq-muted)]">
+                              {source.source_id} · {source.filename} · {source.source_label}
+                            </p>
+                          ))}
+                          {documentAnswer.is_refusal && (
+                            <p className="mt-2 text-xs text-amber-400">Not enough evidence in the attached files.</p>
+                          )}
+                        </div>
+                      </article>
+                    )}
+                    {busy === "research" || busy === "ask-documents" ? (
+                      <p role="status" className="text-xs text-[var(--aq-muted)]">
+                        <LoaderCircle size={14} className="mr-2 inline animate-spin"/> Aqlyra is checking sources…
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {([
+                      "Find universities in " + active.destination_country + " for " + active.study_field,
+                      "What are the admission requirements for my degree?",
+                      "Which scholarships could fit this study plan?",
+                    ] as const).map(question => (
+                      <button key={question} type="button" disabled={busy !== ""}
+                        onClick={() => { setChatSource("research"); setChatQuestion(question.slice(0, 160)); }}
+                        className="rounded-full border border-[var(--aq-border)] px-3 py-1.5 text-left text-[11px] text-[var(--aq-muted)] hover:border-[var(--aq-blue)]">
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={event => { void sendStudyChat(event); }} className="mt-4 space-y-3">
+                    {chatSource === "research" ? (
+                      <label className="flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                        <input type="checkbox" checked={researchConsent}
+                          onChange={event => setResearchConsent(event.target.checked)} className="mt-1" />
+                        I agree to share my plan&apos;s country, nationality, degree, subject and intake
+                        with external web research/AI providers. No uploaded files or private notes are shared.
+                      </label>
+                    ) : (
+                      <label className="flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
+                        <input type="checkbox" checked={documentConsent}
+                          onChange={event => setDocumentConsent(event.target.checked)} className="mt-1" />
+                        I agree to share excerpts from files linked to this journey with the configured AI provider.
+                        Other journeys are not searched.
+                      </label>
+                    )}
+                    {chatSource === "research" && (
+                      <details className="text-xs text-[var(--aq-muted)]">
+                        <summary className="cursor-pointer">Research options</summary>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <label>Topic
+                            <select value={chatTopic} className={fieldStyle + " mt-1"}
+                              onChange={event => setChatTopic(event.target.value as typeof chatTopic)}>
+                              <option value="auto">Auto-select topic</option>
+                              {RESEARCH_TOPICS.map(topic => (
+                                <option key={topic.id} value={topic.id}>{topic.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>Focus on a shortlisted program
+                            <select value={researchFocusId} className={fieldStyle + " mt-1"}
+                              onChange={event => setResearchFocusId(event.target.value)}>
+                              <option value="">All universities</option>
+                              {universities.map(u => (
+                                <option key={u.id} value={u.id}>{u.name} · {u.program}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </details>
+                    )}
+                    <label htmlFor="study-chat-question" className="sr-only">Your study question</label>
+                    <textarea id="study-chat-question" rows={2}
+                      minLength={chatSource === "research" ? 12 : 5}
+                      maxLength={chatSource === "research" ? 160 : 1200}
+                      value={chatQuestion} onChange={event => setChatQuestion(event.target.value)}
+                      placeholder={chatSource === "research"
+                        ? "Ask a question about studying abroad…"
+                        : "Ask about a file attached to this journey…"}
+                      className={fieldStyle + " resize-y"} />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-[var(--aq-muted)]">
+                        {chatSource === "research"
+                          ? chatQuestion.length + "/160 · Avoid personal IDs, bank details and private links"
+                          : documents.length === 0
+                            ? "Attach a processed document under Documents first"
+                            : "Private documents attached: " + documents.length}
+                      </p>
+                      <button type="submit"
+                        disabled={busy !== "" || (chatSource === "research"
+                          ? !researchConsent || chatQuestion.trim().length < 12 || chatQuestion.trim().length > 160
+                          : !documentConsent || documents.length === 0 || chatQuestion.trim().length < 5 || chatQuestion.trim().length > 1200)}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--aq-blue)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                        <Send size={15} aria-hidden="true"/>
+                        {busy === "research" || busy === "ask-documents" ? "Checking…" : "Ask Aqlyra"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </section>
+
+            {creating && (
               <form onSubmit={event => { void createCase(event); }} className={cardStyle}>
                 <h2 className="mb-1 text-base font-semibold">Create student journey</h2>
                 <p className="mb-4 text-xs text-[var(--aq-muted)]">No passport number, date of birth or bank statement is needed to make a plan.</p>
@@ -608,13 +914,29 @@ export function StudyAbroadWorkspace() {
             {notice && <p role="status" className="rounded-lg border border-[var(--aq-border)] p-3 text-xs text-[var(--aq-muted)]">{notice}</p>}
             {active && (
               <>
-                <section className={cardStyle} aria-label="Personalized Study Advisor">
+                <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Study plan navigation">
+                  {([
+                    ["overview", "My plan"],
+                    ["universities", "Universities"],
+                    ["research", "Explore topics"],
+                    ["documents", "Documents"],
+                  ] as const).map(([key, label]) => (
+                    <button type="button" key={key} aria-pressed={activePanel === key}
+                      onClick={() => setActivePanel(key)}
+                      className={"min-h-10 shrink-0 rounded-lg border px-4 py-2 text-xs font-semibold transition " +
+                        (activePanel === key
+                          ? "border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]"
+                          : "border-[var(--aq-border)] text-[var(--aq-muted)] hover:bg-[var(--aq-card)]")}>
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                <section hidden={activePanel !== "overview"} className={cardStyle} aria-label="Personalized Study Advisor">
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <Sparkles size={18} className="text-[var(--aq-blue)]"/> Smart Study Advisor
                   </h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
-                    Your private planning assistant prioritizes steps using this journey&apos;s saved checklist,
-                    research freshness and university deadlines. It does not predict acceptance or visa approval.
+                    Suggested next steps based on this plan. Dates and requirements need official verification; Aqlyra does not predict acceptance or visa approval.
                   </p>
                   {advisor ? (
                     <>
@@ -693,7 +1015,7 @@ export function StudyAbroadWorkspace() {
                       onClick={refreshAdvisor}>Retry guidance</button>}
                   </div>}
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "overview"} className={cardStyle}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <h2 className="text-lg font-semibold">{active.study_field} · {active.degree_level}</h2>
@@ -713,7 +1035,7 @@ export function StudyAbroadWorkspace() {
                     {STAGES.map(([key,label]) => <option key={key} value={key}>{label}</option>)}
                   </select>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "universities"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <GraduationCap size={18}/> My university shortlist
                   </h2>
@@ -773,7 +1095,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "research"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><Search size={18}/> Research universities, visas and embassies</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     Uses opt-in live public Web Research. The search does not send your uploaded files.
@@ -875,7 +1197,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <BookOpen size={18}/> Ask your case documents (private RAG)
                   </h2>
@@ -934,7 +1256,7 @@ export function StudyAbroadWorkspace() {
                     </div>
                   )}
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileCheck2 size={18}/> Document readiness</h2>
                   <p className="mt-2 text-xs text-[var(--aq-muted)]">
                     These are common planning prompts, not a government-approved checklist. Select each status manually after checking official requirements.
@@ -980,7 +1302,7 @@ export function StudyAbroadWorkspace() {
                     ))}
                   </div>
                 </section>
-                <section className={cardStyle}>
+                <section hidden={activePanel !== "documents"} className={cardStyle}>
                   <h2 className="flex items-center gap-2 text-base font-semibold"><FileUp size={18}/> Process private documents</h2>
                   <p className="mt-2 text-xs leading-5 text-[var(--aq-muted)]">
                     PDF, DOCX, XLSX, PPTX, TXT, CSV and images supported by Aqlyra.
