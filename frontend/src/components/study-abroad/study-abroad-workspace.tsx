@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileCheck2,
   FileUp, Globe2, GraduationCap, LoaderCircle, Plane, Search,
-  ShieldAlert, Trash2, Sparkles, Clock3,
+  ShieldAlert, Trash2, Sparkles, Clock3, MessageCircle, Send, SlidersHorizontal,
 } from "lucide-react";
 import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
@@ -130,6 +130,29 @@ const CHECK_STATES = [
   ["not_applicable", "Not applicable"],
 ] as const;
 
+
+const CHAT_SETUP_STEPS = [
+  { key: "nationality", question: "What is your citizenship / nationality?", hint: "Example: Bangladesh" },
+  { key: "residence_country", question: "Which country do you currently live in?", hint: "Example: Japan" },
+  { key: "destination_country", question: "Where do you want to study?", hint: "Example: Germany" },
+  { key: "degree_level", question: "Which degree do you want to pursue?", hint: "Example: Master's" },
+  { key: "study_field", question: "What subject do you want to study?", hint: "Example: AI / Computer Science" },
+  { key: "intake", question: "When do you plan to start?", hint: "Example: Winter 2028" },
+] as const;
+
+function inferResearchTopic(text: string): typeof RESEARCH_TOPICS[number]["id"] {
+  const q = text.toLowerCase();
+  if (/scholarship|funding|financial aid|grant|奨学金|বৃত্তি|স্কলারশিপ/i.test(q)) return "scholarships";
+  if (/visa|immigration|permit|residence status|ビザ|ভিসা/i.test(q)) return "visa";
+  if (/embassy|consulate|appointment|大使館|দূতাবাস/i.test(q)) return "embassy";
+  if (/transfer|credit|2nd year|3rd year|編入|単位|ট্রান্সফার/i.test(q)) return "transfer";
+  if (/ielts|toefl|jlpt|language|german proficiency|日本語|英語|ভাষা/i.test(q)) return "language";
+  if (/tuition|living cost|fees|budget|費用|学費|খরচ/i.test(q)) return "costs";
+  if (/university|universities|college|program list|大学|বিশ্ববিদ্যালয়/i.test(q)) return "universities";
+  if (/arrival|housing|before departure|travel insurance|出発|বাসা/i.test(q)) return "predeparture";
+  return "admissions";
+}
+
 async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch("/api/study-abroad/" + path, {
     method,
@@ -174,6 +197,13 @@ export function StudyAbroadWorkspace() {
   const [customTopic, setCustomTopic] = useState("admissions");
   const refreshAdvisor = () => setAdvisorRevision(value => value + 1);
   const [creating, setCreating] = useState(false);
+  const [activePanel, setActivePanel] = useState<"overview" | "universities" | "research" | "documents">("overview");
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatSource, setChatSource] = useState<"research" | "documents">("research");
+  const [chatTopic, setChatTopic] = useState<"auto" | typeof RESEARCH_TOPICS[number]["id"]>("auto");
+  const [lastDocumentChatQuestion, setLastDocumentChatQuestion] = useState("");
+  const [setupStep, setSetupStep] = useState(0);
+  const [setupReply, setSetupReply] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -283,21 +313,43 @@ export function StudyAbroadWorkspace() {
     setActive(updated);
   }
 
-  async function createCase(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveStudyCase(values: typeof form): Promise<boolean> {
     setBusy("create"); setError(""); setNotice("");
     try {
       const created = await api<StudyCase>("cases", "POST", {
-        workflow: "student", ...form,
+        workflow: "student", ...values,
       });
       setCases(previous => [created, ...previous]);
       setActive(created);
       setDocuments([]); setReports([]); setUniversities([]);
       setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
-      setCreating(false);
-      setNotice("Private student journey created.");
-    } catch (e) { setError(String(e)); }
+      setLastDocumentChatQuestion(""); setChatQuestion("");
+      setCreating(false); setSetupStep(0); setSetupReply("");
+      setNotice("Private study plan created. Ask Aqlyra a study question below.");
+      return true;
+    } catch (e) { setError(String(e)); return false; }
     finally { setBusy(""); }
+  }
+
+  async function createCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveStudyCase(form);
+  }
+
+  async function submitSetupReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy !== "") return;
+    const answer = setupReply.trim();
+    const step = CHAT_SETUP_STEPS[setupStep];
+    if (!step || answer.length < 2 || answer.length > (step.key === "study_field" ? 120 : 80)) return;
+    const updated = { ...form, [step.key]: answer };
+    setForm(updated);
+    if (setupStep === CHAT_SETUP_STEPS.length - 1) {
+      await saveStudyCase(updated);
+      return;
+    }
+    setSetupStep(value => value + 1);
+    setSetupReply("");
   }
 
   async function updateStage(value: string) {
@@ -367,8 +419,8 @@ export function StudyAbroadWorkspace() {
     finally { setBusy(""); }
   }
 
-  async function research(topic: string, focusUniversityId = "", question = "") {
-    if (!active) return;
+  async function research(topic: string, focusUniversityId = "", question = ""): Promise<boolean> {
+    if (!active || !researchConsent) return false;
     setBusy("research"); setError(""); setNotice("");
     try {
       const result = await api<StudyReport>(
@@ -379,9 +431,35 @@ export function StudyAbroadWorkspace() {
         },
       );
       setReports(previous => [result, ...previous]);
-      setNotice("Research saved. Check each source against the official authority.");
+      setNotice("Research saved to this journey. Verify important details with official sources.");
       if (question.trim()) setSpecificQuestion("");
       refreshAdvisor();
+      return true;
+    } catch (e) { setError(String(e)); return false; }
+    finally { setBusy(""); }
+  }
+
+  async function sendStudyChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!active || busy !== "") return;
+    const question = chatQuestion.trim();
+    if (chatSource === "research") {
+      if (!researchConsent || question.length < 12 || question.length > 160) return;
+      const topic = chatTopic === "auto" ? inferResearchTopic(question) : chatTopic;
+      const success = await research(topic, researchFocusId, question);
+      if (success) setChatQuestion("");
+      return;
+    }
+    if (!documentConsent || documents.length === 0 || question.length < 5 || question.length > 1200) return;
+    setBusy("ask-documents"); setError(""); setNotice(""); setDocumentAnswer(null);
+    try {
+      const result = await api<CaseRagAnswer>(
+        "cases/" + active.id + "/ask-documents", "POST",
+        { question, confirm_share_documents: documentConsent },
+      );
+      setDocumentAnswer(result);
+      setLastDocumentChatQuestion(question);
+      setChatQuestion("");
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -502,6 +580,7 @@ export function StudyAbroadWorkspace() {
       setDocuments([]); setReports([]); setUniversities([]);
       setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
       setDocumentAnswer(null); setDocumentConsent(false); setResearchConsent(false);
+      setChatQuestion(""); setLastDocumentChatQuestion(""); setActivePanel("overview");
     } catch (e) { setError(String(e)); }
     finally { setBusy(""); }
   }
@@ -554,6 +633,7 @@ export function StudyAbroadWorkspace() {
                     setActive(item); setResearchConsent(false); setDocumentConsent(false);
                     setDocumentAnswer(null); setDocuments([]); setReports([]); setUniversities([]);
                     setAdvisor(null); setAdvisorError(false); setResearchFocusId(""); setSpecificQuestion("");
+                    setChatQuestion(""); setLastDocumentChatQuestion(""); setActivePanel("overview");
                     setError(""); setNotice("");
                   }}
                   aria-pressed={active?.id === item.id}
