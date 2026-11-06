@@ -1062,7 +1062,7 @@ export function StudyAbroadWorkspace() {
                   <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--aq-muted)]">
                     <input type="checkbox" className="mt-1" checked={researchConsent}
                       onChange={event => setResearchConsent(event.target.checked)}/>
-                    Allow opt-in university-source research using this plan's nationality, residence, destination,
+                    Allow opt-in university-source research using this plan&apos;s nationality, residence, destination,
                     study subject, degree and intake. Uploaded files are never sent.
                   </label>
                   <form onSubmit={event => { void addUniversity(event); }}
