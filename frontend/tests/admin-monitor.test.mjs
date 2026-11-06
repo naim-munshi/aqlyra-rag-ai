@@ -50,3 +50,25 @@ test("chat monitoring is backward compatible and uses aggregated account activit
   assert.match(types, /persisted_authenticated_user_messages/);
   assert.doesNotMatch(ui, /user\.email|message\.content|document\.content/);
 });
+
+
+test("admin registered user controls are private and gated", () => {
+  const ui = get("../src/components/admin/user-management-panel.tsx");
+  const list = get("../src/app/api/admin/users/route.ts");
+  const mutations = get("../src/app/api/admin/users/[userId]/route.ts");
+  const parent = get("../src/components/admin/admin-monitor.tsx");
+  assert.match(parent, /<UserManagementPanel \/>/);
+  assert.match(list, /getAccessToken\(/);
+  assert.match(list, /Cache-Control": "private, no-store/);
+  assert.match(mutations, /getAccessToken\(/);
+  assert.match(mutations, /hasTrustedRequestOrigin\(request\)/);
+  assert.match(mutations, /DELETE ACCOUNT/);
+  assert.match(mutations, /Cache-Control": "private, no-store/);
+  assert.match(mutations, /Content-Type": "application\/json"/);
+  assert.match(ui, /can_permanently_delete/);
+  assert.match(ui, /confirmEmail\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(ui, /Disable/);
+  assert.match(ui, /Enable/);
+  assert.match(ui, /does not|neither deletes user data/i);
+  assert.doesNotMatch(ui, /localStorage|sessionStorage/);
+});
