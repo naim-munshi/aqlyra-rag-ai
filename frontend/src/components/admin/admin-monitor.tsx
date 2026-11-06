@@ -55,6 +55,10 @@ export function AdminMonitor({ initialData }: { initialData: AdminOverview }) {
   }, [refresh]);
 
   const maxSignups = Math.max(1, ...data.users.signups_last_7_days.map((x) => x.count));
+  const maxChatMessages = Math.max(
+    1,
+    ...(data.chat_activity?.daily_last_7_utc_days.map((x) => x.messages) ?? []),
+  );
 
   if (!authorized) {
     return (
@@ -122,6 +126,49 @@ export function AdminMonitor({ initialData }: { initialData: AdminOverview }) {
             <span className="mx-2">·</span>
             <FileText size={14} aria-hidden="true" /> HTTP 4xx responses: {integer.format(data.traffic.client_errors)}
           </div>
+        </section>
+
+        <section className="mt-9" aria-label="Authenticated chat activity">
+          <div className="mb-4 flex items-center gap-2">
+            <Users size={18} className="text-cyan-300" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Chat usage</h2>
+          </div>
+          <p className="mb-4 text-xs leading-5 text-slate-400">
+            Distinct signed-in users with a saved chat message. Counts exclude
+            guest sessions, passive visits, assistant replies and unsaved requests.
+            They are not live-online users or unique website visitors.
+          </p>
+          {data.chat_activity ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Chat users · 24h" value={integer.format(data.chat_activity.active_users_last_24h)} description="Unique accounts in trailing 24 hours" />
+                <StatCard label="Chat users · 7d" value={integer.format(data.chat_activity.active_users_last_7d)} description="Unique accounts in trailing 7 days" />
+                <StatCard label="User messages · 24h" value={integer.format(data.chat_activity.user_messages_last_24h)} description="Saved user prompts only" />
+                <StatCard label="User messages · 7d" value={integer.format(data.chat_activity.user_messages_last_7d)} description="Saved user prompts only" />
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-[#101827] p-5">
+                <h3 className="text-sm font-semibold">Daily chat usage · last 7 UTC days</h3>
+                <p className="mt-1 text-xs text-slate-400">Bars show messages; labels also show distinct chat users per day.</p>
+                <div className="mt-5 flex h-44 items-end justify-between gap-2">
+                  {data.chat_activity.daily_last_7_utc_days.map((day) => (
+                    <div key={day.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                      <span className="text-[11px] tabular-nums text-slate-200" title="User messages">{day.messages}</span>
+                      <div role="img" aria-label={`${day.date}: ${day.users} chat users and ${day.messages} messages`}
+                        className="w-full max-w-12 rounded-t-md bg-cyan-400/80"
+                        style={{ height: `${Math.max(3, (day.messages / maxChatMessages) * 108)}px` }} />
+                      <span className="text-[11px] tabular-nums text-cyan-300">{day.users} users</span>
+                      <span className="text-[10px] text-slate-500">{day.date.slice(5)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p role="status" className="rounded-xl border border-white/10 p-4 text-sm text-slate-400">
+              Chat activity is not yet available on this backend release.
+              Account and API metrics remain accessible.
+            </p>
+          )}
         </section>
 
         <section className="mt-9" aria-label="Cloud object storage lifecycle">
