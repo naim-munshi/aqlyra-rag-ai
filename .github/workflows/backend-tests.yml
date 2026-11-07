@@ -128,6 +128,12 @@ jobs:
         run: |
           python -m pytest
 
+      - name: Verify benchmark cannot target real production or paid AI providers
+        if: matrix.postgres-version == 16
+        working-directory: scripts/ops
+        run: |
+          python -m pytest -q test_ephemeral_chat_load.py
+
       - name: Run bounded 10-100 synthetic chat load on disposable CI backend
         if: matrix.postgres-version == 16
         env:
