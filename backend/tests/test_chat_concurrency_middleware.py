@@ -44,9 +44,15 @@ def test_gate_queues_chat_away_from_sync_dependencies_and_rejects_excess():
             downstream, max_in_flight=1, queue_timeout_seconds=0.03,
         )
         path = "/api/v1/conversations/synthetic-1/messages"
-        first = asyncio.create_task(gate(_scope(path), _receive, events_first.append))
+        async def send_first(event):
+            events_first.append(event)
+
+        async def send_third(event):
+            events_third.append(event)
+
+        first = asyncio.create_task(gate(_scope(path), _receive, send_first))
         await asyncio.wait_for(entered.wait(), timeout=1)
-        await gate(_scope(path), _receive, events_third.append)
+        await gate(_scope(path), _receive, send_third)
         status, headers = _read_status(events_third)
         assert status == 503
         assert headers[b"retry-after"] == b"2"
@@ -62,7 +68,10 @@ def test_gate_queues_chat_away_from_sync_dependencies_and_rejects_excess():
         assert _read_status(events_first)[0] == 200
         # Once completed, a new request may enter normally.
         again = []
-        await gate(_scope(path), _receive, again.append)
+        async def send_again(event):
+            again.append(event)
+
+        await gate(_scope(path), _receive, send_again)
         assert _read_status(again)[0] == 200
 
     asyncio.run(scenario())
@@ -88,7 +97,9 @@ def test_gate_covers_streaming_chat_but_skips_other_routes():
             ("/api/v1/conversations/id/messages/stream/extra", "POST"),
         ):
             events = []
-            await gate(_scope(path, method), _receive, events.append)
+            async def send_event(event):
+                events.append(event)
+            await gate(_scope(path, method), _receive, send_event)
             assert _read_status(events)[0] == 200
         assert len(called) == 5
 
@@ -107,8 +118,10 @@ def test_chat_slots_are_released_on_downstream_error_or_cancellation():
             failing_app, max_in_flight=1, queue_timeout_seconds=0.1,
         )
         for _ in range(2):
+            async def noop_send(_event):
+                return None
             try:
-                await gate(_scope("/api/v1/conversations/id/messages"), _receive, lambda _x: None)
+                await gate(_scope("/api/v1/conversations/id/messages"), _receive, noop_send)
             except RuntimeError:
                 pass
             else:
@@ -124,7 +137,7 @@ def test_chat_slots_are_released_on_downstream_error_or_cancellation():
             blocked_app, max_in_flight=1, queue_timeout_seconds=0.1,
         )
         task = asyncio.create_task(other_gate(
-            _scope("/api/v1/conversations/id/messages"), _receive, lambda _x: None,
+            _scope("/api/v1/conversations/id/messages"), _receive, noop_send,
         ))
         await asyncio.sleep(0)
         task.cancel()
