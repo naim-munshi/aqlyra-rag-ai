@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 import { getAccessToken } from "@/lib/auth/session";
 import { backendUrl, readJson } from "@/lib/api/backend";
 
@@ -7,6 +8,12 @@ const noStore = { "Cache-Control": "private, no-store" };
 type Context = { params: Promise<{ intentId: string }> };
 
 export async function POST(_request: Request, context: Context) {
+  if (!hasTrustedRequestOrigin(_request)) {
+    return NextResponse.json({ detail: "Cross-origin request denied" }, {
+      status: 403, headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+
   const token = await getAccessToken();
   if (!token) return NextResponse.json(
     { detail: "Not authenticated" }, { status: 401, headers: noStore },
