@@ -49,7 +49,7 @@ async function proxyMutation(request: Request, context: RouteContext, method: "P
 
   let payload: unknown;
   try {
-    // Enforce the byte cap during streaming, not after request.text() buffers.
+    // Enforce the byte cap during streaming, before any complete-body allocation.
     // This also handles forged/missing Content-Length and multi-byte UTF-8.
     payload = await readBoundedJson(request, 2048);
   } catch (error) {
