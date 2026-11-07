@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import {
   backendUrl,
@@ -31,6 +33,11 @@ export async function PATCH(
   request: Request,
   context: RouteContext,
 ) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json({ detail: "Cross-origin request denied" }, {
+      status: 403, headers: { "Cache-Control": "private, no-store" },
+    });
+  }
   const accessToken =
     await getAccessToken();
 
@@ -48,9 +55,14 @@ export async function PATCH(
 
   try {
     body =
-      (await request.json()) as
+      (await readBoundedJson(request, 16_384)) as
         ConversationUpdateRequest;
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, {
+        status: 413, headers: { "Cache-Control": "private, no-store" },
+      });
+    }
     return NextResponse.json(
       { detail: "Invalid request body" },
       { status: 400 },
@@ -107,9 +119,14 @@ export async function PATCH(
 
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json({ detail: "Cross-origin request denied" }, {
+      status: 403, headers: { "Cache-Control": "private, no-store" },
+    });
+  }
   const accessToken =
     await getAccessToken();
 
