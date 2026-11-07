@@ -119,10 +119,11 @@ def get_study_evidence_brief(
         linked_document_count=len(ready_links), now=stamp,
     )
     evidence = _source_evidence(reports, stamp, case.destination_country)
+    checks = case.checklist if isinstance(case.checklist, dict) else {}
     pending = [
         {"key": key, "title": str(value.get("title") or key)[:140],
          "state": str(value.get("state") or "needs_verification")}
-        for key, value in (case.checklist or {}).items()
+        for key, value in checks.items()
         if isinstance(value, dict)
         and value.get("state") not in ("reviewed", "not_applicable")
     ][:20]
