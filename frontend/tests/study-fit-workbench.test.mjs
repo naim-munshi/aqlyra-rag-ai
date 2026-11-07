@@ -81,3 +81,12 @@ test("program fit integrates without replacing chat-first navigation", () => {
   assert.ok(wrapper.includes("researchAllowed={researchConsent}"));
   assert.ok(wrapper.includes("onEvidenceUpdated={refreshAdvisor}"));
 });
+
+
+test("evidence selection mirrors backend URL credential and port restrictions", () => {
+  assert.match(workbench, /a\\.username \\|\\| a\\.password/);
+  assert.match(workbench, /b\\.username \\|\\| b\\.password/);
+  assert.match(workbench, /a\\.port && a\\.port !== "443"/);
+  assert.match(workbench, /b\\.port && b\\.port !== "443"/);
+  assert.match(workbench, /\\/\\\\s\\//);
+});
