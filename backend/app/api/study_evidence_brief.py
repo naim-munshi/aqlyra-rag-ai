@@ -4,6 +4,7 @@ Read-only, deterministic and provider-free. An evidence URL is a link to review,
 never an assertion that its claims are correct for this applicant or intake.
 """
 from datetime import datetime, timezone
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends
@@ -18,6 +19,7 @@ from app.models.study_case import StudyCaseDocument, StudyResearchReport, StudyU
 from app.models.user import User
 from app.services.web_research_service import safe_public_url
 from app.study_abroad.advisor import build_study_advisor
+from app.study_abroad.evidence_policy import authority_domains, matches_authority
 from app.study_abroad.program_matcher import compare_programs, matching_source_host
 
 router = APIRouter(prefix="/study-abroad", tags=["Study Abroad"])
@@ -33,7 +35,7 @@ def _public_link(raw: object) -> str | None:
     return urlunsplit(("https", parsed.netloc, parsed.path or "/", "", ""))
 
 
-def _source_evidence(reports: list, stamp: datetime) -> list[dict]:
+def _source_evidence(reports: list, stamp: datetime, destination: str) -> list[dict]:
     """One latest snapshot per topic; cap URLs, deduplicate and label uncertainty."""
     topics: set[str] = set()
     seen: set[str] = set()
@@ -54,7 +56,7 @@ def _source_evidence(reports: list, stamp: datetime) -> list[dict]:
             if link is None or link in seen:
                 continue
             citation = raw.get("citation")
-            if not isinstance(citation, str) or not citation.startswith("[W"):
+            if not isinstance(citation, str) or re.fullmatch(r"\\[W[1-9][0-9]*\\]", citation, re.I) is None:
                 continue
             seen.add(link)
             evidence.append({
@@ -64,7 +66,7 @@ def _source_evidence(reports: list, stamp: datetime) -> list[dict]:
                 "url": link,
                 "source_type": (
                     "government_domain_unverified"
-                    if raw.get("source_type") == "official_authority_domain"
+                    if matches_authority(link, authority_domains(destination))
                     else "external_source_unverified"
                 ),
                 "searched_at": recorded.isoformat(),
@@ -116,7 +118,7 @@ def get_study_evidence_brief(
         case=case, universities=schools, reports=reports,
         linked_document_count=len(ready_links), now=stamp,
     )
-    evidence = _source_evidence(reports, stamp)
+    evidence = _source_evidence(reports, stamp, case.destination_country)
     pending = [
         {"key": key, "title": str(value.get("title") or key)[:140],
          "state": str(value.get("state") or "needs_verification")}
