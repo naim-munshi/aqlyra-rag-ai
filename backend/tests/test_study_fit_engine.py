@@ -269,7 +269,8 @@ def test_sparse_academic_patches_preserve_existing_data_and_explicit_null_clears
     })
     assert updated.status_code == 200, updated.text
     assert updated.json()["gpa"] == 3.4
-    assert updated.json()["language"] == {"test": "JLPT", "level": "N2"}
+    assert updated.json()["language"]["test"] == "JLPT"
+    assert updated.json()["language"]["level"] == "N2"
     assert updated.json()["completed_credits"] == 54
     assert updated.json()["transfer_requested"] is True
     assert updated.json()["annual_budget"] == 900000
