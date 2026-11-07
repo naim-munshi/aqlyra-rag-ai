@@ -40,21 +40,21 @@ def _nonbinding_context(excerpt: str, match: re.Match[str]) -> bool:
     Evaluate only its local clause: a separate sentence about waivers must not
     invalidate a clearly stated requirement elsewhere in the same snippet.
     """
-    before = re.split(r"[.!?;\\n]", excerpt[max(0, match.start() - 90):match.start()])[-1]
-    after = re.split(r"[.!?;\\n]", excerpt[match.end():match.end() + 90])[0]
+    before = re.split(r"[.!?;\n]", excerpt[max(0, match.start() - 90):match.start()])[-1]
+    after = re.split(r"[.!?;\n]", excerpt[match.end():match.end() + 90])[0]
     if re.search(
-        r"\\b(?:no|not|without|waived|waiver|optional|exempt)\\b"
-        r"(?:[\\s,:-]+[A-Za-z0-9-]+){0,5}\\s*$",
+        r"\b(?:no|not|without|waived|waiver|optional|exempt)\b"
+        r"(?:[\s,:-]+[A-Za-z0-9-]+){0,5}\s*$",
         before, re.I,
     ):
         return True
     if re.match(
-        r"\\s*(?:(?:is|are|was|were|will be|may be|has been)\\s+)?"
-        r"(?:not\\b|no\\s+longer\\b|waived\\b|optional\\b|exempt\\b)",
+        r"\s*(?:(?:is|are|was|were|will be|may be|has been)\s+)?"
+        r"(?:not\b|no\s+longer\b|waived\b|optional\b|exempt\b)",
         after, re.I,
     ):
         return True
-    return bool(re.search(r"\\b(?:hypothetical|illustrative|not applicable)\\b", after, re.I))
+    return bool(re.search(r"\b(?:hypothetical|illustrative|not applicable)\b", after, re.I))
 
 
 def _unambiguous_matches(excerpt: str, pattern: re.Pattern[str], converter):
