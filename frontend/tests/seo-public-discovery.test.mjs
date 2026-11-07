@@ -10,7 +10,7 @@ const production = "https://aqlyra-ai.vercel.app";
 test("only non-account pages are discoverable in sitemap", () => {
   const sitemap = source("src/app/sitemap.ts");
   assert.match(sitemap, /MetadataRoute\.Sitemap/);
-  assert.match(sitemap, /\["\/about", "\/demo", "\/help"\]/);
+  assert.match(sitemap, /\["\/", "\/about", "\/demo", "\/help"\]/);
   for (const privatePath of ["/api", "/study-abroad", "/admin", "/guest", "/login",
     "/register", "/artifacts", "/web", "/agent"]) {
     assert.ok(!sitemap.includes('"' + privatePath + '"'),
@@ -59,7 +59,7 @@ test("Aqlyra public product page is real indexable content, no login or fake out
   const login = source("src/app/login/page.tsx");
   assert.ok(login.includes('href="/about"'));
   const home = source("src/app/page.tsx");
-  assert.match(home, /redirect\(unauthenticatedLanding/);
+  assert.match(home, /return <PublicHomePage \/>/);
 });
 
 test("Vercel preview URLs cannot compete with canonical production SEO", () => {
@@ -78,4 +78,25 @@ test("private application entrypoints never opt into public search indexing", ()
     assert.ok(!page.includes("alternates: { canonical"),
       "Do not assign a public canonical to " + route);
   }
+});
+
+test("public home has indexable metadata while private workspace remains noindex", () => {
+  const home = source("src/app/page.tsx");
+  const marketing = source("src/components/marketing/public-home.tsx");
+  assert.match(home, /export async function generateMetadata/);
+  assert.match(home, /getAccessToken\(\)/);
+  assert.match(home, /hasSession/);
+  assert.match(home, /robots: \{ index: false, follow: false \}/);
+  assert.match(home, /robots: \{ index: true, follow: true \}/);
+  assert.match(home, /alternates: \{ canonical: "https:\/\/aqlyra-ai\.vercel\.app\/" \}/);
+  assert.match(home, /return <PublicHomePage \/>/);
+  assert.match(home, /return <ResponsiveWorkspaceShell user=\{user\} \/>/);
+  assert.match(home, /redirect\("\/demo"\)/);
+  assert.match(marketing, /<h1/);
+  assert.match(marketing, /<h2/);
+  assert.match(marketing, /application\/ld\+json/);
+  for (const path of ["/login", "/register", "/about", "/demo", "/help"]) {
+    assert.ok(marketing.includes('href="' + path + '"'), path);
+  }
+  assert.ok(!marketing.includes("fetch("), "Public page must not fetch private user content");
 });
