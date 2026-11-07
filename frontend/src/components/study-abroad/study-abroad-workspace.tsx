@@ -11,6 +11,7 @@ import type { DocumentListResponse, DocumentResponse } from "@/types/document";
 import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { StudyFitWorkbench } from "@/components/study-abroad/program-fit-workbench";
+import { StudyEvidenceBrief } from "@/components/study-abroad/study-evidence-brief";
 
 type ChecklistItem = {
   title: string;
@@ -947,6 +948,13 @@ export function StudyAbroadWorkspace() {
                     </button>
                   ))}
                 </nav>
+                {activePanel === "overview" && (
+                  <StudyEvidenceBrief
+                    key={active.id + ":" + advisorRevision}
+                    caseId={active.id}
+                    onNavigate={setActivePanel}
+                  />
+                )}
                 <section hidden={activePanel !== "overview"} className={cardStyle} aria-label="Personalized Study Advisor">
                   <h2 className="flex items-center gap-2 text-base font-semibold">
                     <Sparkles size={18} className="text-[var(--aq-blue)]"/> Smart Study Advisor
