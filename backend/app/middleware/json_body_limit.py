@@ -1,9 +1,9 @@
 """Bound direct Render JSON requests before framework body parsing.
 
 Frontend-side size limits alone cannot protect the publicly reachable FastAPI
-ingress. This guard covers normal JSON requests (including +json and requests
-without Content-Type), but deliberately leaves multipart document uploads and
-binary streams to their existing streaming/file validation paths.
+ingress. This guard bounds non-multipart requests (including JSON, +json, text/plain,
+and missing Content-Type) so an attacker cannot bypass the limit by altering
+a header. Multipart document uploads retain their separate streaming limits.
 
 Authentication has a separate stricter 16 KiB limiter.
 """
@@ -28,8 +28,8 @@ class JsonBodyLimitMiddleware:
 
         headers = {name.lower(): value for name, value in scope.get("headers", [])}
         mime = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
-        if mime and mime != b"application/json" and not mime.endswith(b"+json"):
-            # Multipart/streaming file uploads are enforced separately.
+        if mime == b"multipart/form-data":
+            # Multipart document uploads have separate per-file size limits.
             await self.app(scope, receive, send)
             return
 
