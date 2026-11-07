@@ -38,6 +38,15 @@ def test_missing_content_type_still_limits_json(client: TestClient):
     assert response.status_code == 413
 
 
+def test_text_plain_mime_cannot_bypass_direct_ingress_cap(client: TestClient):
+    response = client.post(
+        "/api/v1/conversations",
+        content=_oversized(),
+        headers={"Content-Type": "text/plain"},
+    )
+    assert response.status_code == 413
+
+
 def test_plus_json_mime_limited(client: TestClient):
     response = client.post(
         "/api/v1/conversations",
