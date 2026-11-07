@@ -34,34 +34,87 @@ _TUITION = re.compile(
 _VALID_SCALES = (4, 5, 10, 100)
 
 
+def _nonbinding_context(excerpt: str, match: re.Match[str]) -> bool:
+    """An apparent threshold negated or marked hypothetical is not evidence.
+
+    Evaluate only its local clause: a separate sentence about waivers must not
+    invalidate a clearly stated requirement elsewhere in the same snippet.
+    """
+    before = re.split(r"[.!?;\n]", excerpt[max(0, match.start() - 90):match.start()])[-1]
+    after = re.split(r"[.!?;\n]", excerpt[match.end():match.end() + 90])[0]
+    if re.search(
+        r"\b(?:no|not|without|waived|waiver|optional|exempt)\b"
+        r"(?:[\s,:-]+[A-Za-z0-9-]+){0,5}\s*$",
+        before, re.I,
+    ):
+        return True
+    if re.match(
+        r"\s*(?:(?:is|are|was|were|will be|may be|has been)\s+)?"
+        r"(?:not\b|no\s+longer\b|waived\b|optional\b|exempt\b)",
+        after, re.I,
+    ):
+        return True
+    return bool(re.search(r"\b(?:hypothetical|illustrative|not applicable)\b", after, re.I))
+
+
+def _unambiguous_matches(excerpt: str, pattern: re.Pattern[str], converter):
+    """Skip contradictory thresholds instead of silently picking the first."""
+    values = {
+        value
+        for match in pattern.finditer(excerpt)
+        if not _nonbinding_context(excerpt, match)
+        for value in [converter(match)]
+        if value is not None
+    }
+    return next(iter(values)) if len(values) == 1 else None
+
+
 def draft_from_excerpt(excerpt: str) -> dict:
-    """Find explicit values only; ambiguous phrasing produces no match."""
+    """Produce only unambiguous, non-negated draft facts for manual review."""
     if not isinstance(excerpt, str):
         return {}
-    # Bounded untrusted text and no hidden HTML/script processing.
     excerpt = re.sub(r"<[^>]{0,400}>", " ", excerpt[:1600])
     found: dict = {}
-    g = _GPA.search(excerpt)
-    if g:
-        value, scale = float(g.group(1)), int(g.group(2))
-        if scale in _VALID_SCALES and value <= scale:
-            found.update(minimum_gpa=value, gpa_scale=scale)
-    lang = _IELTS.search(excerpt)
-    if lang and float(lang.group(1)) <= 9:
-        found["minimum_language"] = {"test": "IELTS", "score": float(lang.group(1))}
-    else:
-        lang = _TOEFL.search(excerpt)
-        if lang and int(lang.group(1)) <= 120:
-            found["minimum_language"] = {"test": "TOEFL_iBT", "score": int(lang.group(1))}
-        else:
-            lang = _JLPT.search(excerpt)
-            if lang:
-                found["minimum_language"] = {"test": "JLPT", "level": lang.group(1).upper()}
-    tuition = _TUITION.search(excerpt)
-    if tuition:
-        amount = float(tuition.group(2).replace(",", ""))
-        if 0 <= amount <= 200000000:
-            found.update(annual_tuition=amount, currency=tuition.group(1).upper())
+
+    def parse_gpa(match: re.Match[str]):
+        score, scale = float(match.group(1)), int(match.group(2))
+        return (score, scale) if scale in _VALID_SCALES and score <= scale else None
+
+    gpa = _unambiguous_matches(excerpt, _GPA, parse_gpa)
+    if gpa is not None:
+        found.update(minimum_gpa=gpa[0], gpa_scale=gpa[1])
+
+    languages = {
+        ("IELTS", float(m.group(1)))
+        for m in _IELTS.finditer(excerpt)
+        if float(m.group(1)) <= 9 and not _nonbinding_context(excerpt, m)
+    }
+    languages.update(
+        ("TOEFL_iBT", int(m.group(1)))
+        for m in _TOEFL.finditer(excerpt)
+        if int(m.group(1)) <= 120 and not _nonbinding_context(excerpt, m)
+    )
+    languages.update(
+        ("JLPT", m.group(1).upper())
+        for m in _JLPT.finditer(excerpt)
+        if not _nonbinding_context(excerpt, m)
+    )
+    # Multiple distinct test paths/thresholds must be reviewed on the full
+    # page; one form field cannot safely capture such alternatives.
+    if len(languages) == 1:
+        test, value = next(iter(languages))
+        found["minimum_language"] = (
+            {"test": "JLPT", "level": value}
+            if test == "JLPT" else {"test": test, "score": value}
+        )
+
+    def parse_tuition(match: re.Match[str]):
+        amount = float(match.group(2).replace(",", ""))
+        return (match.group(1).upper(), amount) if 0 <= amount <= 200000000 else None
+
+    tuition = _unambiguous_matches(excerpt, _TUITION, parse_tuition)
+    if tuition is not None:
+        found.update(annual_tuition=tuition[1], currency=tuition[0])
     return found
 
 

@@ -69,3 +69,31 @@ def test_only_saved_same_university_citations_can_propose_editable_facts():
         now=now + timedelta(days=50),
     )
     assert old[0]["stale"]
+
+
+def test_negated_waived_or_hypothetical_requirements_are_not_proposed():
+    """Do not make missing requirements appear real based on search excerpts."""
+    for excerpt in (
+        "No minimum GPA of 3.0/4.0 is required for these applicants.",
+        "Minimum GPA of 3.0/4.0 is not required for this entry route.",
+        "Minimum IELTS 6.5 is optional.",
+        "Required TOEFL iBT score 80 is waived.",
+        "Annual tuition USD 8,000 is waived for the listed program.",
+        "Annual tuition JPY 1,000,000 is hypothetical, not the fee.",
+    ):
+        assert draft_from_excerpt(excerpt) == {}, excerpt
+
+
+def test_contradictory_or_alternative_thresholds_need_manual_review():
+    for excerpt in (
+        "Minimum GPA of 3.0/4.0. Minimum GPA of 3.5/4.0.",
+        "Minimum IELTS 6.5. Required TOEFL iBT 80.",
+        "Annual tuition USD 8,000. Annual tuition USD 10,000.",
+    ):
+        assert draft_from_excerpt(excerpt) == {}, excerpt
+
+
+def test_local_negation_does_not_hide_separate_supported_requirement():
+    assert draft_from_excerpt(
+        "No minimum GPA of 3.0/4.0 is required; minimum IELTS 6.5."
+    ) == {"minimum_language": {"test": "IELTS", "score": 6.5}}
