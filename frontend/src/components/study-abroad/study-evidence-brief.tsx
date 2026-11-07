@@ -217,7 +217,7 @@ export function StudyEvidenceBrief({
                 Categories: {brief.documents.linked_categories.join(", ") || "none yet"}
               </p>
               <p className="mt-2 text-[11px] leading-5 text-[var(--aq-muted)]">
-                File contents were not read or sent anywhere; processing and authenticity are separate checks.
+                This check did not read or send file contents. Processing and authenticity are separate checks.
               </p>
               <button type="button" onClick={() => onNavigate("documents")}
                 className="mt-3 text-xs text-[var(--aq-blue)] underline">Review linked documents</button>
