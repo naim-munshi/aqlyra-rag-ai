@@ -1,4 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+const description = "Learn how to use Aqlyra's AI conversation, document search, grounded citations and file tools, with guidance on privacy and model limitations.";
+
+export const metadata: Metadata = {
+  title: "Help and Knowledge Workspace Guide",
+  description,
+  alternates: { canonical: "https://aqlyra-ai.vercel.app/help" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    url: "https://aqlyra-ai.vercel.app/help",
+    siteName: "Aqlyra",
+    title: "Aqlyra Help — AI Knowledge Workspace Guide",
+    description,
+  },
+  twitter: { card: "summary", title: "Aqlyra Help", description },
+};
 
 const topics = [
   {
