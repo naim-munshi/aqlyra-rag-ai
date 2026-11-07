@@ -56,7 +56,7 @@ def _source_evidence(reports: list, stamp: datetime, destination: str) -> list[d
             if link is None or link in seen:
                 continue
             citation = raw.get("citation")
-            if not isinstance(citation, str) or re.fullmatch(r"\\[W[1-9][0-9]*\\]", citation, re.I) is None:
+            if not isinstance(citation, str) or re.fullmatch(r"\[W[1-9][0-9]*\]", citation, re.I) is None:
                 continue
             seen.add(link)
             evidence.append({
