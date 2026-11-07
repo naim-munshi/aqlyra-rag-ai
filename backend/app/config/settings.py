@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     DATABASE_POOL_TIMEOUT_SECONDS: float = Field(default=30, gt=0, le=60)
     DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60, le=7200)
 
+    # Per-process chat admission: queue BEFORE sync dependencies acquire AnyIO
+    # thread tokens and SQLAlchemy connections. Allow other endpoints headroom.
+    # Applies to non-streaming and streaming chat, not anonymous web research.
+    CHAT_MAX_IN_FLIGHT_REQUESTS: int = Field(default=12, ge=1, le=64)
+    CHAT_QUEUE_TIMEOUT_SECONDS: float = Field(default=10.0, ge=0.1, le=60.0)
+
     # Redis
     REDIS_URL: str = (
         "redis://localhost:6379/0"
