@@ -100,3 +100,16 @@ test("public home has indexable metadata while private workspace remains noindex
   }
   assert.ok(!marketing.includes("fetch("), "Public page must not fetch private user content");
 });
+
+test("homepage discovery never requires authentication or a backend request", () => {
+  const home = source("src/app/page.tsx");
+  const marketing = source("src/components/marketing/public-home.tsx");
+  const sitemap = source("src/app/sitemap.ts");
+  assert.match(home, /if \(!user\)/);
+  assert.match(home, /return <PublicHomePage \/>/);
+  assert.ok(!marketing.includes("getAccessToken"));
+  assert.ok(!marketing.includes("backendUrl"));
+  assert.ok(!marketing.includes("UserResponse"));
+  assert.ok(sitemap.includes('"/"'));
+  assert.ok(marketing.includes("Aqlyra AI"));
+});
