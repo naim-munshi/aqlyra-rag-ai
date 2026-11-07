@@ -101,3 +101,11 @@ test("clearing form inputs sends explicit null pairs rather than silently omitti
   assert.ok(workbench.includes('evidence_report_id: requirement.source ? parts[0] : null'));
   assert.ok(workbench.includes('evidence_citation: requirement.source ? parts[1] : null'));
 });
+
+
+test("research refresh preserves unsaved profile and criteria drafts", () => {
+  assert.ok(workbench.includes("loadedCaseRef.current !== caseId"));
+  assert.ok(workbench.includes("preferredId !== selectedRef.current"));
+  assert.ok(workbench.includes("loadedCaseRef.current = caseId"));
+  assert.ok(workbench.includes("setRequirement(requirementFormFrom(preferred?.requirements))"));
+});
