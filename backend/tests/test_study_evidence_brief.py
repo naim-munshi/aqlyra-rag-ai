@@ -1,7 +1,9 @@
 """Case-local evidence snapshot: access control and deterministic gaps."""
 from datetime import datetime, timedelta, timezone
 
-from app.models.study_case import StudyResearchReport
+from app.models.study_case import StudyResearchReport, StudyCaseDocument
+from app.models.document import Document
+from app.services.user_service import get_user_by_email
 
 
 def login(client, name):
@@ -98,3 +100,42 @@ def test_real_program_gaps_and_stale_source_links(client, db_session):
     assert data["saved_source_links"][0]["stale"] is True
     assert "view=old" not in response.text
     assert "draft=42" not in response.text
+
+
+def test_only_owner_ready_documents_counted(client, db_session):
+    alice = login(client, "briefdocumentsalice")
+    login(client, "briefdocumentsbob")
+    case_id = make_case(client, alice)
+    owner = get_user_by_email(db_session, "briefdocumentsalice@example.org")
+    other = get_user_by_email(db_session, "briefdocumentsbob@example.org")
+    assert owner and other
+    records = [
+        (owner, "ready", "academic"),
+        (owner, "processing", "language"),
+        (other, "ready", "finances"),
+    ]
+    for idx, (person, state, category) in enumerate(records):
+        doc = Document(
+            user_id=str(person.id), original_filename=f"file{idx}.pdf",
+            stored_filename=f"file{idx}.pdf", storage_path=f"internal/file{idx}",
+            content_type="application/pdf", file_extension=".pdf",
+            file_size=123, checksum_sha256=str(idx) * 64, status=state,
+        )
+        db_session.add(doc)
+        db_session.flush()
+        db_session.add(StudyCaseDocument(
+            case_id=case_id, document_id=doc.id, checklist_key=category,
+        ))
+    db_session.commit()
+    response = client.get(
+        f"/api/v1/study-abroad/cases/{case_id}/evidence-brief",
+        headers=alice,
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["documents"]["ready_count"] == 1
+    assert data["documents"]["linked_categories"] == ["academic"]
+    assert data["summary"]["linked_ready_documents"] == 1
+    assert "file0.pdf" not in response.text
+    assert "file1.pdf" not in response.text
+    assert "file2.pdf" not in response.text
