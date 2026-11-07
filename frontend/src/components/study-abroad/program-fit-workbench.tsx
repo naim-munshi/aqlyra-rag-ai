@@ -76,10 +76,16 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
 }
 
 function relevantSource(programUrl: string, sourceUrl: string): boolean {
+  // Mirror the backend evidence-host gate: never present credential-bearing or
+  // non-standard-port URLs as selectable university citations.
+  if (/\\s/.test(programUrl) || /\\s/.test(sourceUrl)) return false;
   try {
     const a = new URL(programUrl);
     const b = new URL(sourceUrl);
-    const x = a.hostname.toLowerCase(), y = b.hostname.toLowerCase();
+    if (a.username || a.password || b.username || b.password ||
+        (a.port && a.port !== "443") || (b.port && b.port !== "443")) return false;
+    const x = a.hostname.toLowerCase().replace(/\\.$/, "");
+    const y = b.hostname.toLowerCase().replace(/\\.$/, "");
     return a.protocol === "https:" && b.protocol === "https:" &&
       (x === y || x.endsWith("." + y) || y.endsWith("." + x));
   } catch { return false; }
