@@ -2426,7 +2426,7 @@ export function RAGWorkspace({
         </div>
 
         {!hasConversation ? (
-          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-3 pb-4 sm:px-6 sm:pb-12">
+          <div className="flex min-h-0 min-w-0 flex-1 items-end justify-center px-3 pb-4 sm:px-6 sm:pb-5">
             <div className="flex w-full max-w-[760px] flex-col items-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-blue)]">
                 <Sparkles
@@ -2446,11 +2446,6 @@ export function RAGWorkspace({
                   : "Upload a document or ask a grounded question across your processed knowledge sources."}
               </p>
 
-              <div className="mt-7 w-full">
-                {renderComposer(
-                  true,
-                )}
-              </div>
             </div>
           </div>
         ) : (
@@ -2657,14 +2652,32 @@ export function RAGWorkspace({
               </div>
             </div>
 
-            <div className="min-w-0 shrink-0 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5">
-              <div className="mx-auto max-w-[900px]">
-                {renderComposer(
-                  false,
-                )}
-              </div>
-            </div>
           </>
+        )}
+
+        {/* Keep the LiveKit component mounted while voice history turns
+            transition from the empty welcome screen to the chat stream.
+            Moving the same composer between conditional branches used to
+            unmount VoiceCallButton, whose cleanup disconnects the RTC room. */}
+        <div
+          className={[
+            "min-w-0 shrink-0",
+            hasConversation
+              ? "px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5"
+              : "px-3 pb-2 pt-1 sm:px-6 sm:pb-3",
+          ].join(" ")}
+        >
+          <div className="mx-auto max-w-[900px]">
+            {renderComposer(
+              !hasConversation,
+            )}
+          </div>
+        </div>
+        {/* Matching flexible space below the one persistent composer
+            centers the entire welcome + input group on a new chat.
+            Conversation history uses the normal bottom-aligned composer. */}
+        {!hasConversation && (
+          <div aria-hidden="true" className="min-h-0 flex-1" />
         )}
       </section>
 

@@ -93,6 +93,9 @@ export default function LoginPage() {
                   View the scripted product demo
                 </Link>
                 <span className="block mt-1">No account required · No live model calls</span>
+                <Link href="/about" className="mt-3 inline-block font-semibold text-[var(--aq-blue)] hover:underline">
+                  Learn about Aqlyra
+                </Link>
               </div>
 
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">

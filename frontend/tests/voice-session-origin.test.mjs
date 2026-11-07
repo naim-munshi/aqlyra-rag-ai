@@ -13,7 +13,8 @@ test("voice token minting is same-origin and requires authenticated session", ()
   assert.match(source, /getAccessToken\(\)/);
   assert.match(source, /status: 401/);
   assert.match(source, /readBoundedJson\(request, 16384\)/);
-  assert.match(source, /private, no-store/);
+  assert.match(source, /privateJsonResponse/);
+  assert.doesNotMatch(source, /NextResponse\.json/);
 });
 
 test("voice request only forwards the scoped authenticated session token", () => {

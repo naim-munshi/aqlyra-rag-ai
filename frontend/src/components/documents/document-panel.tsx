@@ -118,6 +118,10 @@ export function DocumentPanel() {
 
   const [uploading, setUploading] =
     useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+  // Bounded batch: sequential uploads avoid overwhelming the free Render
+  // instance, cloud storage, or the 384D embedding worker.
+  const MAX_BATCH_FILES = 10;
 
   const [recovering, setRecovering] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState("");
@@ -278,7 +282,7 @@ export function DocumentPanel() {
         );
 
         await refreshDocuments();
-        return;
+        return false;
       }
 
       const processedDocument =
@@ -291,10 +295,12 @@ export function DocumentPanel() {
             : document,
         ),
       );
+      return true;
     } catch {
       setError(
         "Unable to connect to document processing service.",
       );
+      return false;
     } finally {
       setProcessingId(null);
     }
@@ -364,72 +370,142 @@ export function DocumentPanel() {
   async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>,
   ) {
-    const file =
-      event.target.files?.[0];
-
+    // Snapshot the FileList before clearing input, otherwise Safari can
+    // clear its selection before our async loop begins.
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
-    if (!file) {
+    if (files.length === 0 || uploading) {
+      return;
+    }
+    if (files.length > MAX_BATCH_FILES) {
+      setError(
+        `Select up to ${MAX_BATCH_FILES} files at a time. No files were uploaded.`,
+      );
       return;
     }
 
     setUploading(true);
     setError("");
+    setRecoveryNotice("");
+    const failures: string[] = [];
+    let saved = 0;
+    let queued = 0;
+    let indexingFailed = 0;
 
     try {
-      let uploadedDocument: DocumentResponse;
+      // Process files serially to keep upload and provider pressure bounded.
+      // Each file is independently committed; a failed upload cannot erase
+      // already saved documents or prevent subsequent files being attempted.
+      for (const [index, file] of files.entries()) {
+        setUploadProgress(
+          `Uploading ${index + 1}/${files.length}: ${file.name}`,
+        );
 
-      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
-        // No File bytes ever cross the Next.js API in cloud mode.
-        uploadedDocument = await uploadViaPrivateCloud(file);
-      } else {
-        // Preserve existing local/staging upload behavior unchanged.
-        const formData = new FormData();
-        formData.append("file", file);
-        const response = await fetch("/api/documents/upload", {
-          method: "POST", body: formData,
-        });
-        const data = (await response.json()) as DocumentResponse | ApiError;
-        if (!response.ok) {
-          setError(
-            getErrorMessage(data as ApiError, "Document upload failed."),
+        try {
+          let uploadedDocument: DocumentResponse;
+
+          if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+            // Keep private file bytes off the Next.js API in cloud mode.
+            uploadedDocument = await uploadViaPrivateCloud(file);
+          } else {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/documents/upload", {
+              method: "POST",
+              body: formData,
+            });
+            const data = (await response.json()) as
+              | DocumentResponse
+              | ApiError;
+            if (!response.ok) {
+              throw new Error(
+                getErrorMessage(
+                  data as ApiError,
+                  "Document upload failed.",
+                ),
+              );
+            }
+            uploadedDocument = data as DocumentResponse;
+          }
+
+          saved += 1;
+          setDocuments((current) => [
+            uploadedDocument,
+            ...current.filter(
+              (document) => document.id !== uploadedDocument.id,
+            ),
+          ]);
+
+          // A durable upload is not equivalent to completed indexing.
+          if (
+            uploadedDocument.status === "queued" ||
+            uploadedDocument.status === "processing"
+          ) {
+            queued += 1;
+            continue;
+          }
+
+          if (
+            process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+            process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true"
+          ) {
+            indexingFailed += 1;
+            continue;
+          }
+
+          setUploadProgress(
+            `Indexing ${index + 1}/${files.length}: ${file.name}`,
           );
-          return;
+          const indexed = await processDocument(uploadedDocument.id);
+          if (!indexed) {
+            indexingFailed += 1;
+          }
+        } catch (uploadError) {
+          const reason = uploadError instanceof Error
+            ? uploadError.message
+            : "Upload service unavailable";
+          failures.push(`${file.name}: ${reason}`);
         }
-        uploadedDocument = data as DocumentResponse;
       }
 
-      setDocuments((current) => [
-        uploadedDocument,
-        ...current.filter(
-          (document) =>
-            document.id !==
-            uploadedDocument.id,
-        ),
-      ]);
-
-      // A successful cloud upload means bytes are durable, not that
-      // a quota-limited embedding provider has indexed the document.
-      if (uploadedDocument.status === "queued" ||
-          uploadedDocument.status === "processing") {
-        setRecoveryNotice("File securely saved. Knowledge indexing is running in the background.");
-        return;
-      }
-      if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
-          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true") {
-        setError("File saved privately. Automatic indexing is not available on this upload route.");
-        return;
-      }
-
-      await processDocument(uploadedDocument.id);
-    } catch (uploadError) {
-      setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Unable to connect to document upload service.",
+      // Final summary replaces per-document transient notices. Never claim
+      // indexing succeeded merely because private storage succeeded.
+      setRecoveryNotice(
+        `${saved}/${files.length} file(s) saved. ` +
+        (queued > 0
+          ? `${queued} file(s): File securely saved. Knowledge indexing is running in the background. `
+          : "") +
+        (indexingFailed > 0
+          ? `${indexingFailed} saved but need indexing or retry. `
+          : "") +
+        "Open Documents to check each file's status.",
       );
+      if (failures.length > 0) {
+        setError(
+          `${failures.length} file(s) could not be uploaded: ` +
+          failures.join("; "),
+        );
+      } else if (indexingFailed > 0) {
+        const proxyWithoutAutomaticIndex = (
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true"
+        );
+        setError(
+          proxyWithoutAutomaticIndex
+            ? "File saved privately. Automatic indexing is not available on this upload route."
+            : `${indexingFailed} file(s) were saved but indexing did not complete. ` +
+              "Check their status and use Retry indexing if available.",
+        );
+      } else {
+        setError("");
+      }
     } finally {
+      setUploadProgress("");
       setUploading(false);
+      // Reconcile with durable backend records even after partial failures.
+      // Keep the batch summary visible, as refreshDocuments may update error.
+      await refreshDocuments();
     }
   }
 
@@ -438,6 +514,7 @@ export function DocumentPanel() {
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp"
         className="hidden"
         onChange={handleFileChange}
@@ -509,10 +586,17 @@ export function DocumentPanel() {
 
             {uploading
               ? "Uploading"
-              : "Upload"}
+              : "Upload files"}
           </button>
         </div>
       </div>
+
+      {uploadProgress && (
+        <p role="status" aria-live="polite"
+          className="mt-3 text-xs text-[var(--aq-muted)]">
+          {uploadProgress}
+        </p>
+      )}
 
       {recoveryNotice && (
         <p role="status" className="mt-3 text-xs text-[var(--aq-muted)]">

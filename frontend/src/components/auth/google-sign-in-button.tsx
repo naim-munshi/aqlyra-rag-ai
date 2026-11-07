@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import Script from "next/script";
-import { useRouter } from "next/navigation";
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -80,8 +80,8 @@ export function GoogleSignInButton() {
           return;
         }
 
-        router.push("/");
-        router.refresh();
+        // Avoid a duplicate authenticated fetch caused by push+refresh.
+        router.replace("/");
       } catch {
         setError("Unable to connect to Aqlyra.");
       } finally {

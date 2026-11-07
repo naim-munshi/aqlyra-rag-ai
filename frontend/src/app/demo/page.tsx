@@ -1,14 +1,25 @@
 import type { Metadata } from "next";
 import { DemoExperience } from "./demo-experience";
 
+const description =
+  "Explore a scripted Aqlyra demo of source-grounded RAG answers, AI conversation, citations and the platform architecture.";
+
 export const metadata: Metadata = {
-  title: "Explore Aqlyra | AI Knowledge Workspace Demo",
-  description:
-    "Interactive Aqlyra portfolio preview: explore source-grounded RAG " +
-    "examples, conversation workflows, and the engineering architecture.",
-  robots: {
-    index: true,
-    follow: true,
+  title: "Interactive AI Knowledge Workspace Demo",
+  description,
+  alternates: { canonical: "https://aqlyra-ai.vercel.app/demo" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    url: "https://aqlyra-ai.vercel.app/demo",
+    siteName: "Aqlyra",
+    title: "Aqlyra — Interactive AI Knowledge Demo",
+    description,
+  },
+  twitter: {
+    card: "summary",
+    title: "Explore the Aqlyra AI Demo",
+    description,
   },
 };
 
