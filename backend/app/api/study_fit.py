@@ -2,6 +2,7 @@
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,10 +30,22 @@ def save_applicant_facts(
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> StudyApplicantFacts:
     case = owned_case(db, str(user.id), case_id)
-    case.applicant_facts = body.model_dump(exclude_none=True)
+    # A PATCH must not erase unrelated existing academic data. Lock the row
+    # while merging so two tabs cannot silently overwrite each other's fields.
+    db.refresh(case, with_for_update=True)
+    changes = body.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "No academic profile changes provided")
+    try:
+        merged = StudyApplicantFacts.model_validate({
+            **(case.applicant_facts or {}), **changes,
+        })
+    except ValidationError as exc:
+        raise HTTPException(422, "Update related academic fields together") from exc
+    case.applicant_facts = merged.model_dump(exclude_none=True)
     case.updated_at = utc_now_naive()
     db.commit()
-    return body
+    return merged
 
 
 @router.get("/cases/{case_id}/matches", response_model=StudyProgramMatches)
@@ -66,12 +79,21 @@ def save_program_requirements(
     school = db.scalar(select(StudyUniversity).where(
         StudyUniversity.id == university_id,
         StudyUniversity.case_id == case_id,
-    ))
+    ).with_for_update())
     if school is None:
         raise HTTPException(404, "University not in your study case")
-    if body.evidence_report_id:
+    changes = body.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "No program requirement changes provided")
+    try:
+        merged = ProgramRequirements.model_validate({
+            **(school.requirements or {}), **changes,
+        })
+    except ValidationError as exc:
+        raise HTTPException(422, "Update related program fields together") from exc
+    if merged.evidence_report_id:
         report = db.scalar(select(StudyResearchReport).where(
-            StudyResearchReport.id == body.evidence_report_id,
+            StudyResearchReport.id == merged.evidence_report_id,
             StudyResearchReport.case_id == case_id,
             StudyResearchReport.topic.in_((
                 "universities", "admissions", "language", "costs", "transfer",
@@ -82,7 +104,7 @@ def save_program_requirements(
         src = next((
             item for item in report.sources
             if isinstance(item, dict)
-            and item.get("citation") == body.evidence_citation
+            and item.get("citation") == merged.evidence_citation
         ), None)
         if src is None or not isinstance(src.get("url"), str):
             raise HTTPException(422, "Citation must be an existing saved source")
@@ -90,7 +112,7 @@ def save_program_requirements(
             raise HTTPException(422, "Invalid public HTTPS evidence source")
         if not matching_source_host(school.program_url, src["url"]):
             raise HTTPException(422, "Evidence host must match the shortlisted university")
-    school.requirements = body.model_dump(exclude_none=True)
+    school.requirements = merged.model_dump(exclude_none=True)
     db.commit()
     db.refresh(school)
     return school
