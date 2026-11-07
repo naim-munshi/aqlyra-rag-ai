@@ -6,6 +6,7 @@ from huggingface_hub import InferenceClient
 from app.embeddings.types import (
     EmbeddingProviderInfo,
     EmbeddingProviderRequestError,
+    EmbeddingProviderQuotaError,
     EmbeddingValidationError,
 )
 from app.embeddings.validation import (
@@ -83,6 +84,14 @@ class HuggingFaceEmbeddingProvider:
                 truncate=True,
             )
         except Exception as exc:
+            # Some Hugging Face accounts return HTTP 402 once their
+            # included inference credits are exhausted. This is not a
+            # transient 5xx; don't mask it as an internal application bug.
+            response = getattr(exc, "response", None)
+            if getattr(response, "status_code", None) == 402:
+                raise EmbeddingProviderQuotaError(
+                    "Embedding provider quota exhausted"
+                ) from exc
             raise EmbeddingProviderRequestError(
                 "Hugging Face embedding request failed"
             ) from exc

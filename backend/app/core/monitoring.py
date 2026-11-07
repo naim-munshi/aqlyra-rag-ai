@@ -27,6 +27,7 @@ _EXCLUDED_HTTP_PATHS: Final[
         "/api/v1/health",
         "/api/v1/readiness",
         "/api/v1/metrics",
+        "/api/v1/admin/overview",
     }
 )
 
@@ -546,6 +547,68 @@ def render_prometheus_metrics(
         )
         + "\n"
     )
+
+
+def admin_http_snapshot() -> dict:
+    """Bounded aggregate API traffic from this worker's in-memory counters.
+
+    Values reset after restart and are NOT web visits, daily unique users or
+    cross-replica totals. No IPs, emails, tokens, query strings, raw URLs.
+    """
+    with _LOCK:
+        requests = dict(_HTTP_REQUESTS)
+        duration_sum = dict(_HTTP_DURATION_SUM)
+        duration_count = dict(_HTTP_DURATION_COUNT)
+        exceeded = sum(_RATE_LIMIT_EXCEEDED.values())
+
+    total = sum(requests.values())
+    client_errors = sum(
+        count for (_, _, status), count in requests.items()
+        if 400 <= int(status) < 500
+    )
+    server_errors = sum(
+        count for (_, _, status), count in requests.items()
+        if int(status) >= 500
+    )
+    latency_count = sum(duration_count.values())
+    latency_seconds = sum(duration_sum.values())
+    per_route: dict[tuple[str, str], dict[str, int]] = {}
+    for (method, route, status), count in requests.items():
+        key = (method, route)
+        current = per_route.setdefault(
+            key, {"requests": 0, "server_errors": 0}
+        )
+        current["requests"] += count
+        if int(status) >= 500:
+            current["server_errors"] += count
+
+    popular = sorted(
+        per_route.items(),
+        key=lambda entry: (-entry[1]["requests"], entry[0]),
+    )[:10]
+    return {
+        "scope": "single_backend_process",
+        "uptime_seconds": int(max(0.0, time() - _PROCESS_START_TIME)),
+        "request_total": total,
+        "client_errors": client_errors,
+        "server_errors": server_errors,
+        "server_error_percent": round(
+            100.0 * server_errors / total, 2
+        ) if total else 0.0,
+        "average_latency_ms": round(
+            1000.0 * latency_seconds / latency_count, 1
+        ) if latency_count else 0.0,
+        "rate_limit_exceeded": exceeded,
+        "routes": [
+            {
+                "method": method,
+                "route": route,
+                "requests": counts["requests"],
+                "server_errors": counts["server_errors"],
+            }
+            for (method, route), counts in popular
+        ],
+    }
 
 
 def reset_metrics_for_tests(

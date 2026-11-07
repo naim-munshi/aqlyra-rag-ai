@@ -173,6 +173,45 @@ def test_rewriter_rejects_added_numeric_fact() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("original", "rewritten"),
+    [
+        ("Which policies are not eligible in 2026?", "eligible policies in 2026"),
+        ("Which policies are eligible in 2026?", "policies not eligible in 2026"),
+        ("返金できない場合を教えて", "返金できる場合"),
+        ("কোন শিক্ষার্থী আবেদন করতে পারবে না?", "কোন শিক্ষার্থী আবেদন করতে পারবে?"),
+    ],
+)
+def test_rewriter_rejects_negation_drift(
+    original: str, rewritten: str,
+) -> None:
+    with pytest.raises(QueryRewriteValidationError, match="negation"):
+        LLMQueryRewriter(
+            provider=FakeLLMProvider(rewritten)
+        ).rewrite(original)
+
+
+def test_rewriter_allows_synonymous_negation() -> None:
+    assert LLMQueryRewriter(
+        provider=FakeLLMProvider("plans without approval requirement")
+    ).rewrite("Which plans do not require approval?") == (
+        "plans without approval requirement"
+    )
+
+
+def test_rewriter_preserves_quoted_exact_terms() -> None:
+    with pytest.raises(QueryRewriteValidationError, match="quoted"):
+        LLMQueryRewriter(
+            provider=FakeLLMProvider("security incident meaning")
+        ).rewrite('What does "account takeover" mean?')
+
+    assert LLMQueryRewriter(
+        provider=FakeLLMProvider("define account takeover")
+    ).rewrite('What does "account takeover" mean?') == (
+        "define account takeover"
+    )
+
+
 def test_rewriter_rejects_empty_response() -> None:
     rewriter = LLMQueryRewriter(
         provider=FakeLLMProvider(

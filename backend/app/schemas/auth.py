@@ -8,6 +8,14 @@ from app.schemas.user import UserResponse
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
+    # Forwarded only between backend and first-party BFF. Browser receives
+    # an HttpOnly cookie, never these tokens in a client-visible JSON body.
+    refresh_token: str | None = None
+    user: UserResponse | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=40, max_length=4000)
 
 
 class RegistrationResponse(UserResponse):
@@ -16,7 +24,7 @@ class RegistrationResponse(UserResponse):
     verification_token: str | None = None
 
 
-class EmailVerificationRequest(BaseModel):
+class EmailVerificationChallenge(BaseModel):
     code: str = Field(
         min_length=6,
         max_length=6,
@@ -26,6 +34,20 @@ class EmailVerificationRequest(BaseModel):
         min_length=20,
         max_length=2_000,
     )
+
+
+class EmailVerificationRequest(EmailVerificationChallenge):
+    password: str = Field(min_length=8, max_length=72)
+
+
+class PendingEmailClaimRequest(EmailVerificationChallenge):
+    """Mailbox proof is required to replace a pending registration."""
+    username: str = Field(
+        min_length=3,
+        max_length=50,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    new_password: str = Field(min_length=8, max_length=72)
 
 
 class EmailVerificationResendRequest(BaseModel):
@@ -42,3 +64,16 @@ class GoogleCredentialRequest(BaseModel):
 class VerificationDispatchResponse(BaseModel):
     message: str
     verification_token: str | None = None
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+class PasswordResetMessage(BaseModel):
+    message: str

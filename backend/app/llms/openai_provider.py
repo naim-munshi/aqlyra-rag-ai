@@ -7,6 +7,8 @@ from app.llms.types import (
     LLMGeneration,
     LLMProviderInfo,
     LLMProviderRequestError,
+    LLMProviderRateLimitError,
+    LLMProviderPayloadTooLargeError,
     LLMStreamEvent,
     LLMProviderResponseError,
     LLMValidationError,
@@ -110,6 +112,28 @@ def _extract_response_text(
     raise LLMProviderResponseError(
         f"{provider_label} returned "
         "no usable text output"
+    )
+
+
+def _classified_request_error(
+    error: Exception, provider_label: str, operation: str
+) -> LLMProviderRequestError:
+    """Report actionable provider errors; never echo response bodies or secrets."""
+    status_code = getattr(error, "status_code", None)
+    if status_code is None:
+        status_code = getattr(
+            getattr(error, "response", None), "status_code", None
+        )
+    if status_code == 413:
+        return LLMProviderPayloadTooLargeError(
+            f"{provider_label} request exceeds provider input limit"
+        )
+    if status_code == 429:
+        return LLMProviderRateLimitError(
+            f"{provider_label} rate limit reached"
+        )
+    return LLMProviderRequestError(
+        f"{provider_label} {operation} failed"
     )
 
 
@@ -315,9 +339,8 @@ class OpenAILLMProvider:
                 .create(**request)
             )
         except Exception as exc:
-            raise LLMProviderRequestError(
-                f"{self._provider_label} "
-                "stream creation failed"
+            raise _classified_request_error(
+                exc, self._provider_label, "stream creation"
             ) from exc
 
         final_response: Any = None
@@ -363,9 +386,8 @@ class OpenAILLMProvider:
                     )
 
         except Exception as exc:
-            raise LLMProviderRequestError(
-                f"{self._provider_label} "
-                "response streaming failed"
+            raise _classified_request_error(
+                exc, self._provider_label, "response streaming"
             ) from exc
 
         if final_response is None:
@@ -490,9 +512,8 @@ class OpenAILLMProvider:
                 .create(**request)
             )
         except Exception as exc:
-            raise LLMProviderRequestError(
-                f"{self._provider_label} "
-                "response generation failed"
+            raise _classified_request_error(
+                exc, self._provider_label, "response generation"
             ) from exc
 
         text = _extract_response_text(

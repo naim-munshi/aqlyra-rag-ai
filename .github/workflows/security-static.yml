@@ -1,0 +1,35 @@
+name: Static Security Analysis
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/**"
+      - ".github/workflows/security-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bandit:
+    name: High-severity Python SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned static analyzer
+        run: python -m pip install bandit==1.9.4
+      - name: Fail on high-severity issues in application source
+        run: bandit -r backend/app -q -lll

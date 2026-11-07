@@ -100,7 +100,12 @@ Dense search is useful when the question and the source mean the same thing but 
 ## 5. Lexical retrieval
 
 PostgreSQL full-text search runs alongside dense retrieval and uses the same
-validated document scope.
+validated document scope. Where standard FTS cannot segment a Japanese or
+Bangla query and returns no hits, a bounded Unicode substring fallback uses
+the same user, ready-document, document-ID and chunk-role constraints.
+Fallback results are ranked by the number of matched bounded query n-grams
+instead of arbitrary chunk order; the score is lexical match coverage, not
+fabricated cosine similarity.
 
 Lexical search is useful for exact terms such as:
 
@@ -128,10 +133,28 @@ RAG_RERANKER_ENABLED=false
 ```
 
 They can be tested independently without changing the default retrieval path.
+The query rewriter rejects unsupported changes to identifiers, numbers,
+negation/exclusion intent and exact quoted phrases (including Bangla and
+Japanese negation) instead of quietly retrieving evidence for a reversed
+question. Such rejections fall back to the original query.
 
 ## 8. Evidence building
 
 Retrieved chunks are filtered, deduplicated, and limited before they are given to the model.
+
+For Knowledge answers, the evidence packer also uses a bounded
+**balanced-source budget**. When the context can afford at least 32
+content tokens per planned source, it reserves space for later source
+headers and divides the available text budget across the selected
+ranked chunks. Otherwise it keeps the existing relevance-first greedy
+allocation. This improves multi-document coverage under tight token
+budgets without changing tenant filters, retrieval scores, source order
+or citation IDs. The standalone context builder retains legacy
+allocation unless `balance_source_budget=True` is requested.
+
+This is a token-budget heuristic, not a claim that every additional
+source is relevant or that model accuracy is proven. Compare grounded
+answer quality and citation accuracy before a production rollout.
 
 Each evidence block gets a stable label:
 

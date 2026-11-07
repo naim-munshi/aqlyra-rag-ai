@@ -270,6 +270,95 @@ def test_context_enforces_max_sources(
     assert context.was_truncated is True
 
 
+def test_balanced_packing_preserves_three_citations_with_small_budget() -> None:
+    hits = [
+        FakeRetrievalHit(
+            chunk_id=f"evidence-{index}",
+            document_id=f"document-{index}",
+            original_filename=f"source-{index}.md",
+            content=(f"Unique evidence {index}. " * 130),
+            similarity_score=0.95 - index * 0.05,
+        )
+        for index in range(3)
+    ]
+    legacy = build_evidence_context(
+        hits,
+        config=EvidenceContextConfig(
+            max_context_tokens=160,
+            max_source_tokens=110,
+            max_sources=3,
+        ),
+    )
+    balanced = build_evidence_context(
+        hits,
+        config=EvidenceContextConfig(
+            max_context_tokens=160,
+            max_source_tokens=110,
+            max_sources=3,
+            balance_source_budget=True,
+        ),
+    )
+
+    assert len(legacy.sources) < 3
+    assert len(balanced.sources) == 3
+    assert [source.chunk_id for source in balanced.sources] == [
+        "evidence-0", "evidence-1", "evidence-2",
+    ]
+    assert [source.source_id for source in balanced.sources] == [
+        "S1", "S2", "S3",
+    ]
+    assert balanced.estimated_tokens <= 160
+    assert all(source.was_truncated for source in balanced.sources)
+
+
+def test_balanced_packing_keeps_full_single_source_and_multilingual_text() -> None:
+    hit = FakeRetrievalHit(
+        chunk_id="bangla-japanese",
+        document_id="document-1",
+        original_filename="notes.txt",
+        content="বাংলাদেশে শিক্ষা এবং 日本語の学習資料।",
+        similarity_score=0.92,
+    )
+    context = build_evidence_context(
+        [hit],
+        config=EvidenceContextConfig(
+            max_context_tokens=120,
+            max_source_tokens=100,
+            balance_source_budget=True,
+        ),
+    )
+
+    assert len(context.sources) == 1
+    assert context.sources[0].content == hit.content
+    assert context.sources[0].was_truncated is False
+    assert context.estimated_tokens <= 120
+
+
+def test_balanced_packing_skips_unfeasible_reservation() -> None:
+    hits = [
+        FakeRetrievalHit(
+            chunk_id=f"evidence-{index}",
+            document_id=f"document-{index}",
+            original_filename="notes.txt",
+            content="Important factual evidence. " * 80,
+            similarity_score=0.9 - index * 0.01,
+        )
+        for index in range(5)
+    ]
+    context = build_evidence_context(
+        hits,
+        config=EvidenceContextConfig(
+            max_context_tokens=48,
+            max_source_tokens=40,
+            max_sources=5,
+            balance_source_budget=True,
+        ),
+    )
+    assert context.has_evidence
+    assert context.estimated_tokens <= 48
+    assert context.sources[0].chunk_id == "evidence-0"
+
+
 def test_empty_hits_return_empty_context(
 ) -> None:
     context = build_evidence_context(

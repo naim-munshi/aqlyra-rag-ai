@@ -1,3 +1,4 @@
+from secrets import token_urlsafe
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -39,6 +40,7 @@ def verify_password(
 def create_access_token(
     subject: str,
     expires_delta: timedelta | None = None,
+    token_version: int = 0,
 ) -> str:
     now = datetime.now(timezone.utc)
 
@@ -52,6 +54,7 @@ def create_access_token(
 
     payload: dict[str, Any] = {
         "sub": subject,
+        "ver": token_version,
         "type": "access",
         "iat": now,
         "exp": expires_at,
@@ -64,7 +67,65 @@ def create_access_token(
     )
 
 
-def decode_access_token(token: str) -> str:
+def create_refresh_token(
+    subject: str,
+    *,
+    token_version: int = 0,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Fixed-lifetime signed refresh ticket, never accepted as API bearer.
+
+    No infinite sliding expiration. Reuse is bounded by 14-day expiry and
+    logout/password-reset auth_epoch revocation, including across devices.
+    """
+    now = datetime.now(timezone.utc)
+    expiry = now + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    return jwt.encode(
+        {
+            "sub": subject,
+            "ver": token_version,
+            "type": "refresh",
+            "jti": token_urlsafe(24),
+            "iat": now,
+            "exp": expiry,
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def decode_refresh_token_with_version(token: str) -> tuple[str, int]:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+    except JWTError as exc:
+        raise InvalidTokenError("Invalid or expired refresh token") from exc
+
+    subject = payload.get("sub")
+    version = payload.get("ver")
+    token_type = payload.get("type")
+    token_id = payload.get("jti")
+    if (
+        not isinstance(subject, str)
+        or not subject
+        or type(version) is not int
+        or version < 0
+        or token_type != "refresh"
+        or not isinstance(token_id, str)
+        or len(token_id) < 20
+    ):
+        raise InvalidTokenError("Invalid or expired refresh token")
+    return subject, version
+
+
+def decode_access_token_with_version(token: str) -> tuple[str, int]:
     try:
         payload = jwt.decode(
             token,
@@ -89,6 +150,14 @@ def decode_access_token(token: str) -> str:
             "Invalid token type",
         )
 
+    version = payload.get("ver", 0)
+    if type(version) is not int or version < 0:
+        raise InvalidTokenError("Invalid token version")
+    return subject, version
+
+
+def decode_access_token(token: str) -> str:
+    subject, _ = decode_access_token_with_version(token)
     return subject
 
 

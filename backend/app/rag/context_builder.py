@@ -15,6 +15,7 @@ _TOKEN_PATTERN = re.compile(
     r"|[\u3040-\u30ff]"
     r"|[\u3400-\u9fff]"
     r"|[\uac00-\ud7af]"
+    r"|[\u0980-\u09ff]+"
     r"|[^\s]",
     flags=re.UNICODE,
 )
@@ -274,6 +275,51 @@ def _prepare_candidates(
     return candidates, skipped_count
 
 
+def _balanced_source_limit(
+    *,
+    candidates: Sequence[RetrievalEvidence],
+    candidate_index: int,
+    source_number: int,
+    remaining_source_slots: int,
+    available_content_tokens: int,
+    max_source_tokens: int,
+) -> int:
+    """Reserve room for additional evidence headers before allocating text.
+
+    Do not reduce the top source to a token fragment if the available
+    budget cannot give every planned source at least 32 content tokens.
+    This is a context-packing heuristic, not a retrieval-score change.
+    """
+    limit = min(max_source_tokens, available_content_tokens)
+    if remaining_source_slots <= 1:
+        return limit
+
+    for slots in range(remaining_source_slots, 1, -1):
+        future_headers = 0
+        for offset in range(1, slots):
+            hit = candidates[candidate_index + offset]
+            section_path = tuple(
+                str(value).strip()
+                for value in hit.section_path
+                if str(value).strip()
+            )
+            header = _build_source_header(
+                source_id=f"S{source_number + offset}",
+                filename=hit.original_filename.strip() or "unknown-document",
+                source_label=hit.source_label,
+                section_path=section_path,
+                start_page=hit.start_page,
+                end_page=hit.end_page,
+            )
+            future_headers += estimate_context_tokens(f"{header}\n")
+
+        content_budget = available_content_tokens - future_headers
+        if content_budget >= slots * 32:
+            return min(limit, content_budget // slots)
+
+    return limit
+
+
 def build_evidence_context(
     hits: Sequence[RetrievalEvidence],
     config: EvidenceContextConfig | None = None,
@@ -372,6 +418,20 @@ def build_evidence_context(
             active_config.max_source_tokens,
             available_content_tokens,
         )
+
+        if active_config.balance_source_budget:
+            remaining_source_slots = min(
+                active_config.max_sources - len(sources),
+                len(candidates) - candidate_index,
+            )
+            content_limit = _balanced_source_limit(
+                candidates=candidates,
+                candidate_index=candidate_index,
+                source_number=len(sources) + 1,
+                remaining_source_slots=remaining_source_slots,
+                available_content_tokens=available_content_tokens,
+                max_source_tokens=active_config.max_source_tokens,
+            )
 
         content, source_was_truncated = (
             _truncate_to_token_limit(

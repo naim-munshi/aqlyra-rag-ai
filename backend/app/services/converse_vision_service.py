@@ -1,5 +1,9 @@
 import base64
 import re
+from io import BytesIO
+from pathlib import Path
+
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from openai import OpenAI
 
@@ -29,6 +33,42 @@ SUPPORTED_CONVERSE_VISION_TYPES = frozenset(
 _MAX_VISION_IMAGE_BYTES = (
     18 * 1024 * 1024
 )
+
+# Keep the base64-encoded request below Groq's multimodal payload bound.
+# The original file remains immutable in private object storage.
+_MAX_VISION_ORIGINAL_BYTES = 50 * 1024 * 1024
+
+
+def _prepare_model_image(image_bytes: bytes, content_type: str) -> tuple[bytes, str]:
+    if len(image_bytes) <= _MAX_VISION_IMAGE_BYTES:
+        return image_bytes, content_type
+    if len(image_bytes) > _MAX_VISION_ORIGINAL_BYTES:
+        raise LLMValidationError("The original image exceeds the 50 MB upload limit")
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            if source.width * source.height > 40_000_000:
+                raise LLMValidationError("The image has too many pixels")
+            # Rotate from EXIF and discard metadata from the provider-bound copy.
+            image = ImageOps.exif_transpose(source)
+            image.thumbnail((2048, 2048))
+            if image.mode in ("RGBA", "LA") or (
+                image.mode == "P" and "transparency" in image.info
+            ):
+                rgba = image.convert("RGBA")
+                background = Image.new("RGB", rgba.size, (255, 255, 255))
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                image = background
+            else:
+                image = image.convert("RGB")
+            out = BytesIO()
+            image.save(out, format="JPEG", quality=78, optimize=True)
+            prepared = out.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise LLMValidationError("Unable to prepare the image for vision") from exc
+    if not prepared or len(prepared) > _MAX_VISION_IMAGE_BYTES:
+        raise LLMValidationError("Image is too large for the vision model")
+    return prepared, "image/jpeg"
+
 
 
 _THINK_TAG_PATTERN = re.compile(
@@ -375,6 +415,7 @@ def generate_converse_image_reply(
     document: Document,
     conversation_input: str,
     extracted_context: str | None = None,
+    verified_image_path: Path | None = None,
 ) -> LLMGeneration:
     if not is_converse_vision_document(
         document
@@ -402,36 +443,25 @@ def generate_converse_image_reply(
         )
 
     try:
+        # A verified cloud temporary file comes exclusively from the
+        # owner-checked cloud_processing_source() context in chat_service.
+        # Never resolve a cloud:// key as a local filesystem path.
         image_path = (
-            resolve_stored_file_path(
-                document.storage_path
-            )
+            verified_image_path
+            if verified_image_path is not None
+            else resolve_stored_file_path(document.storage_path)
         )
-
-    except StoredFileNotFoundError as exc:
+        image_bytes = image_path.read_bytes()
+    except (StoredFileNotFoundError, OSError) as exc:
         raise LLMValidationError(
-            "The uploaded image file "
-            "is unavailable"
+            "The uploaded image file is unavailable"
         ) from exc
 
-    image_bytes = image_path.read_bytes()
-
-    if len(image_bytes) > _MAX_VISION_IMAGE_BYTES:
-        raise LLMValidationError(
-            "The image is too large for "
-            "Converse vision"
-        )
-
-    encoded_image = (
-        base64.b64encode(
-            image_bytes
-        ).decode("ascii")
+    prepared_image_bytes, vision_content_type = _prepare_model_image(
+        image_bytes, document.content_type,
     )
-
-    image_data_url = (
-        f"data:{document.content_type};"
-        f"base64,{encoded_image}"
-    )
+    encoded_image = base64.b64encode(prepared_image_bytes).decode("ascii")
+    image_data_url = f"data:{vision_content_type};base64,{encoded_image}"
 
     cleaned_request = (
         conversation_input.strip()

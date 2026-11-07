@@ -116,6 +116,7 @@ def resolve_conversation_document_scope(
             Document.id,
             Document.user_id,
             Document.status,
+            Document.content_type,
         ).where(
             Document.id.in_(
                 effective_document_ids
@@ -157,13 +158,31 @@ def resolve_conversation_document_scope(
             "are not available"
         )
 
+    # Knowledge/RAG requires completed indexing; uploaded files are
+    # never eligible as ungrounded knowledge sources. Normal Converse
+    # may inspect ONE uploaded image directly with the multimodal
+    # provider, after the same per-owner and existence checks above.
+    # The image itself is independently verified against the cloud
+    # upload intent + stored SHA256 before pixels reach the provider.
+    direct_image_turn = (
+        conversation.mode == "normal"
+        and len(effective_document_ids) == 1
+    )
+    direct_image_types = {
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+    }
     not_ready = [
         document_id
-        for document_id
-        in effective_document_ids
-        if (
-            documents[document_id].status
-            != "ready"
+        for document_id in effective_document_ids
+        if not (
+            documents[document_id].status == "ready"
+            or (
+                direct_image_turn
+                and documents[document_id].status == "uploaded"
+                and documents[document_id].content_type in direct_image_types
+            )
         )
     ]
 

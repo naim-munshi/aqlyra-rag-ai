@@ -69,6 +69,54 @@ def _normalized_rrf_score(
 
 
 
+def _build_lexical_only_hit(
+    *,
+    hit: LexicalRetrievalHit,
+    hybrid_score: float,
+    raw_rrf_score: float,
+    lexical_rank: int,
+) -> RetrievalHit:
+    """Preserve real matched passages that have no 384-d vector yet.
+
+    Knowledge indexing can mark a document ready with lexical-only chunks
+    when the remote embedding service is unavailable. Previously hybrid
+    RRF silently discarded those authorized chunks on a healthy query
+    because score_specific_chunks requires an EmbeddingRecord. Do not
+    fabricate a semantic score or bypass an explicit similarity threshold.
+    """
+    return RetrievalHit(
+        chunk_id=hit.chunk_id,
+        document_id=hit.document_id,
+        original_filename=hit.original_filename,
+        parent_chunk_id=hit.parent_chunk_id,
+        chunk_role=hit.chunk_role,
+        chunk_level=hit.chunk_level,
+        chunk_index=hit.chunk_index,
+        source_label=hit.source_label,
+        section_path=hit.section_path,
+        content=hit.content,
+        start_page=hit.start_page,
+        end_page=hit.end_page,
+        # Placeholder values required by RetrievalHit's numeric contract,
+        # explicitly marked as unavailable and never used to rank/filter.
+        similarity_score=0.0,
+        cosine_distance=1.0,
+        ranking_score=hybrid_score,
+        metadata={
+            **hit.metadata,
+            "retrieval_mode": "lexical_only",
+            "semantic_similarity_available": False,
+            "semantic_similarity_score": None,
+            "lexical_score": hit.lexical_score,
+            "rrf_score": raw_rrf_score,
+            "hybrid_score": hybrid_score,
+            "vector_rank": None,
+            "lexical_rank": lexical_rank,
+            "retrieval_sources": ["lexical"],
+        },
+    )
+
+
 def _build_hybrid_hit(
     *,
     semantic_hit: RetrievalHit,
@@ -254,20 +302,7 @@ def search_hybrid_chunks(
             fused.chunk_id
         )
 
-        # We never fabricate semantic scores.
-        if semantic_hit is None:
-            continue
-
-        if (
-            query.min_similarity is not None
-            and semantic_hit.similarity_score
-            < query.min_similarity
-        ):
-            continue
-
-        lexical_hit = lexical_by_id.get(
-            fused.chunk_id
-        )
+        lexical_hit = lexical_by_id.get(fused.chunk_id)
 
         hybrid_score = _normalized_rrf_score(
             score=fused.score,
@@ -276,18 +311,40 @@ def search_hybrid_chunks(
             lexical_weight=lexical_weight,
         )
 
-        hybrid_hits.append(
-            _build_hybrid_hit(
-                semantic_hit=semantic_hit,
-                lexical_hit=lexical_hit,
-                hybrid_score=hybrid_score,
-                raw_rrf_score=fused.score,
-                vector_rank=fused.vector_rank,
-                lexical_rank=(
-                    fused.lexical_rank
-                ),
+        if semantic_hit is None:
+            # A real lexical match with no EmbeddingRecord is still valid
+            # grounded evidence. However, callers demanding min_similarity
+            # must not be silently downgraded from semantic verification.
+            if (
+                lexical_hit is None
+                or fused.lexical_rank is None
+                or query.min_similarity is not None
+            ):
+                continue
+            hybrid_hits.append(
+                _build_lexical_only_hit(
+                    hit=lexical_hit,
+                    hybrid_score=hybrid_score,
+                    raw_rrf_score=fused.score,
+                    lexical_rank=fused.lexical_rank,
+                )
             )
-        )
+        else:
+            if (
+                query.min_similarity is not None
+                and semantic_hit.similarity_score < query.min_similarity
+            ):
+                continue
+            hybrid_hits.append(
+                _build_hybrid_hit(
+                    semantic_hit=semantic_hit,
+                    lexical_hit=lexical_hit,
+                    hybrid_score=hybrid_score,
+                    raw_rrf_score=fused.score,
+                    vector_rank=fused.vector_rank,
+                    lexical_rank=fused.lexical_rank,
+                )
+            )
 
         if len(hybrid_hits) >= query.top_k:
             break

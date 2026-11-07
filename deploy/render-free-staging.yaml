@@ -1,0 +1,64 @@
+# OPT-IN template only: explicitly import this Blueprint in Render.
+# No Render resources are created merely by committing this file.
+# The API is a NONCOMMERCIAL developer preview, NOT 24/7 production.
+previews:
+  generation: "off"
+
+services:
+  - type: web
+    name: aqlyra-private-free-staging
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: release/core-without-study-abroad-20261027
+    autoDeployTrigger: "off"
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: BROWSER_AGENT_ENABLED
+        value: "false"
+      - key: DATABASE_MIGRATION_MODE
+        value: manual
+      - key: DATABASE_POOL_SIZE
+        value: "2"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "1"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: "10"
+      - key: DATABASE_POOL_RECYCLE_SECONDS
+        value: "300"
+      - key: PRIVATE_OBJECT_STORAGE_ENABLED
+        value: "false"
+      - key: CLOUD_UPLOAD_PUBLIC_ENABLED
+        value: "false"
+      - key: EMAIL_VERIFICATION_REQUIRED
+        value: "true"
+      - key: EMAIL_DELIVERY_PROVIDER
+        value: resend
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: EMBEDDING_PROVIDER
+        value: huggingface
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false

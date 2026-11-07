@@ -1,7 +1,16 @@
+import logging
+from urllib.parse import urlsplit
 from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
+from app.services.knowledge_index_queue import KnowledgeIndexWorker
+from app.services.web_research_capability import public_web_research_status
+
+_knowledge_worker = KnowledgeIndexWorker()
+from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
+from app.middleware.json_body_limit import JsonBodyLimitMiddleware
+from app.middleware.chat_concurrency import ChatConcurrencyMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.observability import (
     setup_request_observability,
@@ -30,6 +39,19 @@ app = FastAPI(
 
 setup_request_observability(app)
 setup_cors(app)
+# Outer ASGI ingress check prevents direct Render requests from bypassing
+# the bounded Vercel authentication proxies.
+app.add_middleware(AuthenticationBodyLimitMiddleware)
+# Bound simultaneous authenticated chat at ASGI ingress BEFORE synchronous
+# database dependencies and worker-pool capacity can be exhausted.
+app.add_middleware(
+    ChatConcurrencyMiddleware,
+    max_in_flight=settings.CHAT_MAX_IN_FLIGHT_REQUESTS,
+    queue_timeout_seconds=settings.CHAT_QUEUE_TIMEOUT_SECONDS,
+)
+# Separate, bounded direct-Render ingress for other JSON payloads.
+# Last middleware is outermost in Starlette; auth requests bypass this one.
+app.add_middleware(JsonBodyLimitMiddleware)
 
 app.include_router(
     api_router,
@@ -44,3 +66,111 @@ async def root():
         "status": "running",
         "version": settings.VERSION,
     }
+
+@app.on_event("startup")
+def start_knowledge_index_worker() -> None:
+    # Existing FastAPI service can process the durable queue without
+    # adding a new deployment or requiring a user to hold an HTTP request.
+    # Non-secret operator evidence: a configured API key is NOT a live provider PASS.
+    logging.getLogger(__name__).info(
+        "public_web_research_configuration=%s", public_web_research_status(),
+    )
+    # Startup records *only* sanitized configuration state. A running
+    # LiveKit Worker cannot accept browser calls if Render lacks credentials.
+    from app.services.voice_session_service import (
+        voice_is_ready,
+        missing_voice_configuration_keys,
+    )
+    voice_configured = voice_is_ready()
+    logging.getLogger(__name__).info(
+        "voice_api_startup_ready=%s",
+        "true" if voice_configured else "false",
+    )
+    # Log only the public LiveKit host and dispatch name. No room/user data,
+    # token, provider URL, API key or secret is included in this evidence.
+    if voice_configured:
+        logging.getLogger(__name__).info(
+            "voice_api_dispatch_target agent_name=%s livekit_host=%s",
+            settings.VOICE_AGENT_NAME.strip(),
+            urlsplit(settings.LIVEKIT_URL).hostname,
+        )
+        # Non-blocking read-only provider auth proof, not config-only readiness.
+        # No room, participant, secret, or session token leaves this log.
+        from threading import Thread
+        from app.services.voice_session_service import probe_livekit_credentials_once
+        Thread(
+            target=probe_livekit_credentials_once,
+            name="aqlyra-livekit-auth-probe",
+            daemon=True,
+        ).start()
+    if not voice_configured:
+        logging.getLogger(__name__).warning(
+            "voice_api_startup_missing_keys=%s",
+            ",".join(missing_voice_configuration_keys()) or "other",
+        )
+    if settings.KNOWLEDGE_BACKFILL_ON_STARTUP:
+        # Bounded, owner-linked recovery of legacy 'uploaded' cloud docs.
+        # Errors do not take down the chat backend.
+        try:
+            from app.database.connection import SessionLocal
+            from app.services.knowledge_index_queue import (
+                requeue_verified_legacy_cloud_documents,
+            )
+            with SessionLocal() as db:
+                requeue_verified_legacy_cloud_documents(db, limit=10)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "knowledge_legacy_cloud_backfill status=FAIL error_type=%s",
+                type(exc).__name__,
+            )
+    _knowledge_worker.start()
+    if settings.KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP:
+        # One-shot operator-only backfill; never block HTTP readiness.
+        from threading import Thread
+        def run_semantic_backfill() -> None:
+            try:
+                from app.database.connection import SessionLocal
+                from app.services.knowledge_semantic_backfill import (
+                    backfill_ready_semantic_embeddings,
+                )
+                with SessionLocal() as db:
+                    backfill_ready_semantic_embeddings(db=db, limit=1)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "knowledge_semantic_backfill status=ERROR error_type=%s",
+                    type(exc).__name__,
+                )
+        Thread(
+            target=run_semantic_backfill,
+            name="aqlyra-semantic-backfill", daemon=True,
+        ).start()
+    if settings.BROWSER_AGENT_HTML_CANARY_ON_STARTUP:
+        from threading import Thread
+        from app.services.browser_html_canary import run_browser_html_canary
+        Thread(
+            target=run_browser_html_canary,
+            name="aqlyra-browser-html-canary",
+            daemon=True,
+        ).start()
+    if settings.WEB_KEYLESS_CANARY_ON_STARTUP:
+        from threading import Thread
+        from app.services.keyless_web_canary import run_keyless_web_canary
+        Thread(
+            target=run_keyless_web_canary,
+            name="aqlyra-public-keyless-canary",
+            daemon=True,
+        ).start()
+    if settings.WEB_RESEARCH_CANARY_ON_STARTUP:
+        # Daemon keeps live startup/health independent of upstream latency.
+        from threading import Thread
+        from app.services.web_research_live_canary import run_live_web_canary
+        Thread(
+            target=run_live_web_canary,
+            name="aqlyra-public-web-canary",
+            daemon=True,
+        ).start()
+
+
+@app.on_event("shutdown")
+def stop_knowledge_index_worker() -> None:
+    _knowledge_worker.stop()

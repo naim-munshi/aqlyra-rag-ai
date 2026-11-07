@@ -1,5 +1,6 @@
 export type UserResponse = {
   id: string;
+  is_admin?: boolean;
   username: string;
   email: string;
   is_active: boolean;
@@ -31,6 +32,7 @@ export type BackendRegistrationResponse = RegistrationResponse & {
 export type VerifyEmailInput = {
   email: string;
   code: string;
+  password: string;
 };
 
 export type ResendVerificationInput = {

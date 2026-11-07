@@ -53,23 +53,37 @@ def validate_text_batch(
 def normalize_vector(
     values: list[float],
 ) -> list[float]:
-    magnitude = math.sqrt(
-        sum(
-            value * value
-            for value in values
-        )
-    )
+    """Normalize without overflowing for finite high-magnitude vectors.
 
-    if magnitude == 0:
+    Dividing the raw values by sqrt(sum(x*x)) can overflow even when the
+    direction is perfectly valid. Scale first; this preserves orientation
+    and the existing embedding dimension/model contract.
+    """
+    if not values:
         raise EmbeddingValidationError(
-            "Embedding vector magnitude "
-            "cannot be zero"
+            "Embedding vector magnitude cannot be zero"
         )
 
-    return [
-        value / magnitude
-        for value in values
-    ]
+    for value in values:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
+            raise EmbeddingValidationError(
+                "Embedding vector contains an invalid numeric value"
+            )
+
+    scale = max(abs(value) for value in values)
+    if scale == 0:
+        raise EmbeddingValidationError(
+            "Embedding vector magnitude cannot be zero"
+        )
+    scaled = [value / scale for value in values]
+    scaled_magnitude = math.sqrt(
+        math.fsum(value * value for value in scaled)
+    )
+    return [value / scaled_magnitude for value in scaled]
 
 
 def validate_embedding_vector(

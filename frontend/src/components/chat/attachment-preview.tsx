@@ -21,6 +21,10 @@ import {
 import type {
   DocumentResponse,
 } from "@/types/document";
+import {
+  OfficeDocumentViewer,
+  isOfficeDocument,
+} from "@/components/documents/office-document-viewer";
 
 
 type AttachmentPreviewProps = {
@@ -435,7 +439,11 @@ export function AttachmentPreview({
         </button>
       )}
 
-      {fileViewerOpen && previewUrl && (
+      {fileViewerOpen && previewUrl && isOfficeDocument(document.file_extension) && (
+        <OfficeDocumentViewer document={document} onClose={() => setFileViewerOpen(false)} />
+      )}
+
+      {fileViewerOpen && previewUrl && !isOfficeDocument(document.file_extension) && (
         <div
           role="dialog"
           aria-modal="true"

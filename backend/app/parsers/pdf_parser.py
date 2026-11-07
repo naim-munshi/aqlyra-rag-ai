@@ -4,6 +4,9 @@ from typing import Any
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from app.config.settings import settings
+from app.parsers.pdf_page_ocr import ocr_pdf_page
+
 from app.parsers.common import (
     calculate_quality_score,
     create_parsed_unit,
@@ -46,6 +49,8 @@ class PDFParser:
 
         units: list[ParsedUnit] = []
         total_pages = len(reader.pages)
+        ocr_used = 0
+        ocr_cap = settings.KNOWLEDGE_PDF_OCR_MAX_PAGES
 
         for page_number, page in enumerate(
             reader.pages,
@@ -74,6 +79,21 @@ class PDFParser:
             metadata: dict[str, Any] = {
                 "page_number": page_number,
             }
+            if len(content.strip()) < 20 and settings.KNOWLEDGE_PDF_OCR_ENABLED:
+                if ocr_used >= ocr_cap:
+                    raise DocumentParsingError(
+                        "Scanned PDF exceeds the supported OCR page limit"
+                    )
+                content = ocr_pdf_page(
+                    pdf_path=path,
+                    page_number=page_number,
+                    timeout_seconds=settings.KNOWLEDGE_PDF_OCR_PAGE_TIMEOUT_SECONDS,
+                )
+                ocr_used += 1
+                metadata.update({
+                    "source_type": "pdf_ocr",
+                    "ocr_languages": "eng+jpn+ben",
+                })
 
             try:
                 metadata["width"] = float(
@@ -113,15 +133,24 @@ class PDFParser:
         )
 
         requires_ocr = bool(
-            total_pages
-            and (
-                text_coverage < 0.5
-                or total_characters < total_pages * 40
+            ocr_used
+            or (
+                total_pages
+                and (
+                    text_coverage < 0.5
+                    or total_characters < total_pages * 40
+                )
             )
         )
+        # Never commit a scanned or empty PDF as a searchable "ready" source.
+        # Retain the private original and expose a retry after OCR is enabled.
+        if total_characters == 0:
+            raise DocumentParsingError(
+                "PDF contains no searchable text; scanned pages require OCR"
+            )
 
         return ParseResult(
-            parser_name="pypdf",
+            parser_name="pypdf+ocr" if ocr_used else "pypdf",
             file_extension=".pdf",
             units=tuple(units),
             page_count=total_pages,

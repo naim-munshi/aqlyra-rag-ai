@@ -27,6 +27,7 @@ _QUIET_SUCCESS_PATHS = {
     "/api/v1/health",
     "/api/v1/readiness",
     "/api/v1/metrics",
+    "/api/v1/admin/overview",
 }
 
 
@@ -159,6 +160,15 @@ def setup_request_observability(
             response.headers[
                 "X-Request-ID"
             ] = request_id
+
+            # Prevent sensitive account/document JSON from entering shared
+            # caches, even when a new API route forgets explicit headers.
+            # Keep narrower route-specific policies (including SSE
+            # no-transform) unchanged.
+            if path.startswith("/api/v1/"):
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                if "Cache-Control" not in response.headers:
+                    response.headers["Cache-Control"] = "private, no-store"
 
             if (
                 path not in

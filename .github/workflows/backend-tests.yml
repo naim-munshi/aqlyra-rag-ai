@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "release/**"
     paths:
       - "backend/**"
       - "docker-compose.yml"
@@ -12,10 +13,7 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - ".github/workflows/backend-tests.yml"
+      - "release/**"
 
   workflow_dispatch:
 
@@ -28,9 +26,14 @@ concurrency:
 
 jobs:
   test:
-    name: Python 3.13 / PostgreSQL 16
+    name: Python 3.13 / PostgreSQL ${{ matrix.postgres-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: [16, 18]
 
     env:
       PYTHONUNBUFFERED: "1"
@@ -51,7 +54,7 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg${{ matrix.postgres-version }}
 
         env:
           POSTGRES_USER: postgres
@@ -124,3 +127,63 @@ jobs:
         working-directory: backend
         run: |
           python -m pytest
+
+      - name: Verify benchmark cannot target real production or paid AI providers
+        if: matrix.postgres-version == 16
+        working-directory: scripts/ops
+        run: |
+          python -m pytest -q test_ephemeral_chat_load.py
+
+      - name: Run bounded 10-100 synthetic chat load on disposable CI backend
+        if: matrix.postgres-version == 16
+        env:
+          AQLYRA_DISPOSABLE_LOAD_CONFIRMED: "yes"
+          APP_ENV: development
+          EMAIL_VERIFICATION_REQUIRED: "false"
+          RATE_LIMIT_ENABLED: "false"
+          WEB_RESEARCH_ENABLED: "false"
+        run: |
+          set -Eeuo pipefail
+          test "$LLM_PROVIDER" = "deterministic"
+          test "$EMBEDDING_PROVIDER" = "deterministic"
+          cd backend
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000             > /tmp/aqlyra-concurrency-backend.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl -fsS --max-time 3               http://127.0.0.1:8000/api/v1/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Disposable backend did not become ready"
+            exit 1
+          fi
+          cd ..
+          python scripts/ops/ephemeral_chat_load.py             --base-url http://127.0.0.1:8000             --report-file /tmp/aqlyra-synthetic-chat-load.json
+          echo "Synthetic concurrency measurement complete"
+
+      - name: Print safe concurrency report (no user data)
+        if: matrix.postgres-version == 16 && always()
+        run: |
+          if [ -f /tmp/aqlyra-synthetic-chat-load.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(
+              Path("/tmp/aqlyra-synthetic-chat-load.json").read_text()
+          )
+          print("CI_ONLY_SYNTHETIC_LOAD")
+          for item in report["tiers"]:
+              print(
+                  f"Users={item['requested_concurrent_users']} "
+                  f"success={item['successes']}/{item['requests']} "
+                  f"p95={item['p95_latency_ms']}ms "
+                  f"rps={item['successful_rps']} "
+                  f"slo={item['illustrative_ci_slo']}"
+              )
+          PY
+          fi

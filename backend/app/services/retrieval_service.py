@@ -14,6 +14,7 @@ from app.models.embedding_record import (
     EMBEDDING_DIMENSION,
     EmbeddingRecord,
 )
+from app.services.retrieval_exclusions import permitted_retrieval_document
 from app.retrieval.types import (
     RetrievalHit,
     RetrievalProviderError,
@@ -87,6 +88,7 @@ def search_similar_chunks(
             == query.user_id,
             Document.status
             == "ready",
+            permitted_retrieval_document(),
             EmbeddingRecord.provider_name
             == provider_info.provider_name,
             EmbeddingRecord.model_name
@@ -269,6 +271,7 @@ def score_specific_chunks(
             == query.user_id,
             Document.status
             == "ready",
+            permitted_retrieval_document(),
             DocumentChunk.id.in_(
                 unique_chunk_ids
             ),
