@@ -76,10 +76,16 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
 }
 
 function relevantSource(programUrl: string, sourceUrl: string): boolean {
+  // Mirror the backend evidence-host gate: never present credential-bearing or
+  // non-standard-port URLs as selectable university citations.
+  if (/\s/.test(programUrl) || /\s/.test(sourceUrl)) return false;
   try {
     const a = new URL(programUrl);
     const b = new URL(sourceUrl);
-    const x = a.hostname.toLowerCase(), y = b.hostname.toLowerCase();
+    if (a.username || a.password || b.username || b.password ||
+        (a.port && a.port !== "443") || (b.port && b.port !== "443")) return false;
+    const x = a.hostname.toLowerCase().replace(/\.$/, "");
+    const y = b.hostname.toLowerCase().replace(/\.$/, "");
     return a.protocol === "https:" && b.protocol === "https:" &&
       (x === y || x.endsWith("." + y) || y.endsWith("." + x));
   } catch { return false; }
@@ -103,6 +109,7 @@ export function StudyFitWorkbench({
   const [evidenceTopic, setEvidenceTopic] = useState("admissions");
   const [selected, setSelected] = useState("");
   const selectedRef = useRef("");
+  const loadedCaseRef = useRef<string | null>(null);
   const [profile, setProfile] = useState({
     gpa: "", gpa_scale: "4", annual_budget: "", currency: "JPY",
     test: "", score: "", level: "N2",
@@ -133,22 +140,31 @@ export function StudyFitWorkbench({
       setSchools(programs);
       setReports(found);
       setCandidates(suggestions);
-      const p = comparison.profile;
-      setProfile({
-        gpa: p.gpa?.toString() ?? "",
-        gpa_scale: p.gpa_scale?.toString() ?? "4",
-        annual_budget: p.annual_budget?.toString() ?? "",
-        currency: p.currency ?? "JPY",
-        test: p.language?.test ?? "",
-        score: p.language?.score?.toString() ?? "",
-        level: p.language?.level ?? "N2",
-        transfer_requested: p.transfer_requested ?? false,
-        completed_credits: p.completed_credits?.toString() ?? "",
-      });
       const preferred = programs.find(v => v.id === selectedRef.current) ?? programs[0];
-      selectedRef.current = preferred?.id ?? "";
-      setSelected(selectedRef.current);
-      setRequirement(requirementFormFrom(preferred?.requirements));
+      const preferredId = preferred?.id ?? "";
+      // Evidence-refresh events must never replace an applicant's unsaved
+      // inputs. Only initialize the draft when the case truly changes.
+      if (loadedCaseRef.current !== caseId) {
+        loadedCaseRef.current = caseId;
+        const p = comparison.profile;
+        setProfile({
+          gpa: p.gpa?.toString() ?? "",
+          gpa_scale: p.gpa_scale?.toString() ?? "4",
+          annual_budget: p.annual_budget?.toString() ?? "",
+          currency: p.currency ?? "JPY",
+          test: p.language?.test ?? "",
+          score: p.language?.score?.toString() ?? "",
+          level: p.language?.level ?? "N2",
+          transfer_requested: p.transfer_requested ?? false,
+          completed_credits: p.completed_credits?.toString() ?? "",
+        });
+        setRequirement(requirementFormFrom(preferred?.requirements));
+      } else if (preferredId !== selectedRef.current) {
+        // If a removed program requires selection to move, load its criteria.
+        setRequirement(requirementFormFrom(preferred?.requirements));
+      }
+      selectedRef.current = preferredId;
+      setSelected(preferredId);
     }).catch(e => { if (alive) setError(String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -170,21 +186,20 @@ export function StudyFitWorkbench({
     event.preventDefault();
     setBusy(true); setError(""); setNotice("");
     try {
-      const language = profile.test === "" ? undefined : profile.test === "JLPT"
+      const language = profile.test === "" ? null : profile.test === "JLPT"
         ? { test: "JLPT", level: profile.level }
         : { test: profile.test, score: cleanNumber(profile.score) };
+      // Explicit null clears a field; omission must not erase saved facts in
+      // other clients. The backend validates the GPA and currency pairs.
       const body = {
-        ...(profile.gpa.trim() === "" ? {} : {
-          gpa: cleanNumber(profile.gpa), gpa_scale: Number(profile.gpa_scale),
-        }),
-        ...(profile.annual_budget.trim() === "" ? {} : {
-          annual_budget: cleanNumber(profile.annual_budget), currency: profile.currency,
-        }),
-        ...(language ? { language } : {}),
+        gpa: profile.gpa.trim() === "" ? null : cleanNumber(profile.gpa),
+        gpa_scale: profile.gpa.trim() === "" ? null : Number(profile.gpa_scale),
+        annual_budget: profile.annual_budget.trim() === "" ? null : cleanNumber(profile.annual_budget),
+        currency: profile.annual_budget.trim() === "" ? null : profile.currency,
+        language,
         transfer_requested: profile.transfer_requested,
-        ...(profile.completed_credits.trim() === "" ? {} : {
-          completed_credits: cleanNumber(profile.completed_credits),
-        }),
+        completed_credits: profile.completed_credits.trim() === ""
+          ? null : cleanNumber(profile.completed_credits),
       };
       await api(target + "/applicant-facts", "PATCH", body);
       setMatches(await api<ComparisonResponse>(target + "/matches"));
@@ -254,24 +269,22 @@ export function StudyFitWorkbench({
     if (!selected) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const language = requirement.test === "" ? undefined : requirement.test === "JLPT"
+      const language = requirement.test === "" ? null : requirement.test === "JLPT"
         ? { test: "JLPT", level: requirement.level }
         : { test: requirement.test, score: cleanNumber(requirement.score) };
       const parts = requirement.source.split("|");
       const body = {
-        ...(requirement.minimum_gpa.trim() === "" ? {} : {
-          minimum_gpa: cleanNumber(requirement.minimum_gpa),
-          gpa_scale: Number(requirement.gpa_scale),
-        }),
-        ...(requirement.annual_tuition.trim() === "" ? {} : {
-          annual_tuition: cleanNumber(requirement.annual_tuition),
-          currency: requirement.currency,
-        }),
-        ...(language ? { minimum_language: language } : {}),
+        minimum_gpa: requirement.minimum_gpa.trim() === ""
+          ? null : cleanNumber(requirement.minimum_gpa),
+        gpa_scale: requirement.minimum_gpa.trim() === ""
+          ? null : Number(requirement.gpa_scale),
+        annual_tuition: requirement.annual_tuition.trim() === ""
+          ? null : cleanNumber(requirement.annual_tuition),
+        currency: requirement.annual_tuition.trim() === "" ? null : requirement.currency,
+        minimum_language: language,
         transfer_policy: requirement.transfer_policy,
-        ...(requirement.source ? {
-          evidence_report_id: parts[0], evidence_citation: parts[1],
-        } : {}),
+        evidence_report_id: requirement.source ? parts[0] : null,
+        evidence_citation: requirement.source ? parts[1] : null,
       };
       const updated = await api<StudySchool>(
         target + "/universities/" + encodeURIComponent(selected) + "/requirements",

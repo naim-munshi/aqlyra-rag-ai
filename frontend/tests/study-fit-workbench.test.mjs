@@ -81,3 +81,31 @@ test("program fit integrates without replacing chat-first navigation", () => {
   assert.ok(wrapper.includes("researchAllowed={researchConsent}"));
   assert.ok(wrapper.includes("onEvidenceUpdated={refreshAdvisor}"));
 });
+
+
+test("evidence selection mirrors backend URL credential and port restrictions", () => {
+  assert.ok(workbench.includes("a.username || a.password"));
+  assert.ok(workbench.includes("b.username || b.password"));
+  assert.ok(workbench.includes('a.port && a.port !== "443"'));
+  assert.ok(workbench.includes('b.port && b.port !== "443"'));
+  assert.ok(workbench.includes(String.raw`/\s/`));
+});
+
+
+test("clearing form inputs sends explicit null pairs rather than silently omitting fields", () => {
+  assert.ok(workbench.includes('gpa: profile.gpa.trim() === "" ? null'));
+  assert.ok(workbench.includes('gpa_scale: profile.gpa.trim() === "" ? null'));
+  assert.ok(workbench.includes('annual_budget: profile.annual_budget.trim() === "" ? null'));
+  assert.ok(workbench.includes('minimum_gpa: requirement.minimum_gpa.trim() === ""'));
+  assert.ok(workbench.includes('minimum_language: language'));
+  assert.ok(workbench.includes('evidence_report_id: requirement.source ? parts[0] : null'));
+  assert.ok(workbench.includes('evidence_citation: requirement.source ? parts[1] : null'));
+});
+
+
+test("research refresh preserves unsaved profile and criteria drafts", () => {
+  assert.ok(workbench.includes("loadedCaseRef.current !== caseId"));
+  assert.ok(workbench.includes("preferredId !== selectedRef.current"));
+  assert.ok(workbench.includes("loadedCaseRef.current = caseId"));
+  assert.ok(workbench.includes("setRequirement(requirementFormFrom(preferred?.requirements))"));
+});
