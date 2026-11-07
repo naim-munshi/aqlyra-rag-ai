@@ -69,3 +69,13 @@ test("Vercel preview URLs cannot compete with canonical production SEO", () => {
   assert.ok(next.includes('"noindex, nofollow"'));
   assert.match(next, /Strict-Transport-Security/);
 });
+
+test("private application entrypoints never opt into public search indexing", () => {
+  for (const route of ["login", "register", "study-abroad", "web", "agent/browser"]) {
+    const page = source("src/app/" + route + "/page.tsx");
+    assert.ok(!page.includes("robots: { index: true"),
+      "Do not index the private " + route + " route");
+    assert.ok(!page.includes("alternates: { canonical"),
+      "Do not assign a public canonical to " + route);
+  }
+});
