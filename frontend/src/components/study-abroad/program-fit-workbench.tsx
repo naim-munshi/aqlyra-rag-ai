@@ -109,6 +109,7 @@ export function StudyFitWorkbench({
   const [evidenceTopic, setEvidenceTopic] = useState("admissions");
   const [selected, setSelected] = useState("");
   const selectedRef = useRef("");
+  const loadedCaseRef = useRef<string | null>(null);
   const [profile, setProfile] = useState({
     gpa: "", gpa_scale: "4", annual_budget: "", currency: "JPY",
     test: "", score: "", level: "N2",
@@ -139,22 +140,31 @@ export function StudyFitWorkbench({
       setSchools(programs);
       setReports(found);
       setCandidates(suggestions);
-      const p = comparison.profile;
-      setProfile({
-        gpa: p.gpa?.toString() ?? "",
-        gpa_scale: p.gpa_scale?.toString() ?? "4",
-        annual_budget: p.annual_budget?.toString() ?? "",
-        currency: p.currency ?? "JPY",
-        test: p.language?.test ?? "",
-        score: p.language?.score?.toString() ?? "",
-        level: p.language?.level ?? "N2",
-        transfer_requested: p.transfer_requested ?? false,
-        completed_credits: p.completed_credits?.toString() ?? "",
-      });
       const preferred = programs.find(v => v.id === selectedRef.current) ?? programs[0];
-      selectedRef.current = preferred?.id ?? "";
-      setSelected(selectedRef.current);
-      setRequirement(requirementFormFrom(preferred?.requirements));
+      const preferredId = preferred?.id ?? "";
+      // Evidence-refresh events must never replace an applicant's unsaved
+      // inputs. Only initialize the draft when the case truly changes.
+      if (loadedCaseRef.current !== caseId) {
+        loadedCaseRef.current = caseId;
+        const p = comparison.profile;
+        setProfile({
+          gpa: p.gpa?.toString() ?? "",
+          gpa_scale: p.gpa_scale?.toString() ?? "4",
+          annual_budget: p.annual_budget?.toString() ?? "",
+          currency: p.currency ?? "JPY",
+          test: p.language?.test ?? "",
+          score: p.language?.score?.toString() ?? "",
+          level: p.language?.level ?? "N2",
+          transfer_requested: p.transfer_requested ?? false,
+          completed_credits: p.completed_credits?.toString() ?? "",
+        });
+        setRequirement(requirementFormFrom(preferred?.requirements));
+      } else if (preferredId !== selectedRef.current) {
+        // If a removed program requires selection to move, load its criteria.
+        setRequirement(requirementFormFrom(preferred?.requirements));
+      }
+      selectedRef.current = preferredId;
+      setSelected(preferredId);
     }).catch(e => { if (alive) setError(String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
