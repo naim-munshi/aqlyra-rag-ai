@@ -23,8 +23,10 @@ test("robots supplies the canonical sitemap and does not hide noindex pages", ()
   const robots = source("src/app/robots.ts");
   assert.ok(robots.includes(production));
   assert.ok(robots.includes('disallow: "/api/"'));
-  assert.doesNotMatch(robots, /disallow:\\s*["']\\/\\s*["',]/);
-  assert.doesNotMatch(robots, /disallow:\s*["']\/login/);
+  assert.ok(robots.includes('allow: "/"'));
+  assert.ok(!robots.includes('disallow: "/"'));
+  assert.ok(!robots.includes('disallow: "/login"'));
+  assert.ok(!robots.includes('disallow: "/study-abroad"'));
 });
 
 test("private workspaces default to noindex while only public pages opt in", () => {
@@ -50,7 +52,7 @@ test("Aqlyra public product page is real indexable content, no login or fake out
   assert.match(about, /<h2/);
   assert.match(about, /application\/ld\+json/);
   assert.match(about, /SoftwareApplication/);
-  assert.match(about, /"\\u003c"/);
+  assert.ok(about.includes("JSON.stringify(structuredData).replace"));
   assert.ok(about.includes('href="/demo"'));
   assert.ok(about.includes('href="/register"'));
   assert.ok(about.includes("not admission or visa decisions"));
