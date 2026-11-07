@@ -42,3 +42,12 @@ test("global CSRF gateway continues to apply to every API route", () => {
   assert.ok(proxy.includes("hasTrustedRequestOrigin(request)"));
   assert.ok(proxy.includes("isServerSemanticRelayRequest(request)"));
 });
+
+test("mutation handlers never depend only on declared Content-Length", () => {
+  for (const route of ["projects/[projectId]", "conversations/[conversationId]"]) {
+    const body = source(route);
+    assert.doesNotMatch(body, /await request\.text\(\)/);
+    assert.doesNotMatch(body, /await request\.json\(\)/);
+    assert.ok(body.includes("readBoundedJson(request, 16_384)"));
+  }
+});
