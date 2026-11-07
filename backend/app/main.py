@@ -9,6 +9,7 @@ from app.services.web_research_capability import public_web_research_status
 
 _knowledge_worker = KnowledgeIndexWorker()
 from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
+from app.middleware.json_body_limit import JsonBodyLimitMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.observability import (
     setup_request_observability,
@@ -40,6 +41,9 @@ setup_cors(app)
 # Outer ASGI ingress check prevents direct Render requests from bypassing
 # the bounded Vercel authentication proxies.
 app.add_middleware(AuthenticationBodyLimitMiddleware)
+# Separate, bounded direct-Render ingress for other JSON payloads.
+# Last middleware is outermost in Starlette; auth requests bypass this one.
+app.add_middleware(JsonBodyLimitMiddleware)
 
 app.include_router(
     api_router,
