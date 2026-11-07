@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
 import { hasTrustedRequestOrigin } from "@/lib/security/origin";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,20 +47,18 @@ async function proxyMutation(request: Request, context: RouteContext, method: "P
     );
   }
 
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > 2048) {
-    return NextResponse.json(
-      { detail: "Request too large" },
-      { status: 413, headers: noStore },
-    );
-  }
-
   let payload: unknown;
   try {
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, "utf8") > 2048) throw new Error("Too large");
-    payload = JSON.parse(raw);
-  } catch {
+    // Enforce the byte cap during streaming, not after request.text() buffers.
+    // This also handles forged/missing Content-Length and multi-byte UTF-8.
+    payload = await readBoundedJson(request, 2048);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json(
+        { detail: "Request too large" },
+        { status: 413, headers: noStore },
+      );
+    }
     return NextResponse.json(
       { detail: "Invalid account mutation body" },
       { status: 400, headers: noStore },
