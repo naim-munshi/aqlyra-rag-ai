@@ -52,7 +52,7 @@ def test_brief_is_private_and_does_not_invent_evidence(client):
     }
 
 
-def test_real_program_gaps_and_stale_source_links(client, db_session):
+def test_real_program_gaps_and_stale_source_links(client, db_session, monkeypatch):
     alice = login(client, "briefmatchalice")
     case_id = make_case(client, alice)
     root = f"/api/v1/study-abroad/cases/{case_id}"
@@ -85,6 +85,14 @@ def test_real_program_gaps_and_stale_source_links(client, db_session):
             - timedelta(days=90),
     ))
     db_session.commit()
+    def forbid_remote(*args, **kwargs):
+        raise AssertionError("A saved-data brief must not call external providers")
+    monkeypatch.setattr(
+        "app.services.web_research_service.research_web", forbid_remote,
+    )
+    monkeypatch.setattr(
+        "app.services.rag_answer_service.answer_question", forbid_remote,
+    )
     response = client.get(root + "/evidence-brief", headers=alice)
     assert response.status_code == 200, response.text
     data = response.json()
