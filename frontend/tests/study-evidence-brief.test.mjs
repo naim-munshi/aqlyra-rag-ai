@@ -53,3 +53,12 @@ test("readiness never claims to automatically share private documents or submit 
   assert.doesNotMatch(brief, /navigator\.sendBeacon|localStorage/);
   assert.match(brief, /caseId: string/);
 });
+
+test("brief makes no provider requests or file reads until explicitly clicked", () => {
+  assert.match(brief, /async function checkReadiness\(/);
+  assert.match(brief, /onClick=\{\(\) => \{ void checkReadiness\(\); \}\}/);
+  assert.doesNotMatch(brief, /useEffect\(/);
+  assert.match(brief, /cache: "no-store"/);
+  assert.match(brief, /document_excerpts_shared/);
+  assert.match(brief, /external_requests_made/);
+});
