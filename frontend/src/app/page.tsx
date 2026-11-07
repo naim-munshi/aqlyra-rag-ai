@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { PublicHomePage } from "@/components/marketing/public-home";
 import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
-import { unauthenticatedLanding } from "@/lib/deployment/mode";
+
 import type {
   BackendError,
   UserResponse,
@@ -56,13 +58,47 @@ async function getCurrentUser(): Promise<UserResponse | null> {
   }
 }
 
+const PUBLIC_DESCRIPTION =
+  "Meet Aqlyra AI: chat with AI, ask questions about private documents, explore source-grounded RAG answers and research tools.";
+
+export async function generateMetadata(): Promise<Metadata> {
+  // A session can display private workspace content at this same route.
+  // Never advertise the signed-in view to web crawlers.
+  const hasSession = Boolean(await getAccessToken());
+  if (hasSession || process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true") {
+    return { robots: { index: false, follow: false } };
+  }
+
+  return {
+    title: "Aqlyra AI — Chat, Document Search and Grounded Answers",
+    description: PUBLIC_DESCRIPTION,
+    alternates: { canonical: "https://aqlyra-ai.vercel.app/" },
+    robots: { index: true, follow: true },
+    openGraph: {
+      type: "website",
+      url: "https://aqlyra-ai.vercel.app/",
+      siteName: "Aqlyra",
+      title: "Aqlyra AI — Chat, Search and Explore",
+      description: PUBLIC_DESCRIPTION,
+    },
+    twitter: {
+      card: "summary",
+      title: "Aqlyra AI — Private Knowledge and AI Chat",
+      description: PUBLIC_DESCRIPTION,
+    },
+  };
+}
+
 export default async function Home() {
   const user = await getCurrentUser();
 
   if (!user) {
-    // Portfolio-only builds redirect to the interactive preview, while the
-    // actual software takes unauthenticated visitors to real account sign-in.
-    redirect(unauthenticatedLanding(process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY));
+    // Keep existing portfolio/demo behavior. Real production exposes only
+    // public marketing text to crawlers; private chat still requires login.
+    if (process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true") {
+      redirect("/demo");
+    }
+    return <PublicHomePage />;
   }
 
   return <ResponsiveWorkspaceShell user={user} />;
