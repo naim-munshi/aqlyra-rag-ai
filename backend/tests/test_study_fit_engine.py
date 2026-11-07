@@ -245,3 +245,68 @@ def test_application_packet_is_real_private_draft_never_submission(client):
     assert any(i["key"] == "academic" for i in data["outstanding_checklist"])
     assert all("status" in i for i in data["unresolved_program_criteria"])
     assert "No external university application" in data["disclaimer"]
+
+
+def test_sparse_academic_patches_preserve_existing_data_and_explicit_null_clears(client):
+    """Protect applicants from PATCH data loss, including concurrent-tab style edits."""
+    auth = _jwt(client, "studysparsesafe")
+    case_id = _case(client, auth)
+    school_id = _school(client, auth, case_id)
+    root = f"/api/v1/study-abroad/cases/{case_id}"
+
+    profile = {
+        "gpa": 3.4, "gpa_scale": 4,
+        "annual_budget": 1200000, "currency": "JPY",
+        "language": {"test": "JLPT", "level": "N2"},
+        "transfer_requested": True, "completed_credits": 54,
+    }
+    first = client.patch(root + "/applicant-facts", headers=auth, json=profile)
+    assert first.status_code == 200, first.text
+
+    # Updating one pair must never silently delete GPA, language or credits.
+    updated = client.patch(root + "/applicant-facts", headers=auth, json={
+        "annual_budget": 900000, "currency": "JPY",
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["gpa"] == 3.4
+    assert updated.json()["language"] == {"test": "JLPT", "level": "N2"}
+    assert updated.json()["completed_credits"] == 54
+    assert updated.json()["transfer_requested"] is True
+    assert updated.json()["annual_budget"] == 900000
+
+    assert client.patch(root + "/applicant-facts", headers=auth, json={}).status_code == 422
+    assert client.patch(root + "/applicant-facts", headers=auth, json={
+        "gpa": None,
+    }).status_code == 422
+    cleared = client.patch(root + "/applicant-facts", headers=auth, json={
+        "gpa": None, "gpa_scale": None,
+    })
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["gpa"] is None
+    assert cleared.json()["annual_budget"] == 900000
+    assert client.get(root + "/matches", headers=auth).json()["profile"]["gpa"] is None
+
+    url = root + f"/universities/{school_id}/requirements"
+    requirements = {
+        "minimum_gpa": 3.0, "gpa_scale": 4,
+        "minimum_language": {"test": "IELTS", "score": 6.5},
+        "annual_tuition": 8000, "currency": "USD", "transfer_policy": "unknown",
+    }
+    first_requirements = client.patch(url, headers=auth, json=requirements)
+    assert first_requirements.status_code == 200, first_requirements.text
+
+    partial = client.patch(url, headers=auth, json={"transfer_policy": "yes"})
+    assert partial.status_code == 200, partial.text
+    assert partial.json()["requirements"]["minimum_gpa"] == 3.0
+    assert partial.json()["requirements"]["minimum_language"]["score"] == 6.5
+    assert partial.json()["requirements"]["annual_tuition"] == 8000
+
+    assert client.patch(url, headers=auth, json={}).status_code == 422
+    assert client.patch(url, headers=auth, json={"annual_tuition": None}).status_code == 422
+    cleared_fee = client.patch(url, headers=auth, json={
+        "annual_tuition": None, "currency": None,
+    })
+    assert cleared_fee.status_code == 200, cleared_fee.text
+    assert cleared_fee.json()["requirements"].get("annual_tuition") is None
+    assert cleared_fee.json()["requirements"]["minimum_gpa"] == 3.0
+    assert cleared_fee.json()["requirements"]["transfer_policy"] == "yes"
