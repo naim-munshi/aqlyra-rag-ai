@@ -84,9 +84,9 @@ test("program fit integrates without replacing chat-first navigation", () => {
 
 
 test("evidence selection mirrors backend URL credential and port restrictions", () => {
-  assert.match(workbench, /a\\.username \\|\\| a\\.password/);
-  assert.match(workbench, /b\\.username \\|\\| b\\.password/);
-  assert.match(workbench, /a\\.port && a\\.port !== "443"/);
-  assert.match(workbench, /b\\.port && b\\.port !== "443"/);
-  assert.match(workbench, /\\/\\\\s\\//);
+  assert.ok(workbench.includes("a.username || a.password"));
+  assert.ok(workbench.includes("b.username || b.password"));
+  assert.ok(workbench.includes('a.port && a.port !== "443"'));
+  assert.ok(workbench.includes('b.port && b.port !== "443"'));
+  assert.ok(workbench.includes(String.raw`/\s/`));
 });
