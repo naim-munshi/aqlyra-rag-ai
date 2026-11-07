@@ -10,9 +10,18 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// The home route is account-scoped and redirects unauthenticated visitors.
+// Default to noindex; only public product pages explicitly opt in.
 export const metadata: Metadata = {
-  title: "Aqlyra RAG AI",
-  description: "Private knowledge workspace with grounded RAG answers.",
+  metadataBase: new URL("https://aqlyra-ai.vercel.app"),
+  title: {
+    default: "Aqlyra | Source-Grounded AI Knowledge Workspace",
+    template: "%s | Aqlyra",
+  },
+  description:
+    "Aqlyra is an AI knowledge workspace for private document search, citation-aware answers, and research workflows.",
+  applicationName: "Aqlyra",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
