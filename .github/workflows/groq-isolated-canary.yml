@@ -1,0 +1,87 @@
+# Synthetic Groq requests only; never expose the production API key to PRs.
+name: Isolated Real Groq Canary
+
+on:
+  pull_request:
+    branches:
+      - release/core-without-study-abroad-20261027
+    paths:
+      - "scripts/ops/groq_staging_canary.py"
+      - "scripts/ops/test_groq_staging_canary.py"
+      - ".github/workflows/groq-isolated-canary.yml"
+  push:
+    branches:
+      - release/core-without-study-abroad-20261027
+    paths:
+      - "scripts/ops/groq_staging_canary.py"
+      - "scripts/ops/test_groq_staging_canary.py"
+      - ".github/workflows/groq-isolated-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-groq-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-key-tests:
+    name: Synthetic Groq guard tests (zero requests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify no production key or unbounded calls
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q scripts/ops/groq_staging_canary.py
+          PYTHONPATH=scripts/ops python3 -m unittest -v test_groq_staging_canary
+
+  real-provider:
+    name: Three short real Groq requests on trusted release branch only
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/release/core-without-study-abroad-20261027'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      APP_ENV: isolated_ci
+      AQLYRA_REAL_GROQ_TEST_CONFIRMED: "yes"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Check dedicated test-only credential exists
+        id: credential
+        env:
+          AQLYRA_STAGING_GROQ_API_KEY: ${{ secrets.AQLYRA_STAGING_GROQ_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "$AQLYRA_STAGING_GROQ_API_KEY" ]; then
+            echo "REAL_GROQ_CANARY=NOT_RUN_NO_DEDICATED_STAGING_KEY"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "REAL_GROQ_CANARY=CREDENTIAL_PRESENT"
+          fi
+
+      - name: Set up Python
+        if: steps.credential.outputs.configured == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install only provider adapter dependencies
+        if: steps.credential.outputs.configured == 'true'
+        run: |
+          set -Eeuo pipefail
+          python -m pip install "openai==2.54.0"
+          python -m pip check
+
+      - name: Run bounded 1-plus-2 real Groq adapter canary
+        if: steps.credential.outputs.configured == 'true'
+        env:
+          AQLYRA_STAGING_GROQ_API_KEY: ${{ secrets.AQLYRA_STAGING_GROQ_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -z "${GROQ_API_KEY:-}"
+          PYTHONPATH=backend python scripts/ops/groq_staging_canary.py
+          echo "REAL_GROQ_TEST_SCOPE=3_SYNTHETIC_CALLS_ONLY"
