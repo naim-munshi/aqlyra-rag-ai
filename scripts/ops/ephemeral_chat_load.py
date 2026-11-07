@@ -18,7 +18,7 @@ from pathlib import Path
 import statistics
 import sys
 from threading import Barrier, BrokenBarrierError, Lock
-from time import perf_counter
+from time import perf_counter, monotonic, sleep
 from urllib.parse import urlsplit
 
 from ephemeral_fullstack_e2e import Client, SmokeFailure, create_account, expect, safe_url
@@ -203,7 +203,7 @@ def perform_tier(origin: str, tokens: list[str], conversation_ids: list[str]) ->
     }
 
 
-def run(origin: str) -> dict:
+def run(origin: str, *, pause_marker: Path | None = None, resume_marker: Path | None = None) -> dict:
     api = Client(origin)
     expect(api.request("GET", "/api/v1/health"), 200, "backend health")
     report = {
@@ -225,9 +225,27 @@ def run(origin: str) -> dict:
     }
     print("PROVISIONING=100 synthetic users on isolated loopback PostgreSQL", flush=True)
     accounts = provision_accounts(origin, max(TIERS))
+    # Prepare ALL conversations before the optional resource-envelope cap is
+    # applied. This isolates real chat-request latency from bcrypt/user setup.
+    prepared = {
+        count: provision_conversations(origin, accounts[:count])
+        for count in TIERS
+    }
+    if pause_marker is not None:
+        if resume_marker is None:
+            raise ValueError("Both disposable synchronization markers are required")
+        for marker in (pause_marker, resume_marker):
+            if marker.parent != Path("/tmp") or marker.exists():
+                raise ValueError("Markers must be new direct /tmp files")
+        pause_marker.touch(mode=0o600)
+        deadline = monotonic() + 120
+        while not resume_marker.exists():
+            if monotonic() >= deadline:
+                raise SmokeFailure("Resource-envelope admission was not confirmed")
+            sleep(0.2)
+        print("DISPOSABLE_RESOURCE_ENVELOPE=ACKNOWLEDGED", flush=True)
     for count in TIERS:
-        conversations = provision_conversations(origin, accounts[:count])
-        measured = perform_tier(origin, accounts[:count], conversations)
+        measured = perform_tier(origin, accounts[:count], prepared[count])
         report["tiers"].append(measured)
         print("LOAD_TIER=" + json.dumps(measured, sort_keys=True), flush=True)
     report["all_tiers_met_illustrative_ci_slo"] = all(
@@ -244,10 +262,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--report-file", default="/tmp/aqlyra-synthetic-chat-load.json")
+    parser.add_argument("--pause-marker", default=None,
+                        help="CI only: signal when synthetic conversations are provisioned")
+    parser.add_argument("--resume-marker", default=None,
+                        help="CI only: resume measured tiers after Docker CPU cap is applied")
     args = parser.parse_args(argv)
     try:
+        if bool(args.pause_marker) != bool(args.resume_marker):
+            raise ValueError("Both CI synchronization markers must be supplied")
         origin = assert_disposable_environment(args.base_url)
-        report = run(origin)
+        report = run(
+            origin,
+            pause_marker=Path(args.pause_marker) if args.pause_marker else None,
+            resume_marker=Path(args.resume_marker) if args.resume_marker else None,
+        )
         target = Path(args.report_file).resolve()
         if not str(target).startswith("/tmp/"):
             raise ValueError("Synthetic benchmark results must remain in /tmp")
