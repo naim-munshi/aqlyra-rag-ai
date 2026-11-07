@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   description:
     "Aqlyra is an AI knowledge workspace for private document search, citation-aware answers, and research workflows.",
   applicationName: "Aqlyra",
+  verification: {
+    google: "m_rTNCg8wozqwUkzSrU0m4zlqwCHaOT04JeNUM26Cp8",
+  },
   robots: { index: false, follow: false },
 };
 
