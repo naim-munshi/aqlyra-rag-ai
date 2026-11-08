@@ -46,6 +46,7 @@ from app.embeddings import (
 )
 from app.retrieval import RetrievalProviderError
 from app.services.lexical_retrieval_service import search_lexical_chunks
+from app.services.knowledge_dense_coverage import scope_has_current_dense_vectors
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
@@ -166,6 +167,21 @@ def _retrieve_rag_hits(
 
     if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
         if settings.EMBEDDING_PROVIDER == "deterministic":
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+        if (
+            settings.KNOWLEDGE_SKIP_DENSE_WHEN_UNINDEXED_ENABLED
+            and settings.EMBEDDING_PROVIDER == "remote_onnx"
+            and not scope_has_current_dense_vectors(
+                db=db, query=retrieval_query,
+            )
+        ):
+            # If no current 384D vector exists for THIS owner's requested
+            # documents/roles, calling a sleeping worker cannot retrieve
+            # any dense evidence. Use existing grounded lexical evidence
+            # immediately. Explicit min_similarity still returns [].
+            logger.info(
+                "knowledge_dense_index_empty fallback=lexical"
+            )
             return _lexical_evidence_fallback(db=db, query=retrieval_query)
         try:
             return _retrieve_with_optional_reranking(
