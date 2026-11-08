@@ -52,6 +52,7 @@ const structuredData = {
   "@type": "WebApplication",
   "@id": "https://aqlyra-ai.vercel.app/#software",
   name: "Aqlyra",
+  alternateName: "Aqlyra RAG AI",
   url: "https://aqlyra-ai.vercel.app",
   description,
   applicationCategory: "BusinessApplication",
@@ -135,7 +136,8 @@ export default function AboutPage() {
         </section>
 
         <footer className="mt-16 border-t border-[var(--aq-border)] py-7 text-sm text-[var(--aq-muted)]">
-          Aqlyra is under active development. <Link href="/help" className="text-[var(--aq-blue)] hover:underline">Read help and privacy guidance</Link>.
+          Aqlyra is under active development. <Link href="/help" className="text-[var(--aq-blue)] hover:underline">Read help and privacy guidance</Link>.{" "}
+          <a href="https://github.com/naim-munshi/aqlyra-rag-ai" target="_blank" rel="noopener noreferrer" className="text-[var(--aq-blue)] hover:underline">Public engineering repository</a>.
         </footer>
       </div>
     </main>
