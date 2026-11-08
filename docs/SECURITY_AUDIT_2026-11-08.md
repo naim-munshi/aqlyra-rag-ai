@@ -32,7 +32,7 @@
 
 ## Confirmed security engineering gap
 
-Security SAST (`.github/workflows/security-static.yml`) and vulnerability scanning (`dependency-audit.yml`) were only configured for PRs into `main`, while the **actual backend production branch** is `release/core-without-study-abroad-20261027` and the **actual frontend production branch** is `fix/center-empty-chat-composer-20261102`. Recent backend PRs therefore passed backend integration and resource benchmarks without these security jobs gating their exact heads. This PR extends both audits to the current release targets and adds dedicated frontend CSRF/XSS/security-header/relay regression tests.
+The **backend production release branch** had security SAST (`.github/workflows/security-static.yml`) and dependency auditing (`dependency-audit.yml`) configured for PRs targeting only `main`. Recent backend release PRs therefore passed backend integration and resource benchmarks without those two jobs gating their exact heads. The **separate deployed frontend branch** (`fix/center-empty-chat-composer-20261102`) already has broader `release/**` and `fix/**` triggers and previously passed security jobs. This PR fixes the backend release divergence and adds an independent frontend CSRF/XSS/security-header/relay regression job to the backend release gates. The protected default `main` remains unchanged.
 
 The static scanner currently **blocks high-severity Python findings**, and the dependency audit covers pinned npm and Python requirements. These automated gates improve coverage but do not prove the absence of vulnerabilities.
 
