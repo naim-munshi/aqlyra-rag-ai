@@ -30,7 +30,10 @@ test("legacy profile fallback is bounded and tokens stay server-only", () => {
   assert.match(complete, /setRefreshToken\(/);
   assert.match(complete, /clearRefreshToken\(/);
   assert.match(complete, /"Cache-Control": "private, no-store"/);
-  assert.doesNotMatch(complete, /return NextResponse\.json\(\s*tokenData/);
+  // Error details can be forwarded on 401/403. Only the successful path
+  // must omit bearer JWTs from the response body.
+  assert.match(complete, /return NextResponse\.json\(\s*\{ user: userData \}/);
+  assert.doesNotMatch(complete, /return NextResponse\.json\(\s*\{[^}]*access_token/);
 });
 
 test("Node timeout signal really aborts a nonresponding backend operation", async () => {
