@@ -50,7 +50,8 @@ _CANDIDATE = re.compile(
     r"scholarships?|tuition|admissions?|visas?|immigration|"
     r"application deadlines?|prices?|rates?|discounts?|"
     r"exchange rates?|forecasts?|weather|openings?|"
-    r"stock prices?|flights?|hotels?|restaurants?|bookings?|"
+    r"stock prices?|news|headlines?|live scores?|match results?|"
+    r"flights?|hotels?|restaurants?|bookings?|"
     r"public holidays?|schedules?|rankings?|regulations?|"
     r"government requirements?|laws?|release dates?|availability)\b"
     r"|চাকরি|বেতন|স্কলারশিপ|ভিসা|ভর্তি|দাম|মূল্য|আবহাওয়া|আবহাওয়া|"
@@ -67,6 +68,24 @@ _SENSITIVE = re.compile(
     re.IGNORECASE,
 )
 _RESULT_MODES = {"search", "deep", "compare", "fact_check"}
+
+_DIRECT_PUBLIC_LIVE_LOOKUP = re.compile(
+    r"\b(?:weather|forecast)\b.{0,70}\b(?:in|for|near|across)\s+[a-z]"
+    r"|\b(?:in|for|across)\s+[a-z][a-z ]{1,35}\b(?:weather|forecast)\b"
+    r"|^[a-z][a-z ]{1,35}\s+(?:weather|forecast)\??$"
+    r"|\b(?:news|headlines)\s+(?:about|in|from|for)\s+[a-z]"
+    r"|\b(?:latest|breaking|today'?s)\s+(?:news|headlines)\b"
+    r"|(?:東京|大阪|京都|日本).{0,10}(?:天気|天候|気温)"
+    r"|(?:天気|天候|気温).{0,10}(?:東京|大阪|京都|日本)"
+    r"|(?:জাপান|টোকিও|বাংলাদেশ).{0,18}(?:আবহাওয়া|আবহাওয়া)",
+    re.IGNORECASE,
+)
+_CREATIVE_REQUEST = re.compile(
+    r"^\s*(?:write|draft|compose|create|generate|translate|rewrite|"
+    r"summarize|explain|invent|make\s+up)\b"
+    r"|^(?:লিখ|অনুবাদ|要約|翻訳|書いて)",
+    re.IGNORECASE,
+)
 
 
 def route_web_request(
@@ -121,6 +140,10 @@ def route_web_request(
         return None
     if _NO_WEB.search(question):
         return None
+    # High-confidence live public data should not depend on an extra LLM
+    # selector call, which can fail or return invalid JSON on Render Free.
+    if not _CREATIVE_REQUEST.search(question) and _DIRECT_PUBLIC_LIVE_LOOKUP.search(question):
+        return "search"
     if not _CANDIDATE.search(question):
         return None
     if not (

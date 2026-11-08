@@ -17,6 +17,10 @@ from app.services.auto_web_research_service import (
 from app.services.web_research_service import research_web
 from app.services.safe_calculation_service import exact_calculation_reply
 from app.services.smart_web_router import route_web_request
+from app.services.public_live_followup import (
+    is_coarse_public_location_reply,
+    public_live_location_followup,
+)
 from app.services.public_office_guard import (
     PublicFactGuardProvider,
     officeholder_search_query,
@@ -111,6 +115,8 @@ def _public_country_name(message: str) -> str | None:
         or _SECRET_LIKE_COUNTRY.search(country)
     ):
         return None
+    if re.match(r"^(?:my|i\s+am|i\s+live|in)\b", country, re.IGNORECASE):
+        return None
     lower = country.casefold()
     if len(lower) <= 3 and lower not in _COUNTRY_ALIASES:
         return None
@@ -186,6 +192,32 @@ def resolve_public_office_followup(
         ):
             return message
     return message
+
+
+def resolve_public_research_followup(
+    *, db: Session, conversation: Conversation, message: str,
+) -> str:
+    """Use only public topic markers from the last turn; do not leak history."""
+    office_question = resolve_public_office_followup(
+        db=db, conversation=conversation, message=message,
+    )
+    if office_question != message:
+        return office_question
+    if not is_coarse_public_location_reply(message):
+        return message
+    recent = get_recent_messages_for_conversation(
+        db=db, conversation_id=conversation.id, limit=2,
+    )
+    if not isinstance(recent, (list, tuple)) or len(recent) != 2:
+        return message
+    prior_user, prior_assistant = recent
+    if prior_user.role != "user" or prior_assistant.role != "assistant":
+        return message
+    return public_live_location_followup(
+        current_message=message,
+        previous_user=prior_user.content,
+        previous_assistant=prior_assistant.content,
+    ) or message
 
 
 _SOURCE_CITATION_PATTERN = re.compile(
@@ -1204,8 +1236,11 @@ def execute_chat_turn(
         # Resolve a one-word jurisdiction reply only when the immediately
         # preceding exchange was the explicit country-clarification guard.
         # No private history is ever given to the public web provider.
-        public_question = resolve_public_office_followup(
-            db=db, conversation=conversation, message=cleaned,
+        public_question = (
+            resolve_public_research_followup(
+                db=db, conversation=conversation, message=cleaned,
+            )
+            if web_mode != "off" else cleaned
         )
         # The streaming endpoint passes a pre-computed decision ("" means
         # no search). This prevents duplicate LLM selector calls and costs.
