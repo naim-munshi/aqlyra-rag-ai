@@ -46,7 +46,7 @@ The above selected versions already passed a dependency audit on the *later rele
 ## C: Evaluation quality — PARTIALLY IMPLEMENTED; real-provider validation MISSING
 
 - Corpus: `backend/evaluation/corpus/` contains 10 synthetic documents; `retrieval_cases.json` contains 20 annotated questions. Original documented experiment indexed 70 chunks.
-- `backend/retrieval/benchmark.py` and `backend/app/retrieval/evaluation.py` compute Hit Rate@K, Recall@K and MRR@K with unique document-chunk rankings. Main's evaluator does not yet expose Precision@K or nDCG@K; the later release adds binary nDCG.
+- `backend/app/retrieval/benchmark.py` and `backend/app/retrieval/evaluation.py` compute Hit Rate@K, Recall@K and MRR@K with unique document-chunk rankings. Main's evaluator does not yet expose Precision@K or nDCG@K; the later release adds binary nDCG.
 - `backend/evaluation/BASELINE.md` explicitly labels SHA-256 deterministic embeddings **non-semantic**. The supplied vector-vs-hybrid and Groq query rewrite/rerank numbers are historical measurements on this limited synthetic corpus, **not semantic embedding accuracy**.
 - Rewriting and reranking are optional and feature-gated. Their individual effect, six-combination ablation, runtime latency, cost, citation correctness, grounded-answer accuracy and unsupported-answer refusal need a controlled labeled repeatable experiment with true semantic embeddings and independent answer labels.
 - Tests of the benchmark and grounding include fake providers/mocks. No new real provider accuracy, semantic recall, or production throughput numbers are asserted by this PR.
