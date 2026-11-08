@@ -495,8 +495,16 @@ def build_evidence_context(
                 section_path=section_path,
                 start_page=hit.start_page,
                 end_page=hit.end_page,
-                similarity_score=float(
-                    hit.similarity_score
+                # A lexical-only match has no measured dense similarity.
+                # Preserve its real citation, not its internal placeholder
+                # 0.0 (which is required by older retrieval/ranking types).
+                similarity_score=(
+                    None
+                    if (
+                        hit.metadata.get("retrieval_mode") == "lexical_only"
+                        or hit.metadata.get("semantic_similarity_available") is False
+                    )
+                    else float(hit.similarity_score)
                 ),
                 content=content,
                 was_truncated=(
