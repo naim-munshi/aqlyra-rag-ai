@@ -95,13 +95,13 @@ def _source_only_rate_limit_answer(
 ) -> WebResearchResponse:
     """Cited public links only; never turn snippets into invented facts."""
     citations = " ".join(source.citation for source in sources[:3])
-    if re.search(r"[\\u0980-\\u09ff]", question):
+    if re.search(r"[\u0980-\u09ff]", question):
         notice = (
             "ওয়েব থেকে প্রকাশ্য উৎস পাওয়া গেছে, কিন্তু AI উত্তর তৈরি এখন "
             "rate limit-এর কারণে বন্ধ। যাচাই করা উত্তর দিতে পারছি না। "
             "উৎসগুলো দেখুন:"
         )
-    elif re.search(r"[\\u3040-\\u30ff\\u3400-\\u9fff]", question):
+    elif re.search(r"[\u3040-\u30ff\u3400-\u9fff]", question):
         notice = (
             "公開ウェブ情報は取得しましたが、AIの回答生成はレート制限中です。"
             "内容を確認できないため、次の出典をご確認ください。"
