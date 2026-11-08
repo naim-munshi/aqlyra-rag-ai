@@ -49,6 +49,9 @@ class SecurityAdvisoryPinTests(unittest.TestCase):
                 pinned[name] = versions(match.group(2))
 
         minimums = {
+            "aiohttp": (3, 14, 4),
+            "dnspython": (2, 9, 0),
+            "filelock": (4, 2, 1),
             "langgraph": (1, 2, 14),
             "langgraph-sdk": (0, 4, 6),
             "pillow": (13, 0, 0),
