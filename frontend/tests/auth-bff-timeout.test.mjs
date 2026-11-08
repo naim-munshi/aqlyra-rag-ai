@@ -16,6 +16,6 @@ for (const name of ["login", "google"]) {
     assert.match(route, /status: 503/);
     assert.match(route, /"Retry-After": "10"/);
     assert.doesNotMatch(route, /status: 504/);
-    assert.match(route, /backendUrl\(\`?["']?\/auth\//);
+    assert.ok(route.includes(`backendUrl("/auth/${name}")`));
   });
 }
