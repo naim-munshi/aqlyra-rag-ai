@@ -17,7 +17,7 @@ Repository audit snapshot: 140 remote branches, 50 open pull requests (39 draft,
 
 ## Confirmed CI repair: do not delete the tests
 
-The 2026-11-08 backend release failed two separate checks: `Always-on Merge Gate` (run 42474836848) and `Frontend and Deployment Checks` (run 42474836811). Both errors originated from `scripts/ops/test_ephemeral_chat_load.py` importing `pytest` during offline stdlib `unittest` discovery. Backend test, security, dependency, ARM64, documentation and embedding-worker checks had passed. Preserve the **safety benchmark**; convert the test to stdlib `unittest` rather than removing it or relaxing production restrictions. Rebasing the reviewed fix onto the current release is tracked in [PR #164](https://github.com/naim-munshi/aqlyra-rag-ai/pull/164). The older PRs #148 and #150 carry competing versions of the same repair, and should be closed as superseded after the replacement is accepted.
+The 2026-11-08 backend release failed two separate checks: `Always-on Merge Gate` (run 42474836848) and `Frontend and Deployment Checks` (run 42474836811). Both errors originated from `scripts/ops/test_ephemeral_chat_load.py` importing `pytest` during offline stdlib `unittest` discovery. Backend test, security, dependency, ARM64, documentation and embedding-worker checks had passed. Preserve the **safety benchmark**; convert the test to stdlib `unittest` rather than removing it or relaxing production restrictions. Rebasing the reviewed fix onto the current release is tracked in [PR #164](https://github.com/naim-munshi/aqlyra-rag-ai/pull/164). The older competing PRs #148 and #150 were **closed as superseded**, with explanatory comments, after [PR #164](https://github.com/naim-munshi/aqlyra-rag-ai/pull/164) was merged at commit `4d5d8c8f5e4edb7a63b11e3397b2ee871979c3d3`. The standalone no-pip gate and all PR-head security/dependency/backend checks passed.
 
 ## Remote branches: verified fully integrated, deletion candidates only
 
@@ -42,7 +42,7 @@ The current GitHub connector can compare, create and update refs/PRs, but does n
 
 ## PR triage
 
-- **Close as superseded when PR #164 is accepted:** #148 and #150 (duplicate, conflicting old CI repair branches).
+- **Closed as superseded:** #148 and #150, both covered by merged #164 (no feature code removed).
 - **Keep:** #36 (main promotion candidate), #101 (frontend release lifecycle), #37 (full/Study Abroad candidate), #147 and #149 (main dependency remediation), #151/#152 (RAG quality/evaluation), #153 (frontend login handling) and #129 (Study Abroad UI). These contain unique commits relative to their intended target or still require a production-specific integration decision.
 - **Other 39 draft/ready PRs:** every open head inspected had commits not contained by its *current target branch*; being older or present in a different branch is insufficient proof it can be closed safely.
 - Do not combine #147/#149 or #148/#150 via blind simultaneous merge; review the exact-file diffs and accept one coherent change set into the intended target.
@@ -53,8 +53,8 @@ The [README](../README.md) now shows the **Nov 8** operational caveats before it
 
 ## Remaining housekeeping gates
 
-1. Verify PR #164 on its exact head and the two previously failed **push** checks after merge.
-2. Close superseded duplicate PRs with explanatory reasons; leave unique draft work reviewable.
+1. Verify the two previously failed **push** checks against merge commit `4d5d8c8f`; Always-on Merge Gate passed on the new head, while the broader checks were still running at the audit update.
+2. Superseded duplicate PRs #148 and #150 were closed with reasons; continue leaving unique draft work reviewable.
 3. Perform the 10-branch candidate worktree/deployment-reference check in an environment with authorized **delete ref** support.
 4. Consolidate releases through a separate branch-specific integration test campaign, not during cleanup.
 5. Review dependency advisories and repository permissions/rulesets; the managed integration cannot read all branch-protection administration details.
