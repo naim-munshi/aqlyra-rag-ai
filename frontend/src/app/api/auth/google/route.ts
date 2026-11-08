@@ -39,6 +39,9 @@ export async function POST(request: Request) {
         headers: backendHeaders,
         body: JSON.stringify(body),
         cache: "no-store",
+        // The upstream may cold-start; never leave browser sign-in pending
+        // until the Vercel function's platform timeout.
+        signal: AbortSignal.timeout(45_000),
       },
     );
 
@@ -46,7 +49,13 @@ export async function POST(request: Request) {
       response,
       "Google sign-in failed",
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return NextResponse.json(
+        { detail: "Sign-in service is temporarily unavailable. Please retry." },
+        { status: 503, headers: { "Retry-After": "10" } },
+      );
+    }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
       { status: 502 },

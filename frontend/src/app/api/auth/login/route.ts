@@ -47,6 +47,9 @@ export async function POST(request: Request) {
           password: body.password,
         }),
         cache: "no-store",
+        // The upstream may cold-start; never leave browser sign-in pending
+        // until the Vercel function's platform timeout.
+        signal: AbortSignal.timeout(45_000),
       },
     );
 
@@ -55,7 +58,13 @@ export async function POST(request: Request) {
       "Login failed",
       { remember: body.remember_me !== false },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return NextResponse.json(
+        { detail: "Sign-in service is temporarily unavailable. Please retry." },
+        { status: 503, headers: { "Retry-After": "10" } },
+      );
+    }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
       { status: 502 },
