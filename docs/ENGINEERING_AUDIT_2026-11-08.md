@@ -31,12 +31,13 @@
 | `aiohttp@3.14.3` | CVE-2026-111064 and related; observed on exact-head PR pip-audit | `3.14.4` |
 | `dnspython@2.8.0` | CVE-2026-114605; observed on exact-head PR pip-audit | `2.9.0` |
 | `filelock@3.32.0` | CVE-2026-112940 and related; observed on exact-head PR pip-audit | `4.2.1` |
+| `yarl@1.24.5` | Confirmed resolution conflict: `aiohttp 3.14.4` requires `yarl>=1.25.1` | `1.25.1` |
 
 The above selected versions already passed a dependency audit on the *later release* branch (2026-11-07 workflow `42387740063`). This is compatibility evidence, **not proof of the new `main` PR passing**; the new PR must run npm ci, npm audit, pip-audit, backend tests and frontend build.
 
 **Reachability:** Next is the web application's framework; its image optimization endpoint is framework-controlled, and exact exposure needs runtime review. The Server Actions and `use cache` advisories are conditional on the matching features. Pillow/PDF parsing occurs in the document ingestion surface and thus merits immediate patching. The LangGraph SDK v3 identifier interpolation issue is conditional; a direct untrusted v3 streaming call path has not been demonstrated. Pinned vulnerable packages are remediated without claiming every exploit precondition was established.
 
-**Files changed by this PR:** `backend/requirements.txt` (nine targeted pins), `frontend/package.json`, `frontend/package-lock.json` (twelve Next/SWC/linter entries only), and `scripts/ops/test_security_advisory_pins.py` (standard-library regression test). No `npm audit fix --force`, wide dependency upgrade, suppression, or production configuration change.
+**Files changed by this PR:** `backend/requirements.txt` (nine advisory pins plus required compatible `yarl`), `frontend/package.json`, `frontend/package-lock.json` (twelve Next/SWC/linter entries only), and `scripts/ops/test_security_advisory_pins.py` (standard-library regression test). No `npm audit fix --force`, wide dependency upgrade, suppression, or production configuration change.
 
 ## B: Semantic embedding HTTP 429 — EXTERNAL PROVIDER ISSUE; mitigation ALREADY IMPLEMENTED on release
 
