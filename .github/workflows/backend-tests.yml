@@ -81,6 +81,22 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - name: Reproduce offline gate with no pytest in an isolated stdlib venv
+        if: matrix.postgres-version == 16
+        run: |
+          set -Eeuo pipefail
+          python -m venv /tmp/aqlyra-stdlib-only
+          /tmp/aqlyra-stdlib-only/bin/python -m unittest discover \
+            -s scripts/ops -p 'test_ephemeral_chat_load.py' -v
+          echo "OFFLINE_BENCHMARK_SAFETY_WITHOUT_PYTEST=PASS"
+
+      - name: Run full offline operations unittest discovery before dependencies
+        if: matrix.postgres-version == 16
+        run: |
+          set -Eeuo pipefail
+          python -m unittest discover -s scripts/ops -p 'test_*.py' -v
+          echo "RELEASE_OFFLINE_GATE=PASS"
+
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
