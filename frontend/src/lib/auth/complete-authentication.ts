@@ -68,6 +68,9 @@ export async function completeAuthentication(
           Authorization: `Bearer ${tokenData.access_token}`,
         },
         cache: "no-store",
+        // Prevent a second unbounded Vercel -> Render round trip when the
+        // backend returns a legacy token response without the user profile.
+        signal: AbortSignal.timeout(15_000),
       },
     );
     userData = await readJson<UserResponse | BackendError>(userResponse);
