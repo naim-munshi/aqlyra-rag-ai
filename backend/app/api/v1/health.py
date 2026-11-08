@@ -70,9 +70,13 @@ def readiness():
             # the Core schema. A Core-only process must remain usable
             # during the protected Full Release cutover window, without
             # claiming that any Study Abroad routes are deployed.
-            if version not in ("b5e4a019dc72", "d4ec2f9b7860"):
+            if version not in (
+                "b5e4a019dc72",
+                "d4ec2f9b7860",
+                "0bd6703bf8a4",  # reviewed additive Study Program Fit migration
+            ):
                 raise RuntimeError("Aqlyra database revision is not current")
-            if version == "d4ec2f9b7860":
+            if version in ("d4ec2f9b7860", "0bd6703bf8a4"):
                 check_stage = "schema_full_additive"
                 full_tables_ready = db.execute(
                     text(
@@ -85,6 +89,24 @@ def readiness():
                 ).scalar_one()
                 if not full_tables_ready:
                     raise RuntimeError("Aqlyra additive schema tables are unavailable")
+
+            if version == "0bd6703bf8a4":
+                check_stage = "schema_study_fit"
+                fit_columns_ready = db.execute(
+                    text(
+                        "SELECT "
+                        "EXISTS (SELECT 1 FROM information_schema.columns "
+                        "WHERE table_schema = 'public' "
+                        "AND table_name = 'study_cases' "
+                        "AND column_name = 'applicant_facts') "
+                        "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                        "WHERE table_schema = 'public' "
+                        "AND table_name = 'study_universities' "
+                        "AND column_name = 'requirements')"
+                    )
+                ).scalar_one()
+                if not fit_columns_ready:
+                    raise RuntimeError("Aqlyra study fit schema is unavailable")
 
             check_stage = "schema_core"
             core_schema_ready = db.execute(
