@@ -390,9 +390,11 @@ function getDuplicateDocumentId(
 }
 
 function formatSimilarity(
-  score: number,
+  score: number | null,
 ) {
-  return score.toFixed(3);
+  // Lexical-only retrieval is real evidence but has no cosine similarity.
+  // Never display the internal 0.0 placeholder as a measured dense score.
+  return score === null ? "Lexical only" : score.toFixed(3);
 }
 
 export function RAGWorkspace({
