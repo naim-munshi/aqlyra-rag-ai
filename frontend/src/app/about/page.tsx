@@ -49,12 +49,14 @@ const features = [
 
 const structuredData = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
+  "@type": "WebApplication",
+  "@id": "https://aqlyra-ai.vercel.app/#software",
   name: "Aqlyra",
   url: "https://aqlyra-ai.vercel.app",
   description,
-  applicationCategory: "ProductivityApplication",
+  applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
+  sameAs: "https://github.com/naim-munshi/aqlyra-rag-ai",
   featureList: features.map((feature) => feature.title),
 };
 
@@ -74,6 +76,7 @@ export default function AboutPage() {
           </Link>
           <div className="flex flex-wrap items-center gap-5 text-sm">
             <Link href="/demo" className="text-[var(--aq-blue)] hover:underline">Explore demo</Link>
+            <Link href="/how-it-works" className="hover:underline">How it works</Link>
             <Link href="/help" className="hover:underline">Help</Link>
             <Link href="/login" className="hover:underline">Sign in</Link>
           </div>
@@ -126,8 +129,8 @@ export default function AboutPage() {
             not guarantee that generated text is correct: verify important
             decisions against the original document or an official source.
           </p>
-          <Link href="/demo" className="mt-5 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
-            See a public walkthrough
+          <Link href="/how-it-works" className="mt-5 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
+            Read the full RAG and citation explanation
           </Link>
         </section>
 
