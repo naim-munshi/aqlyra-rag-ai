@@ -18,7 +18,10 @@ from redis.exceptions import RedisError
 
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
-from app.services.storage_durability_policy import local_writes_permitted
+from app.services.storage_durability_policy import (
+    artifact_writes_permitted,
+    local_writes_permitted,
+)
 from app.services.web_research_capability import public_web_research_status
 
 
