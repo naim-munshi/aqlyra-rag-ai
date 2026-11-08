@@ -270,6 +270,9 @@ class Settings(BaseSettings):
     # A single recovery startup may embed at most 24 missing/stale chunks.
     KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS: int = Field(default=8, ge=1, le=24)
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
+    # Avoid remote semantic calls for tenant-scoped Knowledge without vectors.
+    # Default OFF until production read-only coverage and CI acceptance.
+    KNOWLEDGE_SKIP_DENSE_WHEN_UNINDEXED_ENABLED: bool = False
     KNOWLEDGE_INDEX_POLL_SECONDS: int = Field(default=8, ge=2, le=120)
     KNOWLEDGE_PDF_OCR_ENABLED: bool = False
     KNOWLEDGE_PDF_OCR_MAX_PAGES: int = Field(default=20, ge=1, le=50)
