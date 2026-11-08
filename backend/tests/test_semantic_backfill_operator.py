@@ -15,6 +15,7 @@ from app.models.document_chunk import DocumentChunk
 from app.models.embedding_record import EmbeddingRecord
 from app.models.user import User
 from app.embeddings import DeterministicHashEmbeddingProvider
+from app.embeddings.types import EmbeddingProviderRequestError
 from app.services.embedding_reindex_service import reindex_missing_document_embeddings
 
 
@@ -324,3 +325,68 @@ def test_incremental_recovery_rejects_unbounded_batch(db_session):
             pass
         else:
             raise AssertionError("Unbounded recovery was accepted")
+
+
+def test_targeted_recovery_can_resume_multiple_committed_batches(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    doc = _doc(db_session, "bounded-multi")
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", doc.id,
+    )
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS", 8)
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES", 4)
+    monkeypatch.setattr(mod.time, "sleep", lambda _: None)
+    counts = iter([8, 8, 3])
+    calls = []
+
+    def fake_reindex(*, db, document, provider, max_chunks):
+        calls.append((document.id, max_chunks))
+        return SimpleNamespace(created_count=next(counts))
+
+    monkeypatch.setattr(mod, "reindex_missing_document_embeddings", fake_reindex)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session) == 1
+    assert calls == [(doc.id, 8)] * 3
+
+
+def test_rate_limit_stops_remaining_backfill_batches(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    doc = _doc(db_session, "quota-stop")
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", doc.id,
+    )
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS", 8)
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES", 5)
+    monkeypatch.setattr(mod.time, "sleep", lambda _: None)
+    calls = []
+
+    def fake_reindex(*, db, document, provider, max_chunks):
+        calls.append(document.id)
+        if len(calls) > 1:
+            raise EmbeddingProviderRequestError("Synthetic 429")
+        return SimpleNamespace(created_count=8)
+
+    monkeypatch.setattr(mod, "reindex_missing_document_embeddings", fake_reindex)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session) == 1
+    assert calls == [doc.id, doc.id]
+
+
+def test_production_batch_budget_rejects_unbounded_vectors(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    doc = _doc(db_session, "budget")
+    monkeypatch.setattr(
+        settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", doc.id,
+    )
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS", 24)
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES", 8)
+    import pytest
+    with pytest.raises(ValueError, match="64 chunks"):
+        mod.backfill_ready_semantic_embeddings(db=db_session)
