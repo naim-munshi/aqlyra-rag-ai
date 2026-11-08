@@ -130,9 +130,16 @@ def _generate_with_web_rate_limit_fallback(
         return llm.generate(instructions=instructions, input_text=input_text), llm
     except LLMProviderRateLimitError:
         logger.warning("web_research_llm_throttled stage=primary_synthesis")
-        alternative = (
-            create_bounded_web_fallback_provider() if allow_alternate else None
-        )
+        try:
+            alternative = (
+                create_bounded_web_fallback_provider() if allow_alternate else None
+            )
+        except LLMError as exc:
+            logger.warning(
+                "web_research_llm_fallback status=UNAVAILABLE error_type=%s",
+                type(exc).__name__,
+            )
+            return None, llm
         if alternative is None:
             return None, llm
         try:
