@@ -49,6 +49,7 @@ class SecurityAdvisoryPinTests(unittest.TestCase):
                 pinned[name] = versions(match.group(2))
 
         minimums = {
+            "certifi": (2026, 10, 18),
             "aiohttp": (3, 14, 4),
             "dnspython": (2, 9, 0),
             "filelock": (4, 2, 1),
