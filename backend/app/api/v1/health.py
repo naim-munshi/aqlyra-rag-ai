@@ -201,7 +201,9 @@ def readiness():
             # cloud object write: it only describes the selected code path.
             # Core deliberately has no remote artifact/cloud-upload settings.
             "artifact_storage": (
-                "ready" if local_writes_permitted() else "writes_disabled"
+                "ready" if local_writes_permitted()
+                else "ephemeral_test_only" if artifact_writes_permitted()
+                else "writes_disabled"
             ),
             # A configured private-proxy route is not a verified live
             # upload. The provider's probe and two-account E2E remain
