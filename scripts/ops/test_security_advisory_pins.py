@@ -51,6 +51,7 @@ class SecurityAdvisoryPinTests(unittest.TestCase):
         minimums = {
             "certifi": (2026, 10, 18),
             "aiohttp": (3, 14, 4),
+            "yarl": (1, 25, 1),
             "dnspython": (2, 9, 0),
             "filelock": (4, 2, 1),
             "langgraph": (1, 2, 14),
