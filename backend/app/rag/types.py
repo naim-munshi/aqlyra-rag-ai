@@ -85,7 +85,7 @@ class EvidenceSource:
     section_path: tuple[str, ...]
     start_page: int | None
     end_page: int | None
-    similarity_score: float
+    similarity_score: float | None
     content: str
     was_truncated: bool
 
