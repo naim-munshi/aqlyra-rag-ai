@@ -313,6 +313,9 @@ class Settings(BaseSettings):
 
     # Do not persist new user files to ephemeral production disks.
     LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED: bool = False
+    # Explicit, disposable artifact-only test mode on free/ephemeral hosts.
+    # Does NOT enable document uploads or claim the filesystem is durable.
+    EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED: bool = False
 
     # Document uploads
     UPLOAD_DIR: Path = Path(

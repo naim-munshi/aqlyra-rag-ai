@@ -18,7 +18,10 @@ from redis.exceptions import RedisError
 
 from app.core.monitoring import render_prometheus_metrics
 from app.core.rate_limit import get_rate_limit_redis
-from app.services.storage_durability_policy import local_writes_permitted
+from app.services.storage_durability_policy import (
+    artifact_writes_permitted,
+    local_writes_permitted,
+)
 from app.services.web_research_capability import public_web_research_status
 
 
@@ -198,7 +201,9 @@ def readiness():
             # cloud object write: it only describes the selected code path.
             # Core deliberately has no remote artifact/cloud-upload settings.
             "artifact_storage": (
-                "ready" if local_writes_permitted() else "writes_disabled"
+                "ready" if local_writes_permitted()
+                else "ephemeral_test_only" if artifact_writes_permitted()
+                else "writes_disabled"
             ),
             # A configured private-proxy route is not a verified live
             # upload. The provider's probe and two-account E2E remain
