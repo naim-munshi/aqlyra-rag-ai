@@ -38,6 +38,11 @@ def run_live_web_canary() -> bool:
                 "web_research_canary status=FAIL stage=empty_result"
             )
             return False
+        if getattr(result, "provider_name", "") == "aqlyra-web-evidence-only":
+            logger.warning(
+                "web_research_canary status=FAIL stage=synthesis_rate_limited"
+            )
+            return False
     except (WebResearchUnavailable, WebResearchEvidenceError) as exc:
         logger.warning(
             "web_research_canary status=FAIL error_type=%s",

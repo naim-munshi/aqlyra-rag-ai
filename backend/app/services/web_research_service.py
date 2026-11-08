@@ -21,9 +21,12 @@ from app.services.official_fact_fast_path import (
     verified_officeholder_fast_answer,
     verified_current_office_short_profile,
 )
-from app.llms.registry import create_latency_bounded_web_provider
+from app.llms.registry import (
+    create_latency_bounded_web_provider,
+    create_bounded_web_fallback_provider,
+)
 from app.llms import create_configured_llm_provider
-from app.llms.types import LLMProvider
+from app.llms.types import LLMProvider, LLMGeneration, LLMProviderRateLimitError, LLMError
 from app.schemas.web_research import (
     WebResearchMode,
     WebResearchTimeRange,
@@ -85,6 +88,72 @@ class WebResearchUnavailable(Exception):
 
 class WebResearchEvidenceError(Exception):
     """No usable extracted public evidence or no grounded answer."""
+
+
+def _source_only_rate_limit_answer(
+    question: str, sources: list[WebResearchSource],
+) -> WebResearchResponse:
+    """Cited public links only; never turn snippets into invented facts."""
+    citations = " ".join(source.citation for source in sources[:3])
+    if re.search(r"[\u0980-\u09ff]", question):
+        notice = (
+            "ওয়েব থেকে প্রকাশ্য উৎস পাওয়া গেছে, কিন্তু AI উত্তর তৈরি এখন "
+            "rate limit-এর কারণে বন্ধ। যাচাই করা উত্তর দিতে পারছি না। "
+            "উৎসগুলো দেখুন:"
+        )
+    elif re.search(r"[\u3040-\u30ff\u3400-\u9fff]", question):
+        notice = (
+            "公開ウェブ情報は取得しましたが、AIの回答生成はレート制限中です。"
+            "内容を確認できないため、次の出典をご確認ください。"
+        )
+    else:
+        notice = (
+            "Public web sources were retrieved, but AI synthesis is currently "
+            "rate-limited. I cannot verify a complete answer right now. "
+            "Review these sources:"
+        )
+    return WebResearchResponse(
+        question=question, answer=f"{notice} {citations}",
+        sources=sources,
+        provider_name="aqlyra-web-evidence-only",
+        model_name="source-links-only-v1",
+        searched_at=datetime.now(timezone.utc),
+    )
+
+
+def _generate_with_web_rate_limit_fallback(
+    *, llm: LLMProvider, instructions: str, input_text: str,
+    allow_alternate: bool,
+) -> tuple[LLMGeneration | None, LLMProvider]:
+    """At most one alternate-model call, with no extra retry or user data."""
+    try:
+        return llm.generate(instructions=instructions, input_text=input_text), llm
+    except LLMProviderRateLimitError:
+        logger.warning("web_research_llm_throttled stage=primary_synthesis")
+        try:
+            alternative = (
+                create_bounded_web_fallback_provider() if allow_alternate else None
+            )
+        except LLMError as exc:
+            logger.warning(
+                "web_research_llm_fallback status=UNAVAILABLE error_type=%s",
+                type(exc).__name__,
+            )
+            return None, llm
+        if alternative is None:
+            return None, llm
+        try:
+            result = alternative.generate(
+                instructions=instructions, input_text=input_text,
+            )
+            logger.info("web_research_llm_fallback status=PASS")
+            return result, alternative
+        except LLMError as exc:
+            logger.warning(
+                "web_research_llm_fallback status=FAIL error_type=%s",
+                type(exc).__name__,
+            )
+            return None, llm
 
 
 def safe_public_url(value: object) -> str | None:
@@ -583,14 +652,20 @@ def _research_web_tavily(
                 "Unable to verify the current official from an extracted government page"
             )
 
+    evidence = [source.model_dump() for source in sources]
+    if provider is None and mode == "search" and settings.LLM_PROVIDER == "groq":
+        # Keep public quick searches under free-tier token budgets without
+        # truncating the returned, cited sources or deep-research evidence.
+        for item in evidence:
+            excerpt = item.get("excerpt")
+            if isinstance(excerpt, str):
+                item["excerpt"] = excerpt[:1500]
     body = {
         "user_question": question,
         "research_mode": mode,
         "search_time_filter": time_range,
         "included_domains": domains,
-        "retrieved_public_evidence": [
-            source.model_dump() for source in sources
-        ],
+        "retrieved_public_evidence": evidence,
     }
     # Each source is bounded; no HTML/scripts are run or directly fetched.
     llm = planning_provider or (
@@ -598,10 +673,14 @@ def _research_web_tavily(
         if mode == "search" and settings.LLM_PROVIDER == "groq"
         else create_configured_llm_provider()
     )
-    generation = llm.generate(
-        instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode],
-        input_text=json.dumps(body, ensure_ascii=False),
+    instructions = WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode]
+    input_text = json.dumps(body, ensure_ascii=False)
+    generation, llm = _generate_with_web_rate_limit_fallback(
+        llm=llm, instructions=instructions, input_text=input_text,
+        allow_alternate=provider is None,
     )
+    if generation is None:
+        return _source_only_rate_limit_answer(question, sources)
     text = generation.text.strip()
     approved_urls = {source.url for source in sources}
 
@@ -626,14 +705,18 @@ def _research_web_tavily(
             "web_research_answer_repair_attempt stage=%s sources=%s",
             problem, len(sources),
         )
-        repair = llm.generate(
-            instructions=WEB_INSTRUCTIONS + "\nMode guidance: " + MODE_GUIDANCE[mode]
-            + "\nRepair task: answer using only the supplied evidence; "
-            "include valid [W1] style citations adjacent to factual claims; "
-            "include no raw URLs; if evidence is insufficient explain uncertainty "
-            "and cite the evidence you inspected. Do not invent facts.",
-            input_text=json.dumps(body, ensure_ascii=False),
-        )
+        try:
+            repair = llm.generate(
+                instructions=instructions
+                + "\nRepair task: answer using only the supplied evidence; "
+                "include valid [W1] style citations adjacent to factual claims; "
+                "include no raw URLs; if evidence is insufficient explain uncertainty "
+                "and cite the evidence you inspected. Do not invent facts.",
+                input_text=input_text,
+            )
+        except LLMProviderRateLimitError:
+            logger.warning("web_research_llm_throttled stage=citation_repair")
+            return _source_only_rate_limit_answer(question, sources)
         text = repair.text.strip()
         generation = repair
         problem = validation_error(text)
@@ -802,17 +885,25 @@ def _research_web_searxng(
         "included_domains": domains,
         "retrieved_public_evidence": [s.model_dump() for s in sources],
     }
-    llm = planning_provider or create_configured_llm_provider()
-    generation = llm.generate(
-        instructions=WEB_INSTRUCTIONS + """
+    llm = planning_provider or (
+        create_latency_bounded_web_provider()
+        if mode == "search" and settings.LLM_PROVIDER == "groq"
+        else create_configured_llm_provider()
+    )
+    instructions = WEB_INSTRUCTIONS + """
 SearXNG is a search index, not a verified official publication.
 Any evidence marked 'Search result excerpt only' is incomplete:
 do not assert a changing current public officeholder, live breaking news,
 or current official policy based on snippets alone. State uncertainty when
 fresh primary-source page contents could not be read.
-""" + "\nMode guidance: " + MODE_GUIDANCE[mode],
+""" + "\nMode guidance: " + MODE_GUIDANCE[mode]
+    generation, _ = _generate_with_web_rate_limit_fallback(
+        llm=llm, instructions=instructions,
         input_text=json.dumps(body, ensure_ascii=False),
+        allow_alternate=provider is None,
     )
+    if generation is None:
+        return _source_only_rate_limit_answer(question, sources)
     answer = generation.text.strip()
     cited = {int(x) for x in CITATION_PATTERN.findall(answer)}
     if (not answer or len(answer) > 15_000 or not cited or

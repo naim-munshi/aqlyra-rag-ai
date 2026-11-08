@@ -165,3 +165,33 @@ def create_latency_bounded_web_provider() -> LLMProvider:
         max_retries=settings.WEB_RESEARCH_LLM_MAX_RETRIES,
         reasoning_effort=settings.LLM_REASONING_EFFORT or None,
     )
+
+
+
+def create_bounded_web_fallback_provider() -> LLMProvider | None:
+    """Alternate Groq model for *public* research only, never chat or RAG.
+
+    One request, no SDK retries. A disabled/missing/same-model fallback
+    returns None so callers can present a transparent, sourced degradation.
+    """
+    if (
+        settings.LLM_PROVIDER != "groq"
+        or not settings.WEB_RESEARCH_GROQ_FALLBACK_ENABLED
+        or not settings.GROQ_API_KEY.strip()
+    ):
+        return None
+    model = settings.WEB_RESEARCH_GROQ_FALLBACK_MODEL.strip()
+    if not model or model == settings.LLM_MODEL:
+        return None
+    return create_llm_provider(
+        provider_name="groq",
+        model_name=model,
+        api_key=settings.GROQ_API_KEY,
+        max_output_tokens=min(settings.LLM_MAX_OUTPUT_TOKENS, 700),
+        timeout_seconds=min(
+            settings.LLM_TIMEOUT_SECONDS,
+            settings.WEB_RESEARCH_LLM_TIMEOUT_SECONDS,
+        ),
+        max_retries=0,
+        reasoning_effort=None,
+    )

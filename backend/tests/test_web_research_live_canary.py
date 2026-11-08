@@ -54,3 +54,21 @@ def test_web_canary_is_skipped_if_provider_disabled(monkeypatch):
     monkeypatch.setattr(settings, "WEB_RESEARCH_CANARY_ON_STARTUP", True)
     monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", False)
     assert canary.run_live_web_canary() is False
+
+
+def test_source_links_only_degradation_is_not_a_successful_ai_canary(
+    monkeypatch, caplog,
+):
+    monkeypatch.setattr(settings, "WEB_RESEARCH_CANARY_ON_STARTUP", True)
+    monkeypatch.setattr(settings, "WEB_RESEARCH_ENABLED", True)
+    monkeypatch.setattr(
+        canary, "research_web",
+        lambda *args, **kwargs: SimpleNamespace(
+            answer="Provider throttled. Review sources [W1].",
+            sources=[SimpleNamespace(citation="[W1]")],
+            provider_name="aqlyra-web-evidence-only",
+        ),
+    )
+    with caplog.at_level("WARNING"):
+        assert canary.run_live_web_canary() is False
+    assert "status=FAIL stage=synthesis_rate_limited" in caplog.text
