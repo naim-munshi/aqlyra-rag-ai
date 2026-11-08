@@ -161,6 +161,10 @@ export default function HowItWorksPage() {
           <Link href="/help" className="mt-4 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
             Read the help and privacy guidance
           </Link>
+          <p className="mt-3 text-sm text-[var(--aq-muted)]">
+            For code, architecture and technical limitations, see the{" "}
+            <a href="https://github.com/naim-munshi/aqlyra-rag-ai" target="_blank" rel="noopener noreferrer" className="text-[var(--aq-blue)] hover:underline">public engineering repository</a>.
+          </p>
         </aside>
 
         <footer className="mt-14 border-t border-[var(--aq-border)] py-8 text-sm text-[var(--aq-muted)]">
