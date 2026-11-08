@@ -70,19 +70,19 @@ _SENSITIVE = re.compile(
 _RESULT_MODES = {"search", "deep", "compare", "fact_check"}
 
 _DIRECT_PUBLIC_LIVE_LOOKUP = re.compile(
-    r"\\b(?:weather|forecast)\\b.{0,70}\\b(?:in|for|near|across)\\s+[a-z]"
-    r"|\\b(?:in|for|across)\\s+[a-z][a-z ]{1,35}\\b(?:weather|forecast)\\b"
-    r"|^[a-z][a-z ]{1,35}\\s+(?:weather|forecast)\\??$"
-    r"|\\b(?:news|headlines)\\s+(?:about|in|from|for)\\s+[a-z]"
-    r"|\\b(?:latest|breaking|today'?s)\\s+(?:news|headlines)\\b"
+    r"\b(?:weather|forecast)\b.{0,70}\b(?:in|for|near|across)\s+[a-z]"
+    r"|\b(?:in|for|across)\s+[a-z][a-z ]{1,35}\b(?:weather|forecast)\b"
+    r"|^[a-z][a-z ]{1,35}\s+(?:weather|forecast)\??$"
+    r"|\b(?:news|headlines)\s+(?:about|in|from|for)\s+[a-z]"
+    r"|\b(?:latest|breaking|today'?s)\s+(?:news|headlines)\b"
     r"|(?:東京|大阪|京都|日本).{0,10}(?:天気|天候|気温)"
     r"|(?:天気|天候|気温).{0,10}(?:東京|大阪|京都|日本)"
     r"|(?:জাপান|টোকিও|বাংলাদেশ).{0,18}(?:আবহাওয়া|আবহাওয়া)",
     re.IGNORECASE,
 )
 _CREATIVE_REQUEST = re.compile(
-    r"^\\s*(?:write|draft|compose|create|generate|translate|rewrite|"
-    r"summarize|explain|invent|make\\s+up)\\b"
+    r"^\s*(?:write|draft|compose|create|generate|translate|rewrite|"
+    r"summarize|explain|invent|make\s+up)\b"
     r"|^(?:লিখ|অনুবাদ|要約|翻訳|書いて)",
     re.IGNORECASE,
 )
