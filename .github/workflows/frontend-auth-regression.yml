@@ -1,0 +1,41 @@
+name: Frontend Auth Timeout Regression
+
+on:
+  pull_request:
+    branches:
+      - fix/center-empty-chat-composer-20261102
+    paths:
+      - "frontend/src/app/api/auth/**"
+      - "frontend/src/lib/auth/**"
+      - "frontend/tests/auth-timeout-regression.test.mjs"
+      - ".github/workflows/frontend-auth-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-check:
+    name: Bounded login proxy, frontend typecheck, lint and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install exact locked frontend
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Auth-proxy safety regression
+        run: node --test tests/auth-timeout-regression.test.mjs
+      - name: Production Next.js build (no deploy)
+        run: npm run build

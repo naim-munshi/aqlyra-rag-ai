@@ -47,6 +47,8 @@ export async function POST(request: Request) {
           password: body.password,
         }),
         cache: "no-store",
+        // Bound cold-start / upstream stalls before Vercel kills the function.
+        signal: AbortSignal.timeout(45_000),
       },
     );
 
@@ -55,10 +57,27 @@ export async function POST(request: Request) {
       "Login failed",
       { remember: body.remember_me !== false },
     );
-  } catch {
+  } catch (error) {
+    const timedOut = error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError");
+    if (timedOut) {
+      return NextResponse.json(
+        { detail: "Authentication service timed out. Please retry." },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": "5",
+            "Cache-Control": "private, no-store",
+          },
+        },
+      );
+    }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
-      { status: 502 },
+      {
+        status: 502,
+        headers: { "Cache-Control": "private, no-store" },
+      },
     );
   }
 }
