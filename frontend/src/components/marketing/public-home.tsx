@@ -35,6 +35,7 @@ const structuredData = {
     {
       "@type": "WebSite",
       name: "Aqlyra",
+      alternateName: "Aqlyra AI",
       url: "https://aqlyra-ai.vercel.app/",
       description: "Aqlyra AI knowledge workspace with source-grounded document search and AI conversations.",
     },
@@ -42,6 +43,7 @@ const structuredData = {
       "@type": "WebApplication",
       "@id": "https://aqlyra-ai.vercel.app/#software",
       name: "Aqlyra",
+      alternateName: "Aqlyra RAG AI",
       url: "https://aqlyra-ai.vercel.app/",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
