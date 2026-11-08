@@ -192,3 +192,78 @@ def test_sync_user_web_off_never_rewrites_private_statement(live_search, monkeyp
         message="My location is Japan", web_mode="off",
     )
     assert result == "My location is Japan"
+
+
+def test_streaming_chat_resumes_weather_after_user_gives_country(
+    client, live_search, monkeypatch,
+):
+    """Exercise the same SSE path used by the mobile chat UI."""
+    previous = [
+        SimpleNamespace(role="user", content="What is today's weather?"),
+        SimpleNamespace(
+            role="assistant",
+            content="I cannot verify real-time weather until you give a city or region.",
+        ),
+    ]
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kwargs: previous,
+    )
+    searched = []
+
+    def mock_public_web(question, **options):
+        searched.append((question, options["mode"]))
+        return SimpleNamespace(
+            answer="This is a sourced Japan-wide forecast [W1].",
+            sources=[SimpleNamespace(
+                citation="[W1]",
+                title="Public weather observation",
+                url="https://example.org/weather",
+            )],
+            provider_name="test-public-search",
+            model_name="test-public-search",
+        )
+
+    monkeypatch.setattr(chat_service, "research_web", mock_public_web)
+    registration = client.post("/api/v1/auth/register", json={
+        "username": "followup_public_weather_user",
+        "email": "followup_public_weather_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert registration.status_code == 201
+    login = client.post("/api/v1/auth/login", json={
+        "email": "followup_public_weather_user@example.com",
+        "password": "StrongPassword321!",
+    })
+    assert login.status_code == 200
+    auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = client.post("/api/v1/conversations", headers=auth, json={
+        "title": "Public weather check",
+        "mode": "normal",
+    })
+    assert created.status_code == 201
+    conv_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/conversations/{conv_id}/messages/stream",
+        headers=auth,
+        json={"content": "My location is Japan", "web_mode": "auto"},
+    )
+    assert response.status_code == 200, response.text[:400]
+    assert "event: tool_status" in response.text
+    assert '"tool":"web","status":"searching"' in response.text
+    assert "event: complete" in response.text
+    assert "https://example.org/weather" in response.text
+    assert len(searched) == 1
+    assert searched[0][0].startswith(
+        "What is today's weather forecast across Japan?"
+    )
+    assert searched[0][1] == "search"
+    messages = client.get(
+        f"/api/v1/conversations/{conv_id}/messages", headers=auth,
+    )
+    assert messages.status_code == 200
+    assert any(
+        item["role"] == "user" and item["content"] == "My location is Japan"
+        for item in messages.json()
+    )
