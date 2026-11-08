@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
@@ -39,7 +39,7 @@ export async function GET(
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -71,7 +71,7 @@ export async function GET(
         ConversationMessageResponse[] | ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid response",
@@ -85,7 +85,7 @@ export async function GET(
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to load conversation messages",
@@ -103,7 +103,7 @@ export async function POST(
 ) {
   // Both browser voice fallback and normal chat use cookie authentication.
   if (!hasTrustedRequestOrigin(request)) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Untrusted request origin" },
       { status: 403, headers: { "Cache-Control": "private, no-store" } },
     );
@@ -113,7 +113,7 @@ export async function POST(
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -131,12 +131,12 @@ export async function POST(
     )) as ConversationMessageRequest;
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
-      return NextResponse.json(
+      return privateJsonResponse(
         { detail: "Message request too large" },
         { status: 413 },
       );
     }
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Invalid request body" },
       { status: 400 },
     );
@@ -148,7 +148,7 @@ export async function POST(
       : "";
 
   if (!content) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Message is required" },
       { status: 400 },
     );
@@ -196,7 +196,7 @@ export async function POST(
         ChatTurnResponse | ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid response",
@@ -206,7 +206,7 @@ export async function POST(
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to send conversation message",
