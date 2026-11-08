@@ -44,6 +44,9 @@ export default function HelpPage() {
         <Link href="/" className="text-sm text-[var(--aq-blue)] hover:underline">
           Back to Aqlyra
         </Link>
+        <Link href="/how-it-works" className="ml-5 text-sm text-[var(--aq-blue)] hover:underline">
+          How RAG works
+        </Link>
         <h1 className="mt-5 text-3xl font-bold">Aqlyra Help</h1>
         <p className="mt-3 text-sm leading-7 text-[var(--aq-muted)]">
           Getting started with your private AI workspace. Features that require
