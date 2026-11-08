@@ -2,7 +2,9 @@
 
 **Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
 
-[Engineering recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md) · [Live application](https://aqlyra-ai.vercel.app) · [Product walkthrough](https://aqlyra-ai.vercel.app/demo) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [Deployment status](docs/PRODUCTION_STATUS_2026-10-31.md)
+[Current repository review](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) · [Security assessment](docs/SECURITY_AUDIT_2026-11-08.md) · [Live application](https://aqlyra-ai.vercel.app) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Historical 31 October status](docs/PRODUCTION_STATUS_2026-10-31.md)
+
+> **Operational review — 8 November 2026:** The deployed **backend** uses `release/core-without-study-abroad-20261027` (Render) and the official **frontend** uses `fix/center-empty-chat-composer-20261102` (Vercel). The protected `main` branch is **not** the deployed release; do not merge either divergent release or delete branches without checking full review gates. Automatic public Web Research/follow-ups and a bounded 429 fallback have shipped. Knowledge has tenant-scoped lexical fallback for documents without semantic vectors; real 384D embedding recovery increased coverage from **22 to 26 of 1,030 chunks** in the bounded November 8 test. This is **not** full dense RAG coverage. Browser-authenticated two-user acceptance, real LiveKit voice E2E, durable artifact storage, and encrypted off-host backup/restore remain outstanding. Render Free cold starts and provider quotas affect availability. Verify current deployment health and exact-head CI instead of assuming the historical table below is current. See [repo cleanup audit](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) and [security assessment](docs/SECURITY_AUDIT_2026-11-08.md).
 
 > **Production beta — verified 31 October 2026.** Aqlyra has a live Next.js frontend on Vercel, FastAPI backend on Render, Neon PostgreSQL/pgvector, Redis, cloud document storage, Groq-based chat, Tavily-backed Web Search, and a separate authenticated multilingual semantic-embedding worker. Some features remain limited or disabled; see the status matrix. Live availability and provider quotas can change after this verification date. A green CI build is not a replacement for authenticated user acceptance.
 
@@ -16,9 +18,9 @@
 
 > **2026-11-02 incident update:** The official frontend now exposes real-time LiveKit Voice only; user microphone E2E is BLOCKED by two missing Render LiveKit credential values. Semantic embedding reliability is degraded by repeat 502s. Groq returned intermittent 413/429 errors. Treat the 31 October acceptance baseline below as historical; see [verified recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md).
 
-## Current capability matrix
+## Historical capability matrix (31 October–2 November 2026)
 
-| Capability | Status as last verified | Important qualification |
+| Capability | Historical verification | Important qualification |
 | --- | --- | --- |
 | Email and Google identity; authenticated chat | Production beta | Two-account browser/security E2E not yet certified |
 | General Converse with Groq | Live; reliability work open | 2026-11-01 production logs include successful 200 responses and occasional 413 payload-too-large / 429 rate-limit errors; response quality and recovery need real-user validation |
@@ -40,7 +42,7 @@ For the auditable version of this table, run instructions and known limitations,
 1. Open **[the live app](https://aqlyra-ai.vercel.app)** and sign in if needed. An explicitly linked [**/demo**](https://aqlyra-ai.vercel.app/demo) is a *scripted, non-inference portfolio walkthrough*; it is not proof of live RAG.
 2. Under **Converse**, ask a standard multi-turn question, then a time-sensitive question with Web Search. Verify source URLs and distinguish page-backed content from uncertain assertions.
 3. Under **Knowledge**, upload a non-sensitive test PDF, select it, then ask one answerable question and one unsupported question. Verify document citations and refusal behavior.
-4. On a browser that supports speech recognition and speech synthesis, try Voice. Browser speech is a fallback and does not imply a running LiveKit agent.
+4. If LiveKit Voice is configured, test a real authenticated microphone session and confirm the agent connects. The official UI does not substitute browser speech as a fake live call; a microphone E2E PASS has not been established by the automated deployment checks.
 5. Do not attempt production Browser Agent execution while its isolated sandbox is disabled.
 
 **Full reproducible demo:** [PRODUCT_DEMO_AND_ACCEPTANCE.md](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) includes an interviewer-friendly five-minute flow, synthetic sample materials, safe test prompts and PASS/FAIL evidence requirements. Never upload actual passports, customer secrets or other sensitive records as demo data.
