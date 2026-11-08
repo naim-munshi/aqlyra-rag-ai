@@ -34,6 +34,12 @@
 - Prioritize branded queries first (e.g. `Aqlyra AI`, `Aqlyra RAG`, `How does Aqlyra AI work`) and accurately descriptive intent phrases (e.g. `private document RAG with citations`), not promises of winning high-competition search terms immediately.
 - Do not manufacture testimonials, aggregate ratings, download counts or false comparisons. Do not add `llms.txt` or AI markup solely to chase Google AI; Google says no special file or schema is required for AI Overviews/AI Mode.
 
+## Brand-name disambiguation risk
+
+On 2026-11-09, public web search returned an **unrelated** `aqlyra.com` trading-automation project and an `Aqlyra VPN` listing. These results should not be presented as this RAG software, and they are not evidence of a legal infringement. Current public pages use a more specific truthful description (Aqlyra AI / Aqlyra RAG AI) and link the actual GitHub repository to reduce search confusion.
+
+Before a commercial company launch or a new domain, independently check proposed names and relevant trademark registers in target jurisdictions. Do **not** migrate canonical URLs from `aqlyra-ai.vercel.app` until the owner confirms the official brand/domain and verified redirect plan.
+
 ## Limits
 
 Search indexation, ranking and Google AI use of Aqlyra's content are determined by Google; neither a sitemap nor schema guarantees inclusion, rich results or top positions. AI features require an indexed page that can appear with a Google Search snippet, and Google describes the usual SEO fundamentals as sufficient eligibility work. Public, crawlable text improves the chance Google can understand Aqlyra; it does not force an AI model to use or quote it.
