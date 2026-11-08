@@ -20,6 +20,7 @@ from app.services.storage_durability_policy import (
 def ephemeral_production(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED", False)
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
 
 
 def test_ephemeral_production_disallows_new_local_writes(ephemeral_production):
@@ -106,3 +107,72 @@ def test_direct_artifact_storage_calls_also_fail_closed(ephemeral_production):
             provider_name="test", source_document_ids=[], citation_count=0,
         )
     assert "Durable artifact storage" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("kind", "signature"),
+    [
+        ("docx", b"PK"),
+        ("xlsx", b"PK"),
+        ("pptx", b"PK"),
+        ("pdf", b"%PDF"),
+        ("md", b"# Temporary"),
+    ],
+)
+def test_explicit_ephemeral_artifact_mode_generates_owner_scoped_files(
+    ephemeral_production, tmp_path, monkeypatch, kind, signature,
+):
+    # The test mode is specifically for disposable artifacts, not uploads.
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", True)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    assert artifact_writes_permitted()
+    assert not local_writes_permitted()
+
+    owner = str(uuid4())
+    another_user = str(uuid4())
+    item = artifact_storage.create_artifact(
+        user_id=owner,
+        title="Temporary test file",
+        kind=kind,
+        content="# Temporary test file\\n\\nAqlyra artifact smoke test.",
+        provider_name="local-smoke-test",
+        source_document_ids=[],
+        citation_count=0,
+    )
+    result = artifact_storage.artifact_download(
+        user_id=owner, artifact_id=item["id"]
+    )
+    assert result is not None
+    path, metadata = result
+    assert path.read_bytes().startswith(signature)
+    assert metadata["format"] == kind
+    assert artifact_storage.artifact_download(
+        user_id=another_user, artifact_id=item["id"]
+    ) is None
+    assert artifact_storage.delete_artifact(
+        user_id=owner, artifact_id=item["id"]
+    )
+    assert artifact_storage.artifact_download(
+        user_id=owner, artifact_id=item["id"]
+    ) is None
+
+
+def test_temporary_artifact_mode_still_blocks_document_uploads(
+    ephemeral_production, monkeypatch,
+):
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", True)
+    assert artifact_writes_permitted()
+    assert not local_writes_permitted()
+    # Auth/RAG document uploads stay behind the original durable storage gate.
+    async def unexpected_upload(*args, **kwargs):
+        raise AssertionError("No production document upload is allowed")
+
+    monkeypatch.setattr(
+        document_api, "save_upload_to_temporary_storage", unexpected_upload
+    )
+    upload = UploadFile(filename="private.txt", file=BytesIO(b"Private data"))
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(document_api.upload_document(
+            file=upload, current_user=SimpleNamespace(id=uuid4()), db=object(),
+        ))
+    assert exc.value.status_code == 503
