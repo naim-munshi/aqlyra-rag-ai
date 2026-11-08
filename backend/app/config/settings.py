@@ -269,6 +269,9 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID: str = ""
     # A single recovery startup may embed at most 24 missing/stale chunks.
     KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS: int = Field(default=8, ge=1, le=24)
+    # One-shot recovery may resume several small, individually committed batches.
+    # Hard total safety budget: max_chunks * max_batches <= 64.
+    KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES: int = Field(default=1, ge=1, le=8)
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
     # Avoid remote semantic calls for tenant-scoped Knowledge without vectors.
     # Default OFF until production read-only coverage and CI acceptance.
