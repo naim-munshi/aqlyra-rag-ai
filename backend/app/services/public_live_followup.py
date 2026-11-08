@@ -68,6 +68,11 @@ def _coarse_public_place(message: str) -> str | None:
     return place
 
 
+def is_coarse_public_location_reply(message: str) -> bool:
+    """Cheap gate: ordinary chat must never read prior messages for routing."""
+    return _coarse_public_place(message) is not None
+
+
 def public_live_location_followup(
     *, current_message: str, previous_user: str, previous_assistant: str,
 ) -> str | None:
