@@ -10,7 +10,7 @@ const production = "https://aqlyra-ai.vercel.app";
 test("only non-account pages are discoverable in sitemap", () => {
   const sitemap = source("src/app/sitemap.ts");
   assert.match(sitemap, /MetadataRoute\.Sitemap/);
-  assert.match(sitemap, /\["\/", "\/about", "\/demo", "\/help"\]/);
+  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/demo", "\/help"\]/);
   for (const privatePath of ["/api", "/study-abroad", "/admin", "/guest", "/login",
     "/register", "/artifacts", "/web", "/agent"]) {
     assert.ok(!sitemap.includes('"' + privatePath + '"'),
@@ -33,7 +33,7 @@ test("private workspaces default to noindex while only public pages opt in", () 
   const layout = source("src/app/layout.tsx");
   assert.ok(layout.includes('metadataBase: new URL("' + production + '")'));
   assert.match(layout, /robots: \{ index: false, follow: false \}/);
-  for (const page of ["about", "demo", "help"]) {
+  for (const page of ["about", "how-it-works", "demo", "help"]) {
     const body = source("src/app/" + page + "/page.tsx");
     assert.match(body, /robots: \{ index: true, follow: true \}/);
     assert.match(body, /alternates: \{ canonical/);
@@ -51,7 +51,8 @@ test("Aqlyra public product page is real indexable content, no login or fake out
   assert.match(about, /<h1/);
   assert.match(about, /<h2/);
   assert.match(about, /application\/ld\+json/);
-  assert.match(about, /SoftwareApplication/);
+  assert.match(about, /WebApplication/);
+  assert.match(about, /BusinessApplication/);
   assert.ok(about.includes("JSON.stringify(structuredData).replace"));
   assert.ok(about.includes('href="/demo"'));
   assert.ok(about.includes('href="/register"'));
@@ -95,7 +96,7 @@ test("public home has indexable metadata while private workspace remains noindex
   assert.match(marketing, /<h1/);
   assert.match(marketing, /<h2/);
   assert.match(marketing, /application\/ld\+json/);
-  for (const path of ["/login", "/register", "/about", "/demo", "/help"]) {
+  for (const path of ["/login", "/register", "/about", "/how-it-works", "/demo", "/help"]) {
     assert.ok(marketing.includes('href="' + path + '"'), path);
   }
   assert.ok(!marketing.includes("fetch("), "Public page must not fetch private user content");
@@ -112,4 +113,36 @@ test("homepage discovery never requires authentication or a backend request", ()
   assert.ok(!marketing.includes("UserResponse"));
   assert.ok(sitemap.includes('"/"'));
   assert.ok(marketing.includes("Aqlyra AI"));
+});
+
+
+test("public how-it-works explains real RAG, limitations and product questions", () => {
+  const page = source("src/app/how-it-works/page.tsx");
+  assert.match(page, /export const metadata: Metadata/);
+  assert.ok(page.includes('https://aqlyra-ai.vercel.app/how-it-works'));
+  assert.match(page, /robots: \{ index: true, follow: true \}/);
+  assert.match(page, /<h1/);
+  assert.match(page, /<h2/);
+  assert.match(page, /retrieval-augmented generation/i);
+  assert.match(page, /source-grounded/i);
+  assert.match(page, /time-sensitive public questions/i);
+  assert.match(page, /semantic vector search/i);
+  assert.match(page, /scripted walkthrough/i);
+  assert.match(page, /not an independent guarantee/i);
+  assert.match(page, /private workspace pages are not intended for search-engine indexing/i);
+  assert.doesNotMatch(page, /aggregateRating|ratingCount|100% accurate|guaranteed rankings/i);
+  assert.doesNotMatch(page, /getAccessToken|backendUrl|cookies\(\)|Authorization|API_KEY/);
+});
+
+test("software entity markup has one consistent current public identity", () => {
+  const marketing = source("src/components/marketing/public-home.tsx");
+  const about = source("src/app/about/page.tsx");
+  for (const page of [marketing, about]) {
+    assert.match(page, /WebApplication/);
+    assert.match(page, /BusinessApplication/);
+    assert.ok(page.includes("https://aqlyra-ai.vercel.app/#software"));
+    assert.ok(page.includes("https://github.com/naim-munshi/aqlyra-rag-ai"));
+    assert.ok(page.includes('JSON.stringify(structuredData).replace'));
+    assert.doesNotMatch(page, /aggregateRating|reviewCount|ratingValue|fake reviews/i);
+  }
 });

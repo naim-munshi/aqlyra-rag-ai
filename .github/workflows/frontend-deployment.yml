@@ -12,7 +12,8 @@ on:
       - "docs/STAGING.md"
       - ".github/workflows/frontend-deployment.yml"
   pull_request:
-    branches: [main, "release/**"]
+    # Test the actual production frontend target before merging, not only main.
+    branches: [main, "release/**", "fix/center-empty-chat-composer-20261102"]
   workflow_dispatch:
 
 permissions:

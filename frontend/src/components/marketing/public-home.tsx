@@ -35,15 +35,19 @@ const structuredData = {
     {
       "@type": "WebSite",
       name: "Aqlyra",
+      alternateName: "Aqlyra AI",
       url: "https://aqlyra-ai.vercel.app/",
       description: "Aqlyra AI knowledge workspace with source-grounded document search and AI conversations.",
     },
     {
-      "@type": "SoftwareApplication",
+      "@type": "WebApplication",
+      "@id": "https://aqlyra-ai.vercel.app/#software",
       name: "Aqlyra",
+      alternateName: "Aqlyra RAG AI",
       url: "https://aqlyra-ai.vercel.app/",
-      applicationCategory: "ProductivityApplication",
+      applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
+      sameAs: "https://github.com/naim-munshi/aqlyra-rag-ai",
       description:
         "AI assistant with document retrieval, citation-aware answers, web research and Study Abroad planning tools.",
     },
@@ -66,6 +70,7 @@ export function PublicHomePage() {
           </Link>
           <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-4 text-sm sm:gap-6">
             <Link href="/about" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">About</Link>
+            <Link href="/how-it-works" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">How it works</Link>
             <Link href="/demo" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">Demo</Link>
             <Link href="/help" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">Help</Link>
             <Link href="/login" className="rounded-xl border border-[var(--aq-border)] px-4 py-2 font-semibold hover:border-[var(--aq-blue)]">
@@ -132,8 +137,8 @@ export function PublicHomePage() {
               unavailable, it can decline to answer. AI-generated results are not
               guaranteed correct; verify important facts against original sources.
             </p>
-            <Link href="/about" className="mt-6 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
-              Learn how Aqlyra works
+            <Link href="/how-it-works" className="mt-6 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
+              How Aqlyra RAG works
             </Link>
           </div>
         </section>
@@ -153,6 +158,7 @@ export function PublicHomePage() {
           <span>Aqlyra AI · Software under active development</span>
           <nav aria-label="Footer navigation" className="flex flex-wrap gap-5">
             <Link href="/about" className="hover:underline">About Aqlyra</Link>
+            <Link href="/how-it-works" className="hover:underline">How RAG works</Link>
             <Link href="/help" className="hover:underline">Help and privacy guidance</Link>
             <Link href="/login" className="hover:underline">Sign in</Link>
           </nav>
