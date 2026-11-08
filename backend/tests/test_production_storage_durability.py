@@ -134,7 +134,7 @@ def test_explicit_ephemeral_artifact_mode_generates_owner_scoped_files(
         user_id=owner,
         title="Temporary test file",
         kind=kind,
-        content="# Temporary test file\\n\\nAqlyra artifact smoke test.",
+        content="# Temporary test file\n\nAqlyra artifact smoke test.",
         provider_name="local-smoke-test",
         source_document_ids=[],
         citation_count=0,
