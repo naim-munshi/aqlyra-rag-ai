@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import {
@@ -17,14 +17,14 @@ export async function GET() {
     token = await getAccessToken();
   } catch {
     // A transient Render outage is not an authentication failure.
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Session service temporarily unavailable. Please retry." },
       { status: 503, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
   if (!token) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -52,7 +52,7 @@ export async function GET() {
       await clearRefreshToken();
     }
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail: "Backend returned an invalid response",
       },
@@ -61,7 +61,7 @@ export async function GET() {
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Backend service is unavailable" },
       { status: 502 },
     );
