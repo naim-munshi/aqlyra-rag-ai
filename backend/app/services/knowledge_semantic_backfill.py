@@ -5,6 +5,7 @@ needs embeddings. No remote object is read or modified; the existing verified
 chunks are reembedded in a transaction and existing vectors are preserved.
 """
 import logging
+import time
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,10 @@ def backfill_ready_semantic_embeddings(
         return 0
     if not 1 <= limit <= 3:
         raise ValueError("Semantic backfill limit must be 1..3")
+    batch_chunks = settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS
+    max_batches = settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES
+    if batch_chunks * max_batches > 64:
+        raise ValueError("Semantic backfill exceeds 64 chunks per targeted run")
     provider = create_configured_embedding_provider()
     info = provider.info
     # A single embedding row is NOT proof that a whole document is indexed.
@@ -82,21 +87,36 @@ def backfill_ready_semantic_embeddings(
     eligible = list(db.scalars(statement).all())
     processed = 0
     for doc in eligible:
-        try:
-            result = reindex_missing_document_embeddings(
-                db=db, document=doc, provider=provider,
-                max_chunks=settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS,
-            )
-            if result.created_count > 0:
-                processed += 1
-                logger.info(
-                    "knowledge_semantic_backfill status=PASS chunks=%s",
-                    result.created_count,
+        created_for_document = 0
+        for batch_index in range(max_batches):
+            try:
+                # This implementation commits each small batch independently.
+                # A restart, quota failure or free-tier spin-down resumes by
+                # finding missing/stale content hashes, not an in-memory cursor.
+                result = reindex_missing_document_embeddings(
+                    db=db, document=doc, provider=provider,
+                    max_chunks=batch_chunks,
                 )
-        except Exception as exc:
-            db.rollback()
-            logger.warning(
-                "knowledge_semantic_backfill status=FAIL error_type=%s",
-                type(exc).__name__,
-            )
+                if result.created_count == 0:
+                    break
+                created_for_document += result.created_count
+                logger.info(
+                    "knowledge_semantic_backfill status=PASS chunks=%s batch=%s",
+                    result.created_count, batch_index + 1,
+                )
+                if result.created_count < batch_chunks:
+                    break
+                if batch_index + 1 < max_batches:
+                    time.sleep(1.0)
+            except Exception as exc:
+                # Stop this document on any failure, especially 429: never
+                # amplify provider quotas with the remaining planned batches.
+                db.rollback()
+                logger.warning(
+                    "knowledge_semantic_backfill status=FAIL error_type=%s",
+                    type(exc).__name__,
+                )
+                break
+        if created_for_document:
+            processed += 1
     return processed
