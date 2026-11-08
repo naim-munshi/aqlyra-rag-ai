@@ -50,7 +50,7 @@ from app.services.web_research_service import (
 from app.services.chat_service import (
     ChatValidationError,
     execute_chat_turn,
-    resolve_public_office_followup,
+    resolve_public_research_followup,
     stream_normal_chat_reply,
 )
 from app.services.memory_extraction_service import (
@@ -492,10 +492,11 @@ def create_message_stream_endpoint(
             # country clarification; never include private chat history
             # or personal memories in outgoing web research.
             public_question = (
-                resolve_public_office_followup(
+                resolve_public_research_followup(
                     db=db, conversation=conversation, message=user_content,
                 )
-                if not request.document_ids else user_content
+                if not request.document_ids and request.web_mode != "off"
+                else user_content
             )
             selected_web = (
                 route_web_request(public_question, request.web_mode)
