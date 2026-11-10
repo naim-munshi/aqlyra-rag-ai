@@ -1,10 +1,24 @@
 # Aqlyra RAG AI
 
+**Portfolio summary (verified 10 Nov 2026).** An AI knowledge assistant built with Next.js, FastAPI, PostgreSQL/pgvector and Redis. It provides private-document retrieval with multilingual 384D embeddings, lexical+semantic fusion and citations.
+
+**Measured result:** 1,035/1,035 *eligible* ready Knowledge chunks had current real semantic vectors in the production database on 10 November; 7 quarantined answer-key chunks remain excluded. **This is indexing coverage, not answer accuracy.** Current production embeddings use `bekko-static-multilingual-int8-mrl384-v1`, **not IBM Granite**.
+
+**Try it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*scripted, no live inference*) · [Source and release README](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027).
+
+**Scope:** A deployed development/portfolio system, **not production-certified enterprise software**; Google/password E2E, voice calls, reliability, backup/restore and real-model quality metrics still require independent acceptance.
+
+**Release branches:** Render backend `release/core-without-study-abroad-20261027`; Vercel frontend `fix/center-empty-chat-composer-20261102`. Protected `main` below is an earlier architectural baseline; its details are historical unless explicitly updated.
+
+---
+
+## Historical main-branch technical README
+
 Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
 
 **Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
 
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
+**Historical `main` snapshot status:** Pre-production (October 2026); this branch is not the live deployed release. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
 
 It has two main modes:
 
