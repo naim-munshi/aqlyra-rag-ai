@@ -49,19 +49,19 @@ def _create(db, label, ext=".pdf", completed=True):
     return doc
 
 
-def test_requeues_only_completed_cloud_document(db_session, monkeypatch):
+def test_requeues_only_completed_cloud_documents_including_ocr_images(db_session, monkeypatch):
     monkeypatch.setattr(settings, "KNOWLEDGE_AUTO_INDEX_ENABLED", True)
     monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
     ready = _create(db_session, "ready_pdf")
     orphan = _create(db_session, "orphan_pdf", completed=False)
     image = _create(db_session, "image", ext=".png")
-    assert requeue_verified_legacy_cloud_documents(db_session, limit=10) == 1
+    assert requeue_verified_legacy_cloud_documents(db_session, limit=10) == 2
     db_session.refresh(ready)
     db_session.refresh(orphan)
     db_session.refresh(image)
     assert ready.status == "queued"
     assert orphan.status == "uploaded"
-    assert image.status == "uploaded"
+    assert image.status == "queued"
     assert requeue_verified_legacy_cloud_documents(db_session) == 0
 
 
