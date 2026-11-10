@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "type": "synthetic_cross_language_english_evidence",
+  "notes": "Labeled author-translated Japanese/Bengali questions target the SAME existing public English synthetic 10-document corpus; not independent production evaluation. Labels inherited by exact query_id, no user files.",
+  "translations": [
+    {
+      "query_id": "security-review-month",
+      "ja": "毎年のセキュリティ審査は何月に予定されていますか。",
+      "bn": "বার্ষিক নিরাপত্তা পর্যালোচনা কোন মাসে হয়?"
+    },
+    {
+      "query_id": "security-emergency-code",
+      "ja": "緊急時の認証情報の参照コードは何ですか。",
+      "bn": "জরুরি ক্রেডেনশিয়ালের রেফারেন্স কোড কী?"
+    },
+    {
+      "query_id": "incident-retention",
+      "ja": "インシデント記録は何年間保管されますか。",
+      "bn": "ইনসিডেন্টের রেকর্ড কত বছর ধরে রাখা হয়?"
+    },
+    {
+      "query_id": "sev1-acknowledgement",
+      "ja": "重大度1のインシデントは何分以内に受領確認が必要ですか。",
+      "bn": "গুরুতর Sev-1 ইনসিডেন্ট কত মিনিটের মধ্যে স্বীকার করতে হবে?"
+    },
+    {
+      "query_id": "vector-backup-time",
+      "ja": "夜間のベクトルバックアップはUTC何時に開始しますか。",
+      "bn": "রাতের ভেক্টর ব্যাকআপ UTC সময় কখন শুরু হয়?"
+    },
+    {
+      "query_id": "retrieval-cache-ttl",
+      "ja": "検索キャッシュの有効期間は何分ですか。",
+      "bn": "রিট্রিভাল ক্যাশ এন্ট্রি কত মিনিট বৈধ থাকে?"
+    },
+    {
+      "query_id": "orbit-sample-count",
+      "ja": "ORBIT-73実験ではサンプル数はいくつですか。",
+      "bn": "ORBIT-73 পরীক্ষায় মোট কতটি নমুনা ব্যবহৃত হয়েছে?"
+    },
+    {
+      "query_id": "validation-split",
+      "ja": "検証用データは全体の何％ですか。",
+      "bn": "ডেটাসেটের কত শতাংশ ভ্যালিডেশনের জন্য রাখা হয়েছিল?"
+    },
+    {
+      "query_id": "p1-escalation",
+      "ja": "優先度1のサポート案件は何分後にエスカレーションしますか。",
+      "bn": "P1 সাপোর্ট কেস কত মিনিট পরে এসকেলেট করা হয়?"
+    },
+    {
+      "query_id": "recovery-signals",
+      "ja": "アカウント復旧に必要な独立した本人確認要素はいくつですか。",
+      "bn": "অ্যাকাউন্ট পুনরুদ্ধারে কতটি স্বাধীন পরিচয় যাচাই সংকেত দরকার?"
+    },
+    {
+      "query_id": "export-deadline",
+      "ja": "承認済みデータエクスポートは何日以内に完了しますか。",
+      "bn": "অনুমোদিত ডেটা এক্সপোর্ট কত দিনের মধ্যে সম্পন্ন করতে হয়?"
+    },
+    {
+      "query_id": "audit-log-retention",
+      "ja": "プライバシー監査ログの保存期間は何日ですか。",
+      "bn": "প্রাইভেসি অডিট লগ কত দিন সংরক্ষণ করতে হয়?"
+    },
+    {
+      "query_id": "canary-traffic",
+      "ja": "本番カナリア展開は最初にトラフィックの何％を受けますか。",
+      "bn": "প্রোডাকশন ক্যানারি শুরুতে কত শতাংশ ট্রাফিক পায়?"
+    },
+    {
+      "query_id": "rollback-threshold",
+      "ja": "自動ロールバックの発動条件となるエラー率は何ですか。",
+      "bn": "কোন error-rate শর্তে স্বয়ংক্রিয় rollback শুরু হয়?"
+    },
+    {
+      "query_id": "invoice-approval",
+      "ja": "25,000ドルを超える請求書には何名の承認者が必要ですか。",
+      "bn": "২৫,০০০ ডলারের বেশি ভেন্ডর ইনভয়েসে কতজন অনুমোদনকারী দরকার?"
+    },
+    {
+      "query_id": "monthly-close-lock",
+      "ja": "月次決算がロックされるのは第何営業日ですか。",
+      "bn": "মাসিক অ্যাকাউন্টিং ক্লোজ কোন কর্মদিবসে লক হয়?"
+    },
+    {
+      "query_id": "dataset-registry-label",
+      "ja": "制限付きデータセットの登録ラベルは何ですか。",
+      "bn": "সীমাবদ্ধ ডেটাসেটের রেজিস্ট্রি লেবেল কী?"
+    },
+    {
+      "query_id": "telemetry-retention",
+      "ja": "生のテレメトリーデータは何日後に削除されますか。",
+      "bn": "কত দিন পরে raw telemetry মুছে ফেলা হয়?"
+    },
+    {
+      "query_id": "recovery-time-objective",
+      "ja": "文書化された復旧時間目標は何分ですか。",
+      "bn": "ডকুমেন্টে লেখা recovery time objective কত মিনিট?"
+    },
+    {
+      "query_id": "failover-schedule",
+      "ja": "定期フェイルオーバーテストはいつ実施されますか。",
+      "bn": "নির্ধারিত failover পরীক্ষা কখন হয়?"
+    }
+  ]
+}
