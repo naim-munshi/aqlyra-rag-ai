@@ -59,15 +59,16 @@ export async function POST(request: Request) {
       { remember: body.remember_me !== false },
     );
   } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError")) {
       return NextResponse.json(
         { detail: "Sign-in service is temporarily unavailable. Please retry." },
-        { status: 503, headers: { "Retry-After": "10" } },
+        { status: 503, headers: { "Retry-After": "10", "Cache-Control": "private, no-store" } },
       );
     }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
-      { status: 502 },
+      { status: 502, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }
