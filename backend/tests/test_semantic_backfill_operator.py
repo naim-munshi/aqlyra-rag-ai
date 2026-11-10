@@ -239,6 +239,35 @@ def test_target_does_not_override_verified_cloud_intent_gate(
 
 
 
+
+def test_backfill_requires_same_verified_final_object_and_file_integrity(
+    db_session, monkeypatch,
+):
+    """A completed intent alone must not authorize indexing remapped/deleted bytes."""
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    calls = _record_calls(monkeypatch)
+    mutations = (
+        ("wrong_key", "final_object_key", "documents/different-final-object.pdf"),
+        ("wrong_hash", "expected_sha256", "f" * 64),
+        ("wrong_size", "expected_size", 19),
+        ("deleted", "deleted_at", utc_now_naive()),
+    )
+    for suffix, field, bad_value in mutations:
+        doc = _doc(db_session, "invalid_" + suffix)
+        intent = db_session.scalar(select(CloudUploadIntent).where(
+            CloudUploadIntent.document_id == doc.id,
+        ))
+        assert intent is not None
+        setattr(intent, field, bad_value)
+        db_session.commit()
+        monkeypatch.setattr(
+            settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", doc.id,
+        )
+        assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
+    assert calls == []
+
+
 def test_incremental_recovery_keeps_current_vectors_and_resumes_per_batch(
     db_session,
 ):
