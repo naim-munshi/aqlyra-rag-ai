@@ -25,6 +25,6 @@ test("retry preserves backend source-unavailable 409 for owner UI", () => {
   assert.match(panel, /getErrorMessage\(payload as ApiError/);
   assert.match(retry, /getAccessToken\(\)/);
   assert.match(retry, /status: 401/);
-  assert.match(retry, /response\.status/);
+  assert.match(retry, /result\.status/);
   assert.doesNotMatch(retry, /console\.(log|error)\(/);
 });
