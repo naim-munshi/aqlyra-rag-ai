@@ -4,6 +4,8 @@
 
 **Verified result (10 November 2026):** **1,035 / 1,035 eligible ready chunks indexed** with matching current-model semantic vectors (`bekko-static-multilingual-int8-mrl384-v1`); **7 quarantined answer-key chunks excluded**. This measures **index coverage only**, not precision, grounded-answer accuracy, speedup or user-level E2E reliability.
 
+**Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
+
 **See it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*no live inference in demo*) · [Backend evaluation protocol](backend/evaluation/REPRODUCIBLE_PROTOCOL.md).
 
 **Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, controlled semantic benchmark and backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
