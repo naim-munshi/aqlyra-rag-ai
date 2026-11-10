@@ -20,6 +20,28 @@ from app.models.document import Document
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.services.cloud_process_io import cloud_processing_source
 from app.services.document_processing_service import process_document
+from app.parsers.types import DocumentParsingError
+
+
+# Whitelist only constant parser error categories; never write user bytes,
+# exception trace, page text, file names, or provider token into logs.
+def safe_index_failure_reason(exc: Exception) -> str:
+    if not isinstance(exc, DocumentParsingError):
+        return type(exc).__name__
+    message = str(exc)
+    if "no searchable text" in message:
+        return "pdf_no_searchable_text"
+    if "OCR page limit" in message:
+        return "pdf_ocr_page_limit"
+    if "OCR page timed out" in message:
+        return "pdf_ocr_timeout"
+    if "OCR components unavailable" in message:
+        return "pdf_ocr_unavailable"
+    if "PDF page structure" in message or "PDF file could not be read" in message:
+        return "pdf_invalid_structure"
+    if "PDF page raster" in message or "PDF image dimensions" in message:
+        return "pdf_raster_limit"
+    return "document_parse_error_other"
 
 log = logging.getLogger(__name__)
 INDEXABLE_EXTENSIONS = frozenset({
@@ -182,8 +204,8 @@ def run_one_index_job() -> bool:
                 current.error_message = type(exc).__name__[:120]
                 db.commit()
             log.warning(
-                "knowledge_index_failed doc_id=%s error_type=%s",
-                document_id, type(exc).__name__,
+                "knowledge_index_failed doc_id=%s error_type=%s reason=%s",
+                document_id, type(exc).__name__, safe_index_failure_reason(exc),
             )
     return True
 

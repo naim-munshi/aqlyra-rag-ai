@@ -48,7 +48,15 @@ class PDFParser:
             ) from exc
 
         units: list[ParsedUnit] = []
-        total_pages = len(reader.pages)
+        try:
+            total_pages = len(reader.pages)
+        except (PdfReadError, ValueError, TypeError, KeyError) as exc:
+            raise DocumentParsingError(
+                "The PDF page structure could not be read"
+            ) from exc
+
+        if total_pages == 0:
+            raise DocumentParsingError("PDF contains no pages")
         ocr_used = 0
         ocr_cap = settings.KNOWLEDGE_PDF_OCR_MAX_PAGES
 
@@ -72,9 +80,9 @@ class PDFParser:
 
                 except Exception as exc:
                     content = ""
-                    extraction_error = (
-                        f"{type(exc).__name__}: {str(exc)[:200]}"
-                    )
+                    # Parser exception messages can contain raw page data.
+                    # Only retain the exception class in source metadata.
+                    extraction_error = type(exc).__name__[:80]
 
             metadata: dict[str, Any] = {
                 "page_number": page_number,
