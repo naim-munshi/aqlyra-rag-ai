@@ -298,7 +298,7 @@ aqlyra-rag-ai/
 
 The `backend/evaluation/corpus/` Markdown files contain synthetic retrieval-test data, **not real operational policies**. The benchmark numbers in `backend/evaluation/BASELINE.md` are historical controlled measurements, not production semantic quality results.
 
-The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
+**Historical benchmark note:** An earlier October CI run recorded **380 passing tests** ([historical run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)). This is not the test count or deployment status of the current release. The active Render backend release passed **21/21 exact-commit checks** on 10 November 2026; the active Vercel frontend commit passed **16/16 checks**. Actual user-login, voice-RTC and cloud-recovery E2E remain separate acceptance gates.
 
 The tests cover:
 
