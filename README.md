@@ -1,5 +1,19 @@
 # Aqlyra RAG AI
 
+> **Portfolio snapshot — 10 November 2026**
+>
+> **Project:** Full-stack AI application with owner-scoped private-document RAG, hybrid search, cited answers and general chat (Next.js, FastAPI, PostgreSQL/pgvector).
+>
+> **Concrete live-release result:** **1,035/1,035 eligible Knowledge chunks** had current, content-hash-matched 384-dimensional semantic vectors in Neon on 10 November; seven deliberately quarantined answer-key chunks were excluded. This measures **index coverage, not retrieval accuracy**.
+>
+> **Try it:** [Deployed application](https://aqlyra-ai.vercel.app) · [Public scripted UI walkthrough](https://aqlyra-ai.vercel.app/demo) (**not live inference**).
+>
+> **Release boundary:** This `main` branch is a **pre-production source snapshot**, not the Vercel/Render deployment. Live application code is on separately controlled release branches; Google/password multi-user acceptance, voice microphone E2E and backup restoration are not fully certified.
+>
+> **Evaluation boundary:** The published 20-query/10-document baseline uses **deterministic test embeddings**, not real Granite semantic retrieval. The live release currently uses a separate multilingual ONNX embedding worker; do not equate it with the IBM Granite configuration described in this historical `main` README.
+>
+> [Code and architecture](#how-the-system-is-structured) · [Existing tests/security](docs/SECURITY_TESTING.md) · [Demo setup](docs/VERCEL_PORTFOLIO_DEMO.md)
+
 Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
 
 **Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
