@@ -6,6 +6,7 @@ chunks are reembedded in a transaction and existing vectors are preserved.
 """
 import logging
 import time
+from dataclasses import dataclass
 from sqlalchemy import exists, literal, select
 from sqlalchemy.orm import Session
 
@@ -22,8 +23,16 @@ from app.services.retrieval_exclusions import permitted_retrieval_document
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class BackfillProgress:
+    """Local only: report bounded-pass progress without exposing owner data."""
+    created_chunks: int = 0
+    failed: bool = False
+
+
 def backfill_ready_semantic_embeddings(
     *, db: Session, limit: int = 1,
+    progress: BackfillProgress | None = None,
 ) -> int:
     if not settings.KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP:
         return 0
@@ -120,6 +129,8 @@ def backfill_ready_semantic_embeddings(
                 if result.created_count == 0:
                     break
                 created_for_document += result.created_count
+                if progress is not None:
+                    progress.created_chunks += result.created_count
                 logger.info(
                     "knowledge_semantic_backfill status=PASS chunks=%s batch=%s",
                     result.created_count, max_batches - remaining_batches,
@@ -137,7 +148,71 @@ def backfill_ready_semantic_embeddings(
                     type(exc).__name__,
                 )
                 stop_on_error = True
+                if progress is not None:
+                    progress.failed = True
                 break
         if created_for_document:
             processed += 1
     return processed
+
+
+# This is a deliberately explicit operator recovery, not an always-on
+# scheduler. It uses the existing verified-intent scan, commits in 8-chunk
+# batches, and NEVER changes the 64-chunk-per-pass ceiling. Repeated passes
+# happen only with a second, default-off campaign switch. Stop immediately
+# on provider failure rather than retrying a quota or transport outage.
+_CAMPAIGN_MAX_CHUNKS = 1024
+_CAMPAIGN_MAX_PASSES = 24
+
+
+def run_verified_semantic_recovery_campaign(*, db: Session) -> int:
+    if not (
+        settings.KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP
+        and settings.KNOWLEDGE_SEMANTIC_RECOVERY_CAMPAIGN_ENABLED
+    ):
+        return 0
+    if (
+        settings.APP_ENV.strip().lower() == "production"
+        and not settings.KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED
+    ):
+        logger.warning("knowledge_semantic_campaign status=SKIPPED reason=verified_opt_in")
+        return 0
+    if settings.KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID.strip():
+        logger.warning("knowledge_semantic_campaign status=SKIPPED reason=target_conflict")
+        return 0
+    per_pass = (
+        settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS
+        * settings.KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES
+    )
+    if not 1 <= per_pass <= 64:
+        raise ValueError("Campaign requires the existing <=64 chunk pass limit")
+    max_passes = min(_CAMPAIGN_MAX_PASSES, _CAMPAIGN_MAX_CHUNKS // per_pass)
+    created_total = 0
+    for number in range(1, max_passes + 1):
+        progress = BackfillProgress()
+        processed = backfill_ready_semantic_embeddings(
+            db=db, limit=3, progress=progress,
+        )
+        created_total += progress.created_chunks
+        logger.info(
+            "knowledge_semantic_campaign status=PROGRESS pass=%d created=%d total=%d",
+            number, progress.created_chunks, created_total,
+        )
+        if progress.failed:
+            logger.warning(
+                "knowledge_semantic_campaign status=STOP reason=provider_failure total=%d",
+                created_total,
+            )
+            return created_total
+        if processed == 0 or progress.created_chunks == 0:
+            logger.info(
+                "knowledge_semantic_campaign status=COMPLETE total=%d", created_total,
+            )
+            return created_total
+        if number < max_passes:
+            time.sleep(3.0)
+    logger.warning(
+        "knowledge_semantic_campaign status=BUDGET_REACHED total=%d",
+        created_total,
+    )
+    return created_total
