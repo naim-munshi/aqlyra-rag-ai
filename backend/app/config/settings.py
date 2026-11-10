@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 from uuid import UUID
-from typing import Self
+from typing import Self, Literal
 
 from pydantic import (
     Field,
@@ -21,6 +21,8 @@ from sqlalchemy.engine import make_url
 class Settings(BaseSettings):
     # Project
     APP_ENV: str = "development"
+    # Non-HTTP voice worker skips only HTTP-specific OAuth/email/CORS checks.
+    AQLYRA_PROCESS_ROLE: Literal["api", "voice_worker"] = "api"
     PROJECT_NAME: str = (
         "Aqlyra RAG AI"
     )
@@ -171,6 +173,10 @@ class Settings(BaseSettings):
         "qwen/qwen3.8-27b"
     )
     HF_TOKEN: str = ""
+    # Match the already-deployed Render semantic worker, not a new model.
+    REMOTE_SEMANTIC_URL: str = ""
+    REMOTE_SEMANTIC_TOKEN: str = ""
+    REMOTE_SEMANTIC_TIMEOUT_SECONDS: float = Field(default=90.0, gt=0, le=180)
 
     # Opt-in live web research. Never use deterministic providers as real search.
     # Public browser automation MVP; deliberately off by default.
@@ -187,12 +193,26 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
     VOICE_AGENT_NAME: str = "aqlyra-voice"
-    VOICE_STT_MODEL: str = "whisper-large-v3"
+    # LiveKit speech by default, optional direct Groq.
+    VOICE_STT_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_STT_MODEL: str = "deepgram/nova-3"
+    VOICE_STT_LANGUAGE: str = "multi"
+    # Optional Deepgram Nova-3 multilingual bias; does not restrict languages.
+    VOICE_STT_LANGUAGE_HINTS: str = ""
+    # Actual reasoning uses execute_chat_turn(), never this session LLM.
+    VOICE_SESSION_LLM_PROVIDER: Literal["livekit", "groq"] = "livekit"
+    VOICE_SESSION_LLM_MODEL: str = "openai/gpt-oss-120b"
     VOICE_TTS_MODEL: str = "cartesia/sonic-3"
     VOICE_TTS_VOICE: str = (
         "a5136bf9-224c-4d76-b823-52bd5efcffcc"
     )
     VOICE_TTS_DEFAULT_LANGUAGE: str = "en"
+    # Optional provider-verified native voice IDs; no guessed IDs.
+    # Each language falls back to the existing VOICE_TTS_VOICE.
+    VOICE_TTS_VOICE_BN: str = ""
+    VOICE_TTS_VOICE_JA: str = ""
+    VOICE_TTS_VOICE_HI: str = ""
+
 
     # Embeddings
     EMBEDDING_PROVIDER: str = (
@@ -326,11 +346,12 @@ class Settings(BaseSettings):
             "deterministic",
             "huggingface",
             "openai",
+            "remote_onnx",
         }:
             raise ValueError(
                 "EMBEDDING_PROVIDER must be "
                 "'deterministic', "
-                "'huggingface', or 'openai'"
+                "'huggingface', 'openai', or 'remote_onnx'"
             )
 
         return normalized
@@ -622,6 +643,13 @@ class Settings(BaseSettings):
             )
 
         if (
+            self.EMBEDDING_PROVIDER == "remote_onnx"
+            and (not self.REMOTE_SEMANTIC_URL.strip()
+                 or not self.REMOTE_SEMANTIC_TOKEN.strip())
+        ):
+            raise ValueError("Remote semantic endpoint and token required")
+
+        if (
             self.EMBEDDING_PROVIDER
             == "huggingface"
             and not self.HF_TOKEN.strip()
@@ -894,62 +922,64 @@ class Settings(BaseSettings):
                 "true in production"
             )
 
-        email_values = {
-            "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
-            "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
-        }
-        if self.EMAIL_DELIVERY_PROVIDER == "smtp":
-            email_values.update({
-                "SMTP_USERNAME": self.SMTP_USERNAME,
-                "SMTP_PASSWORD": self.SMTP_PASSWORD,
-            })
-        elif self.EMAIL_DELIVERY_PROVIDER == "resend":
-            email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
-        elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
-            email_values.update({
-                "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
-                "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
-                "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
-            })
-        for setting_name, setting_value in email_values.items():
-            if not setting_value.strip():
+        if self.AQLYRA_PROCESS_ROLE == "api":
+            # Never duplicate Google or email secrets into a headless worker.
+            email_values = {
+                "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
+                "GOOGLE_CLIENT_ID": self.GOOGLE_CLIENT_ID,
+            }
+            if self.EMAIL_DELIVERY_PROVIDER == "smtp":
+                email_values.update({
+                    "SMTP_USERNAME": self.SMTP_USERNAME,
+                    "SMTP_PASSWORD": self.SMTP_PASSWORD,
+                })
+            elif self.EMAIL_DELIVERY_PROVIDER == "resend":
+                email_values["RESEND_API_KEY"] = self.RESEND_API_KEY
+            elif self.EMAIL_DELIVERY_PROVIDER == "gmail_api":
+                email_values.update({
+                    "GMAIL_OAUTH_CLIENT_ID": self.GMAIL_OAUTH_CLIENT_ID,
+                    "GMAIL_OAUTH_CLIENT_SECRET": self.GMAIL_OAUTH_CLIENT_SECRET,
+                    "GMAIL_OAUTH_REFRESH_TOKEN": self.GMAIL_OAUTH_REFRESH_TOKEN,
+                })
+            for setting_name, setting_value in email_values.items():
+                if not setting_value.strip():
+                    raise ValueError(
+                        f"{setting_name} is required in production"
+                    )
+
+            origins = {
+                origin.strip()
+                for origin
+                in self.CORS_ORIGINS.split(",")
+                if origin.strip()
+            }
+
+            if not origins:
                 raise ValueError(
-                    f"{setting_name} is required in production"
+                    "CORS_ORIGINS must be configured "
+                    "in production"
                 )
 
-        origins = {
-            origin.strip()
-            for origin
-            in self.CORS_ORIGINS.split(",")
-            if origin.strip()
-        }
-
-        if not origins:
-            raise ValueError(
-                "CORS_ORIGINS must be configured "
-                "in production"
+            unsafe_origins = (
+                "*",
+                "localhost",
+                "127.0.0.1",
+                "0.0.0.0",
+                "::1",
             )
 
-        unsafe_origins = (
-            "*",
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "::1",
-        )
+            for origin in origins:
+                lowered = origin.casefold()
 
-        for origin in origins:
-            lowered = origin.casefold()
-
-            if any(
-                unsafe in lowered
-                for unsafe in unsafe_origins
-            ):
-                raise ValueError(
-                    "Production CORS_ORIGINS "
-                    "cannot contain wildcard or "
-                    "localhost origins"
-                )
+                if any(
+                    unsafe in lowered
+                    for unsafe in unsafe_origins
+                ):
+                    raise ValueError(
+                        "Production CORS_ORIGINS "
+                        "cannot contain wildcard or "
+                        "localhost origins"
+                    )
 
         secret = self.SECRET_KEY.strip()
         lowered_secret = secret.casefold()

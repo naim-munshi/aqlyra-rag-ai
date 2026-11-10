@@ -2,6 +2,9 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.config.settings import settings
+
+if settings.AQLYRA_PROCESS_ROLE != "api":
+    raise RuntimeError("Aqlyra HTTP API cannot run in the voice-worker role")
 from app.services.knowledge_index_queue import KnowledgeIndexWorker
 
 _knowledge_worker = KnowledgeIndexWorker()

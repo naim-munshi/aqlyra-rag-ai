@@ -1,0 +1,29 @@
+name: Voice Public Security Negative Probe
+
+on:
+  pull_request:
+    branches: [main, "release/**"]
+    paths:
+      - "backend/app/api/voice.py"
+      - "backend/app/services/voice_session_service.py"
+      - "frontend/src/app/api/voice/**"
+      - "frontend/src/app/api/conversations/**"
+      - "scripts/ops/voice_public_security_probe.py"
+      - ".github/workflows/voice-security-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-voice-probe:
+    name: Check live voice auth denial, no credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Run bounded anonymous security probes against official production origins
+        run: python3 scripts/ops/voice_public_security_probe.py
+        # This only checks the currently deployed production origins, NOT the PR
+        # candidate. Inaccessible/protected systems return BLOCKED (exit 2).
+        # No login, secrets, database writes, or LiveKit room creation occurs.

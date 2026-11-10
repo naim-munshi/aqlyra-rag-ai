@@ -15,6 +15,7 @@ from app.services.auto_web_research_service import (
     cited_web_answer,
 )
 from app.services.web_research_service import research_web
+from app.services.safe_calculation_service import exact_calculation_reply
 from app.services.smart_web_router import route_web_request
 from app.services.public_office_guard import (
     PublicFactGuardProvider,
@@ -145,6 +146,18 @@ Permanent product identity:
 {PRODUCT_IDENTITY_SYSTEM_CONTEXT}
 
 Answer the current user message naturally and directly.
+
+Answer relevance and conversational intelligence:
+- Give the answer first, then only the information needed for the question.
+- Do not repeat founding/creator facts unless the user explicitly asks who
+  founded, built or owns Aqlyra. "Tell me about you" refers to the assistant,
+  not the founder.
+- Prefer a concise first response (usually 1-3 sentences for simple questions).
+  Elaborate if the user asks for detail or the task warrants it.
+- Do not pad with generic marketing, capabilities lists, or unrequested
+  disclaimers. Never fabricate connected tools or live research.
+- During voice interaction, stop when asked to stop; do not repeat yourself or
+  infer a new question from your own previous speech.
 
 Rules:
 - Use conversation history only as conversational context.
@@ -1018,6 +1031,23 @@ def execute_chat_turn(
         )
 
     if conversation.mode == "normal":
+        if not document_ids:
+            # The same deterministic tool is shared by text and LiveKit.
+            computed = exact_calculation_reply(cleaned)
+            if computed is not None:
+                return ChatExecutionResult(
+                    content=computed,
+                    mode="normal",
+                    provider_name="aqlyra-exact-calculation",
+                    model_name="bounded-decimal-ast-v1",
+                    response_id=None,
+                    citations=(),
+                    is_refusal=False,
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    evidence_tokens=None,
+                )
         if document_ids:
             return (
                 generate_normal_document_chat_reply(

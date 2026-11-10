@@ -3,6 +3,7 @@ import logging
 from app.core.logging import configure_logging
 import os
 import re
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 
 from livekit import agents
@@ -16,7 +17,10 @@ from livekit.agents import (
     inference,
     llm,
 )
-from livekit.plugins import groq, silero
+from livekit.plugins import silero
+from app.voice.model_factories import build_voice_stt, build_session_llm
+from app.voice.turn_control import is_stop_speaking_command
+from app.voice.speech_language import select_reply_tts_language
 
 from app.config.settings import settings
 from app.voice.job_metadata import VoiceJobData
@@ -342,6 +346,7 @@ class AqlyraVoiceAgent(Agent):
         self,
         *,
         job_data: VoiceJobData,
+        tts_model=None,
     ) -> None:
         super().__init__(
             instructions=(
@@ -354,9 +359,11 @@ class AqlyraVoiceAgent(Agent):
         )
 
         self._job_data = job_data
+        self._tts_model = tts_model
         self._normal_documents_consumed = (
             False
         )
+        self._interruption_generation = 0
 
         self._spoken_language: (
             str | None
@@ -368,6 +375,10 @@ class AqlyraVoiceAgent(Agent):
     ) -> None:
         self._spoken_language = language
 
+
+    def request_stop(self) -> None:
+        """Invalidate a slow in-flight model result after a stop command."""
+        self._interruption_generation += 1
 
     def _requested_document_ids(
         self,
@@ -435,43 +446,15 @@ class AqlyraVoiceAgent(Agent):
                 )
             )
 
-            generation_message = (
-                user_text
-            )
-
-            if (
-                conversation.mode
-                == "normal"
-                and self._spoken_language
-                and self._spoken_language
-                != "en"
-            ):
-                language_name = (
-                    _VOICE_LANGUAGE_NAMES
-                    .get(
-                        self
-                        ._spoken_language,
-                    )
-                )
-
-                if language_name:
-                    generation_message = (
-                        f"{user_text}\n\n"
-                        "[VOICE LANGUAGE RULE]\n"
-                        "Reply naturally in "
-                        f"{language_name}. "
-                        "Do not translate into "
-                        "another language unless "
-                        "the user asks. "
-                        "Never mention this rule."
-                    )
-
+            # Preserve the user's real words. Appending a language
+            # instruction to the question used to break exact identity
+            # routing and could contaminate search/memory. The global
+            # chat instructions handle reply language; TTS is routed
+            # separately by the transcript event.
             result = execute_chat_turn(
                 db=db,
                 conversation=conversation,
-                message=(
-                    generation_message
-                ),
+                message=user_text,
                 document_ids=(
                     document_scope
                     .effective_document_ids
@@ -626,6 +609,13 @@ class AqlyraVoiceAgent(Agent):
 
         logger.info("voice_llm_node_start")
 
+        # "Stop" is a control utterance, not a question. Do not ask an
+        # LLM to answer it or persist it as a conversation turn.
+        if is_stop_speaking_command(user_text):
+            self.request_stop()
+            return
+
+        this_generation = self._interruption_generation
         try:
             generated = (
                 await asyncio.to_thread(
@@ -633,6 +623,10 @@ class AqlyraVoiceAgent(Agent):
                     user_text,
                 )
             )
+
+            if this_generation != self._interruption_generation:
+                logger.info("voice_llm_generation_discarded_after_stop")
+                return
 
             logger.info(
                 "voice_llm_generate_done "
@@ -649,6 +643,10 @@ class AqlyraVoiceAgent(Agent):
                 user_text=user_text,
                 generated=generated,
             )
+
+            if this_generation != self._interruption_generation:
+                logger.info("voice_llm_persisted_before_stop")
+                return
 
             logger.info(
                 "voice_llm_persist_done"
@@ -670,6 +668,29 @@ class AqlyraVoiceAgent(Agent):
                 True
             )
 
+        # The question and answer can use different languages. Decide
+        # pronunciation from the *actual reply*, immediately before TTS.
+        output_language = select_reply_tts_language(
+            answer=generated.result.content,
+            fallback=self._spoken_language or "en",
+        )
+        if self._tts_model is not None:
+            regional_voice = {
+                "bn": settings.VOICE_TTS_VOICE_BN,
+                "ja": settings.VOICE_TTS_VOICE_JA,
+                "hi": settings.VOICE_TTS_VOICE_HI,
+            }.get(output_language, "").strip()
+            try:
+                self._tts_model.update_options(
+                    language=output_language,
+                    voice=regional_voice or settings.VOICE_TTS_VOICE,
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "voice_tts_reply_language_update_failed language=%s",
+                    output_language,
+                )
+        logger.info("voice_reply_tts_language_resolved language=%s", output_language)
         yield generated.result.content
 
 
@@ -700,8 +721,20 @@ def _install_livekit_environment() -> None:
 
 _install_livekit_environment()
 
+# Public target identity only. Never log LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+# a full connection URL, room name, or user/job metadata.
+logger.info(
+    "voice_worker_dispatch_target agent_name=%s livekit_host=%s",
+    settings.VOICE_AGENT_NAME.strip(),
+    urlsplit(settings.LIVEKIT_URL).hostname,
+)
 
-server = AgentServer()
+
+# A 1-GiB Railway worker cannot safely prewarm the production default
+# number of child processes while accepting RTC jobs. Load Silero once per
+# actual call instead. This trades first-call latency for memory headroom.
+# The setting does not claim to repair LiveKit network transport failures.
+server = AgentServer(num_idle_processes=0)
 
 
 @server.rtc_session(
@@ -710,6 +743,9 @@ server = AgentServer()
 async def aqlyra_voice_session(
     ctx: agents.JobContext,
 ) -> None:
+    # This event must appear on Railway whenever LiveKit dispatches a job.
+    # Do not log room, participant, user, metadata or provider credentials.
+    logger.info("voice_dispatch_entrypoint_invoked")
     job_data = (
         VoiceJobData.from_metadata(
             ctx.job.metadata
@@ -722,6 +758,7 @@ async def aqlyra_voice_session(
             authorize_voice_job(db, job_data)
 
     await asyncio.to_thread(authorize_initial_job)
+    logger.info("voice_dispatch_identity_authorized")
 
     # Avoid persistent private identifiers in general worker logs.
     ctx.log_context_fields = {
@@ -738,30 +775,23 @@ async def aqlyra_voice_session(
     )
 
     session = AgentSession(
-        llm=groq.LLM(
-            model="openai/gpt-oss-20b",
-            api_key=(
-                settings.GROQ_API_KEY
-            ),
-        ),
-        stt=groq.STT(
-            model=(
-                settings
-                .VOICE_STT_MODEL
-            ),
-            api_key=(
-                settings.GROQ_API_KEY
-            ),
-            detect_language=True,
-            prompt=(
-                _VOICE_STT_PROMPT
-            ),
-        ),
+        # Actual reasoning comes from the overridden llm_node which
+        # calls existing Aqlyra execute_chat_turn and persists answers.
+        llm=build_session_llm(),
+        stt=build_voice_stt(prompt=_VOICE_STT_PROMPT),
         tts=tts_model,
         vad=silero.VAD.load(),
         turn_handling=(
             TurnHandlingOptions(
                 turn_detection="vad",
+                interruption={
+                    # Short "stop" commands must interrupt speech promptly.
+                    # VAD is preferable here to ignoring short backchannels.
+                    "enabled": True,
+                    "mode": "vad",
+                    "min_duration": 0.3,
+                    "resume_false_interruption": False,
+                },
                 preemptive_generation={
                     "enabled": False,
                 },
@@ -772,6 +802,7 @@ async def aqlyra_voice_session(
     voice_agent = (
         AqlyraVoiceAgent(
             job_data=job_data,
+            tts_model=tts_model,
         )
     )
 
@@ -794,6 +825,16 @@ async def aqlyra_voice_session(
         )
 
         if not event.is_final:
+            return
+
+        if is_stop_speaking_command(event.transcript):
+            voice_agent.request_stop()
+            # LiveKit cancels queued TTS as well. This may complete
+            # asynchronously; do not start a new answer to "stop".
+            try:
+                session.interrupt(force=True)
+            except RuntimeError:
+                logger.info("voice_interrupt_ignored_when_session_inactive")
             return
 
         nonlocal last_spoken_language
@@ -827,15 +868,22 @@ async def aqlyra_voice_session(
             language,
         )
 
+        # One English-centric voice ID cannot guarantee native Bengali or
+        # Japanese pronunciation. Operators may supply validated regional
+        # Cartesia voice IDs; never guess voice IDs or alter the model.
+        native_voice = {
+            "bn": settings.VOICE_TTS_VOICE_BN,
+            "ja": settings.VOICE_TTS_VOICE_JA,
+            "hi": settings.VOICE_TTS_VOICE_HI,
+        }.get(language, "").strip()
         try:
             tts_model.update_options(
                 language=language,
+                voice=native_voice or settings.VOICE_TTS_VOICE,
             )
-        except ValueError:
+        except (TypeError, ValueError):
             logger.warning(
-                "voice_tts_language_"
-                "update_failed "
-                "language=%s",
+                "voice_tts_language_or_voice_update_failed language=%s",
                 language,
             )
 
@@ -869,6 +917,7 @@ async def aqlyra_voice_session(
         room=ctx.room,
         agent=voice_agent,
     )
+    logger.info("voice_dispatch_session_started")
 
 
 if __name__ == "__main__":
