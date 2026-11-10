@@ -62,17 +62,43 @@ def test_owner_only_queue_and_restart_claim(db_session, monkeypatch):
     assert queue.claim_next_document(db_session) is None
 
 
-def test_only_documents_are_indexed_and_failed_can_retry(db_session, monkeypatch):
+def test_supported_ocr_images_are_queued_and_failed_can_retry(db_session, monkeypatch):
     monkeypatch.setattr(settings, "KNOWLEDGE_AUTO_INDEX_ENABLED", True)
     user = _user(db_session, "image")
     image = _doc(db_session, user, "image", ext=".png")
     assert queue.enqueue_document(
         db=db_session, owner_id=str(user.id), document_id=image.id,
-    ).status == "uploaded"
+    ).status == "queued"
+    assert queue.claim_next_document(db_session) == image.id
+    db_session.refresh(image)
+    assert image.status == "processing"
+
+    # Preserve the existing retry path and add image failure recovery.
     failed = _doc(db_session, user, "failed", status="failed")
     assert queue.enqueue_document(
         db=db_session, owner_id=str(user.id), document_id=failed.id,
     ).status == "queued"
+    image.status = "failed"
+    db_session.commit()
+    assert queue.enqueue_document(
+        db=db_session, owner_id=str(user.id), document_id=image.id,
+    ).status == "queued"
+
+
+@pytest.mark.parametrize("ext", [".png", ".jpg", ".jpeg", ".webp"])
+def test_ocr_parser_types_are_indexable(ext):
+    assert queue.should_index(ext)
+    assert queue.should_index(ext.upper())
+
+
+def test_unsupported_binary_never_enters_automatic_queue(db_session, monkeypatch):
+    monkeypatch.setattr(settings, "KNOWLEDGE_AUTO_INDEX_ENABLED", True)
+    user = _user(db_session, "unsupported")
+    document = _doc(db_session, user, "unsupported", ext=".bin")
+    assert queue.enqueue_document(
+        db=db_session, owner_id=str(user.id), document_id=document.id,
+    ).status == "uploaded"
+    assert not queue.should_index(".bin")
 
 
 def test_reclaim_only_stale_processing(db_session):
