@@ -58,6 +58,12 @@ jobs:
             echo "Disposable backend never became ready"
             exit 1
           fi
+      - name: Run real synthetic scanned-PDF OCR with image language packs
+        run: |
+          set -Eeuo pipefail
+          docker compose --env-file backend/.env.example run --rm -T --no-deps \
+            -e KNOWLEDGE_PDF_OCR_ENABLED=true \
+            --entrypoint python backend -m app.services.knowledge_ocr_probe
       - name: Rehearse verified backup and destructive restore in disposable CI ONLY
         run: |
           set -Eeuo pipefail
