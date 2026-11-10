@@ -1,5 +1,17 @@
 # Aqlyra AI
 
+**In 30 seconds:** Full-stack, multilingual Knowledge RAG + general AI chat. Next.js/Vercel frontend, FastAPI/Render backend, Neon PostgreSQL + pgvector, Redis and a separate 384D semantic worker. Private Knowledge combines genuine dense and lexical retrieval, RRF fusion, evidence context and traceable citations.
+
+**Verified result (10 November 2026):** **1,035 / 1,035 eligible ready chunks indexed** with matching current-model semantic vectors (`bekko-static-multilingual-int8-mrl384-v1`); **7 quarantined answer-key chunks excluded**. This measures **index coverage only**, not precision, grounded-answer accuracy, speedup or user-level E2E reliability.
+
+**See it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*no live inference in demo*) · [Backend evaluation protocol](backend/evaluation/REPRODUCIBLE_PROTOCOL.md).
+
+**Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, controlled semantic benchmark and backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
+
+---
+
+## Detailed architecture, evidence and historical operational notes
+
 **Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
 
 [Current repository review](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) · [Security assessment](docs/SECURITY_AUDIT_2026-11-08.md) · [Live application](https://aqlyra-ai.vercel.app) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Historical 31 October status](docs/PRODUCTION_STATUS_2026-10-31.md)
