@@ -32,7 +32,8 @@ export type RAGCitationResponse = {
   start_page: number | null;
   end_page: number | null;
 
-  similarity_score: number;
+  // Null means lexical retrieval did not measure a dense cosine similarity.
+  similarity_score: number | null;
 
   excerpt: string;
   was_truncated: boolean;
