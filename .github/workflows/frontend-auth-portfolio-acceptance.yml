@@ -1,0 +1,48 @@
+name: Frontend Auth Portfolio Acceptance
+
+on:
+  pull_request:
+    branches:
+      - fix/center-empty-chat-composer-20261102
+    paths:
+      - "frontend/src/app/api/auth/**"
+      - "frontend/src/lib/auth/**"
+      - "frontend/tests/auth-portfolio-timeout.test.mjs"
+      - ".github/workflows/frontend-auth-portfolio-acceptance.yml"
+  push:
+    branches:
+      - fix/center-empty-chat-composer-20261102
+    paths:
+      - "frontend/src/app/api/auth/**"
+      - "frontend/src/lib/auth/**"
+      - "frontend/tests/auth-portfolio-timeout.test.mjs"
+      - ".github/workflows/frontend-auth-portfolio-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-portfolio-acceptance:
+    name: Bounded auth proxy + frontend lint/typecheck/build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked deps
+        run: npm ci
+      - name: Lint + TypeScript + bounded auth tests
+        run: |
+          npm run lint
+          npx tsc --noEmit
+          node --test tests/auth-portfolio-timeout.test.mjs
+      - name: Production build (no deploy)
+        run: npm run build
