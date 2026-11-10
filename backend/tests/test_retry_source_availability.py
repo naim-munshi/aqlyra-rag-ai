@@ -10,7 +10,7 @@ from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.main import app
 from app.services.private_object_storage import PrivateObjectStorageError
-from app.services.document_processing_service import StoredDocumentNotFoundError
+from app.services.storage_service import StoredFileNotFoundError
 import app.api.documents as documents
 
 
@@ -36,7 +36,7 @@ def _set_owner_and_doc(monkeypatch, owner, document):
     monkeypatch.setattr(
         documents, "get_user_document",
         lambda *, db, user_id, document_id: (
-            document if user_id == str(owner.id) and document_id == document.id
+            document if user_id == str(owner.id) and document.user_id == user_id and document_id == document.id
             else None
         ),
     )
@@ -47,9 +47,9 @@ def test_missing_legacy_local_png_keeps_failed_status_and_never_queues(client, m
     doc = _document(str(owner.id), storage_path="lost-local/legacy.png", ext=".png")
     _set_owner_and_doc(monkeypatch, owner, doc)
     monkeypatch.setattr(
-        documents, "_resolve_stored_document_path",
+        documents, "resolve_stored_file_path",
         lambda path: (_ for _ in ()).throw(
-            StoredDocumentNotFoundError("PRIVATE-STORAGE-PATH")
+            StoredFileNotFoundError("PRIVATE-STORAGE-PATH")
         ),
     )
     monkeypatch.setattr(
