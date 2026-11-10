@@ -270,6 +270,8 @@ class Settings(BaseSettings):
     # Explicit second operator opt-in: safely resume the oldest verified
     # cloud document without a hard-coded target. Never enable by default.
     KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED: bool = False
+    # Separate, default-off multi-pass recovery; max 1,024 chunks per startup.
+    KNOWLEDGE_SEMANTIC_RECOVERY_CAMPAIGN_ENABLED: bool = False
     # Batch-level limit; total recovery startup budget remains <=64 chunks.
     KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS: int = Field(default=8, ge=1, le=24)
     # One-shot recovery may resume several small, individually committed batches.
