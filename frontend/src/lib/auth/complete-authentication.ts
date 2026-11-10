@@ -68,6 +68,9 @@ export async function completeAuthentication(
           Authorization: `Bearer ${tokenData.access_token}`,
         },
         cache: "no-store",
+        // Legacy API without user profile: bound this secondary private hop.
+        // A failure must abort before any auth cookie is written.
+        signal: AbortSignal.timeout(15_000),
       },
     );
     userData = await readJson<UserResponse | BackendError>(userResponse);
