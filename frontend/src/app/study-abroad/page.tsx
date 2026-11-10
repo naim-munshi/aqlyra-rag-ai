@@ -1,18 +1,36 @@
 import { redirect } from "next/navigation";
-import { getAccessToken } from "@/lib/auth/session";
-import { backendUrl } from "@/lib/api/backend";
+
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { StudyAbroadWorkspace } from "@/components/study-abroad/study-abroad-workspace";
+import { backendUrl } from "@/lib/api/backend";
+import { getAccessToken } from "@/lib/auth/session";
+
+export const dynamic = "force-dynamic";
 
 export default async function StudyAbroadPage() {
-  const token = await getAccessToken();
-  if (!token) redirect("/login");
-  let active = false;
+  let token: string | null;
   try {
-    const response = await fetch(backendUrl("/users/me"), {
-      headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+    token = await getAccessToken();
+  } catch {
+    // A cold Render instance is not evidence that the user's session expired.
+    return <SessionServiceUnavailable />;
+  }
+  if (!token) redirect("/login");
+
+  let response: Response;
+  try {
+    response = await fetch(backendUrl("/users/me"), {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
     });
-    active = response.ok;
-  } catch { active = false; }
-  if (!active) redirect("/login");
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
+
+  // Only real auth rejection can redirect; a 5xx is a temporary outage.
+  if (response.status === 401 || response.status === 403) redirect("/login");
+  if (!response.ok) return <SessionServiceUnavailable />;
+
   return <StudyAbroadWorkspace />;
 }
