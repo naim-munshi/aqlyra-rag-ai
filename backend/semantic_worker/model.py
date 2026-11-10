@@ -13,6 +13,9 @@ from huggingface_hub import hf_hub_download
 from tokenizers import Tokenizer
 
 REPO = "hotchpotch/bekko-static-embedding-v1"
+# Public Hugging Face upstream commit verified 2026-11-10. Do not let a
+# mutable default branch silently change vectors under an unchanged model ID.
+REVISION = "c18167b8f244c1bc6de21ce9b710bac8a29c4615"
 MODEL = "bekko-static-multilingual-int8-mrl384-v1"
 DIMENSION = 384
 MODEL_FILE = "onnx/model_int8_dim512.onnx"
@@ -21,17 +24,17 @@ _MODEL_LOCK = threading.Lock()
 
 def download_public_model() -> None:
     for filename in (MODEL_FILE, "tokenizer.json"):
-        hf_hub_download(repo_id=REPO, filename=filename)
+        hf_hub_download(repo_id=REPO, filename=filename, revision=REVISION)
 
 
 class Encoder:
     def __init__(self) -> None:
         offline = os.environ.get("HF_HUB_OFFLINE") == "1"
         weights = hf_hub_download(
-            repo_id=REPO, filename=MODEL_FILE, local_files_only=offline,
+            repo_id=REPO, filename=MODEL_FILE, revision=REVISION, local_files_only=offline,
         )
         tokenizer_path = hf_hub_download(
-            repo_id=REPO, filename="tokenizer.json", local_files_only=offline,
+            repo_id=REPO, filename="tokenizer.json", revision=REVISION, local_files_only=offline,
         )
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
         self.tokenizer.enable_truncation(max_length=512)

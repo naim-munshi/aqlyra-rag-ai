@@ -2,11 +2,19 @@ name: Isolated Semantic Worker Acceptance
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "release/**"]
     paths:
       - "backend/semantic_worker/**"
       - "backend/app/embeddings/remote_semantic_provider.py"
       - "backend/app/embeddings/registry.py"
+      - ".github/workflows/isolated-semantic-worker.yml"
+      - "backend/evaluation/corpus/**"
+      - "backend/evaluation/retrieval_cases.json"
+      - "backend/evaluation/retrieval_cases_cross_language.json"
+  push:
+    branches: ["release/**"]
+    paths:
+      - "backend/semantic_worker/**"
       - ".github/workflows/isolated-semantic-worker.yml"
   workflow_dispatch:
 
@@ -27,10 +35,30 @@ jobs:
           PYTHONPATH=backend python -m pytest -q backend/semantic_worker/worker_contracts.py
       - name: Build compact offline semantic worker
         run: docker build -f backend/semantic_worker/Dockerfile -t aqlyra-semantic-worker-test backend
-      - name: Run genuine multilingual E5 in 512MiB container
+      - name: Run genuine pinned multilingual static 384D inference in 512MiB container
         run: |
           docker run --rm --memory=512m --memory-swap=512m \
             --entrypoint python aqlyra-semantic-worker-test -m semantic_worker.probe
+      - name: Evaluate real worker ONNX retrieval on 60 synthetic EN/JA/BN questions
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/aqlyra-semantic-benchmark"
+          # Runtime image intentionally runs as UID 10002, not host runner.
+          # Grant only this synthetic CI report directory to that UID.
+          sudo chown 10002:10002 "$RUNNER_TEMP/aqlyra-semantic-benchmark"
+          docker run --rm --memory=512m --memory-swap=512m \
+            --mount "type=bind,src=$PWD/backend/evaluation,dst=/app/evaluation,readonly" \
+            --mount "type=bind,src=$PWD/backend/app/chunking,dst=/app/app/chunking,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/aqlyra-semantic-benchmark,dst=/reports" \
+            --entrypoint python aqlyra-semantic-worker-test -m semantic_worker.benchmark
+      - name: Preserve measured source-model benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aqlyra-static-384d-real-worker-cross-language
+          path: ${{ runner.temp }}/aqlyra-semantic-benchmark/static-384d-crosslang.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Verify isolated authenticated HTTP and health
         run: |
           docker run -d --name aqlyra-semantic-check --memory=512m --memory-swap=512m \
