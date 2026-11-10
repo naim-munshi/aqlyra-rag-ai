@@ -95,6 +95,9 @@ def search_similar_chunks(
             == provider_info.model_name,
             EmbeddingRecord.dimension
             == provider_info.dimension,
+            # A vector from an older chunk revision is never current evidence.
+            EmbeddingRecord.content_hash
+            == DocumentChunk.content_hash,
         )
     )
 
@@ -281,6 +284,9 @@ def score_specific_chunks(
             == provider_info.model_name,
             EmbeddingRecord.dimension
             == provider_info.dimension,
+            # A vector from an older chunk revision is never current evidence.
+            EmbeddingRecord.content_hash
+            == DocumentChunk.content_hash,
         )
     )
 
