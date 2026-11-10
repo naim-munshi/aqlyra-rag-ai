@@ -267,7 +267,10 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEMANTIC_BACKFILL_ON_STARTUP: bool = False
     # Production requires an explicit verified owner-linked document for canary recovery.
     KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID: str = ""
-    # A single recovery startup may embed at most 24 missing/stale chunks.
+    # Explicit second operator opt-in: safely resume the oldest verified
+    # cloud document without a hard-coded target. Never enable by default.
+    KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED: bool = False
+    # Batch-level limit; total recovery startup budget remains <=64 chunks.
     KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS: int = Field(default=8, ge=1, le=24)
     # One-shot recovery may resume several small, individually committed batches.
     # Hard total safety budget: max_chunks * max_batches <= 64.

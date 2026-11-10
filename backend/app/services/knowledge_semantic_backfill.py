@@ -6,7 +6,7 @@ chunks are reembedded in a transaction and existing vectors are preserved.
 """
 import logging
 import time
-from sqlalchemy import exists, select
+from sqlalchemy import exists, literal, select
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -31,7 +31,11 @@ def backfill_ready_semantic_embeddings(
         logger.warning("knowledge_semantic_backfill status=SKIPPED reason=provider")
         return 0
     target = settings.KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID.strip()
-    if settings.APP_ENV.strip().lower() == "production" and not target:
+    if (
+        settings.APP_ENV.strip().lower() == "production"
+        and not target
+        and not settings.KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED
+    ):
         logger.warning(
             "knowledge_semantic_backfill status=SKIPPED reason=target_required"
         )
@@ -74,6 +78,14 @@ def backfill_ready_semantic_embeddings(
             permitted_retrieval_document(),
             Document.storage_path.like("cloud://%"),
             CloudUploadIntent.status == "completed",
+            # A completed intent is not proof of this exact file unless the
+            # immutable finalized key and byte-level metadata still agree.
+            # Never re-index a deleted, remapped or inconsistent upload.
+            CloudUploadIntent.deleted_at.is_(None),
+            CloudUploadIntent.final_object_key.is_not(None),
+            Document.storage_path == literal("cloud://") + CloudUploadIntent.final_object_key,
+            Document.checksum_sha256 == CloudUploadIntent.expected_sha256,
+            Document.file_size == CloudUploadIntent.expected_size,
             Document.file_extension.in_(
                 (".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv")
             ),
@@ -86,13 +98,21 @@ def backfill_ready_semantic_embeddings(
         statement = statement.where(Document.id == target)
     eligible = list(db.scalars(statement).all())
     processed = 0
+    remaining_batches = max_batches
+    stop_on_error = False
     for doc in eligible:
+        if remaining_batches <= 0 or stop_on_error:
+            break
         created_for_document = 0
         for batch_index in range(max_batches):
+            if remaining_batches <= 0:
+                break
+            # The 64-chunk limit is GLOBAL across selected documents, not
+            # 64 per document when an operator selects up to three.
+            remaining_batches -= 1
             try:
                 # This implementation commits each small batch independently.
-                # A restart, quota failure or free-tier spin-down resumes by
-                # finding missing/stale content hashes, not an in-memory cursor.
+                # A restart or quota failure resumes by current content hashes.
                 result = reindex_missing_document_embeddings(
                     db=db, document=doc, provider=provider,
                     max_chunks=batch_chunks,
@@ -102,20 +122,21 @@ def backfill_ready_semantic_embeddings(
                 created_for_document += result.created_count
                 logger.info(
                     "knowledge_semantic_backfill status=PASS chunks=%s batch=%s",
-                    result.created_count, batch_index + 1,
+                    result.created_count, max_batches - remaining_batches,
                 )
                 if result.created_count < batch_chunks:
                     break
-                if batch_index + 1 < max_batches:
+                if remaining_batches > 0:
                     time.sleep(1.0)
             except Exception as exc:
-                # Stop this document on any failure, especially 429: never
-                # amplify provider quotas with the remaining planned batches.
+                # Never continue to OTHER documents after a 429 or any
+                # provider failure; no repeated quota storms on cold start.
                 db.rollback()
                 logger.warning(
                     "knowledge_semantic_backfill status=FAIL error_type=%s",
                     type(exc).__name__,
                 )
+                stop_on_error = True
                 break
         if created_for_document:
             processed += 1
