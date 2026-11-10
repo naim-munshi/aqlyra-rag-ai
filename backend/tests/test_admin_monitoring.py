@@ -228,3 +228,76 @@ def test_admin_chat_activity_zero_for_new_accounts(
     assert activity["user_messages_last_7d"] == 0
     assert all(day["users"] == 0 and day["messages"] == 0
                for day in activity["daily_last_7_utc_days"])
+
+
+def test_admin_rag_coverage_counts_only_matching_current_vectors(
+    client: TestClient, db_session, monkeypatch,
+) -> None:
+    """Report must not count stale hashes or leak other tenants' filenames."""
+    from hashlib import sha256
+    from app.models.document import Document
+    from app.models.document_chunk import DocumentChunk
+    from app.models.embedding_record import EmbeddingRecord
+    from app.embeddings.remote_semantic_provider import MODEL
+
+    admin_id, admin_token = _new_user(client, "ragcoveradmin")
+    user_id, user_token = _new_user(client, "ragcoverother")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+    for owner_id, suffix, texts in (
+        (admin_id, "one", ("Current vector", "Stale vector")),
+        (user_id, "two", ("Missing vector",)),
+    ):
+        document = Document(
+            user_id=owner_id, original_filename="secret_" + suffix + ".md",
+            stored_filename="private_" + suffix + ".md",
+            storage_path="cloud://documents/test/" + uuid4().hex + ".md",
+            file_extension=".md", content_type="text/markdown",
+            file_size=10, checksum_sha256="a" * 64, status="ready",
+        )
+        db_session.add(document)
+        db_session.flush()
+        for idx, body in enumerate(texts):
+            chunk = DocumentChunk(
+                document_id=document.id, chunk_index=idx,
+                source_label="private " + suffix, content=body,
+                embedding_content=body, content_hash=sha256(body.encode()).hexdigest(),
+                token_count=3, char_count=len(body), word_count=2,
+            )
+            db_session.add(chunk)
+            db_session.flush()
+            if body != "Missing vector":
+                db_session.add(EmbeddingRecord(
+                    chunk_id=chunk.id, provider_name="remote_onnx",
+                    model_name=MODEL, dimension=384,
+                    content_hash=("f" * 64 if body == "Stale vector" else chunk.content_hash),
+                    embedding=[0.0] * 383 + [1.0], input_token_count=3,
+                ))
+    db_session.flush()
+    route = "/api/v1/admin/rag-coverage"
+    assert client.get(route).status_code == 401
+    assert client.get(route, headers={"Authorization": "Bearer " + user_token}).status_code == 403
+    response = client.get(route, headers={"Authorization": "Bearer " + admin_token})
+    assert response.status_code == 200
+    assert "no-store" in response.headers["cache-control"]
+    assert response.headers["vary"] == "Cookie"
+    values = response.json()["semantic_index"]
+    assert values["ready_documents"] == 2
+    assert values["eligible_chunks"] == 3
+    assert values["indexed_chunks"] == 1
+    assert values["missing_or_stale_chunks"] == 2
+    assert values["coverage_percent"] == 33.33
+    for private in (admin_id, user_id, "secret_one", "secret_two", "@example.com"):
+        assert private not in response.text
+
+
+def test_admin_rag_coverage_reports_empty_index_safely(
+    client: TestClient, monkeypatch,
+) -> None:
+    admin_id, token = _new_user(client, "ragcoverempty")
+    monkeypatch.setattr(settings, "ADMIN_USER_IDS", admin_id)
+    response = client.get("/api/v1/admin/rag-coverage", headers={
+        "Authorization": "Bearer " + token,
+    })
+    assert response.status_code == 200
+    assert response.json()["semantic_index"]["eligible_chunks"] == 0
+    assert response.json()["semantic_index"]["coverage_percent"] is None

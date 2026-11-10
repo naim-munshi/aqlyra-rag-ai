@@ -15,6 +15,10 @@ from app.database.connection import get_db
 from app.models.conversation import Conversation
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
+from app.models.document_chunk import DocumentChunk
+from app.models.embedding_record import EmbeddingRecord
+from app.embeddings.remote_semantic_provider import MODEL as SEMANTIC_MODEL
+from app.services.retrieval_exclusions import permitted_retrieval_document
 from app.models.message import Message
 from app.models.user import User
 
@@ -178,4 +182,60 @@ def admin_overview(
             "generated_at": utc_now_naive().isoformat() + "Z",
         },
         headers={"Cache-Control": "no-store, private"},
+    )
+
+
+@router.get("/rag-coverage")
+def admin_rag_coverage(
+    _admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Current-model vector coverage; aggregate counts only, no private content.
+
+    A row is indexed only if provider, model, 384D dimension and the exact
+    chunk content hash match. Historical/stale/other-model rows never inflate
+    coverage. This route does not issue any embedding/provider requests.
+    """
+    eligible = (
+        Document.status == "ready",
+        permitted_retrieval_document(),
+    )
+    ready_documents = db.scalar(
+        select(func.count(Document.id)).where(*eligible)
+    ) or 0
+    chunk_scope = (
+        select(func.count(DocumentChunk.id))
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(*eligible)
+    )
+    total = int(db.scalar(chunk_scope) or 0)
+    current_vector = (
+        select(EmbeddingRecord.id)
+        .where(
+            EmbeddingRecord.chunk_id == DocumentChunk.id,
+            EmbeddingRecord.provider_name == "remote_onnx",
+            EmbeddingRecord.model_name == SEMANTIC_MODEL,
+            EmbeddingRecord.dimension == 384,
+            EmbeddingRecord.content_hash == DocumentChunk.content_hash,
+        )
+        .exists()
+    )
+    indexed = int(db.scalar(chunk_scope.where(current_vector)) or 0)
+    missing = total - indexed
+    return JSONResponse(
+        {
+            "semantic_index": {
+                "ready_documents": int(ready_documents),
+                "eligible_chunks": total,
+                "indexed_chunks": indexed,
+                "missing_or_stale_chunks": missing,
+                "coverage_percent": round(indexed * 100.0 / total, 2) if total else None,
+                "provider": "remote_onnx",
+                "model": SEMANTIC_MODEL,
+                "dimension": 384,
+                "scope": "ready_nonquarantined_chunks_all_roles_aggregate",
+            },
+            "generated_at": utc_now_naive().isoformat() + "Z",
+        },
+        headers={"Cache-Control": "private, no-store", "Vary": "Cookie"},
     )
