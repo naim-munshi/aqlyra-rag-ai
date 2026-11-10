@@ -229,7 +229,7 @@ def admin_rag_coverage(
                 "eligible_chunks": total,
                 "indexed_chunks": indexed,
                 "missing_or_stale_chunks": missing,
-                "coverage_percent": round(indexed * 100.0 / total, 2) if total else 100.0,
+                "coverage_percent": round(indexed * 100.0 / total, 2) if total else None,
                 "provider": "remote_onnx",
                 "model": SEMANTIC_MODEL,
                 "dimension": 384,
