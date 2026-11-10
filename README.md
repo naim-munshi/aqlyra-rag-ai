@@ -4,6 +4,8 @@
 
 **Measured result:** 1,035/1,035 *eligible* ready Knowledge chunks had current real semantic vectors in the production database on 10 November; 7 quarantined answer-key chunks remain excluded. **This is indexing coverage, not answer accuracy.** Current production embeddings use `bekko-static-multilingual-int8-mrl384-v1`, **not IBM Granite**.
 
+**Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
+
 **Try it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*scripted, no live inference*) · [Source and release README](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027).
 
 **Scope:** A deployed development/portfolio system, **not production-certified enterprise software**; Google/password E2E, voice calls, reliability, backup/restore and real-model quality metrics still require independent acceptance.
