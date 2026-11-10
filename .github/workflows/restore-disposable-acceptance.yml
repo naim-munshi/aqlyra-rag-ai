@@ -67,6 +67,9 @@ jobs:
       - name: Rehearse verified backup and destructive restore in disposable CI ONLY
         run: |
           set -Eeuo pipefail
+          # Repository shell files are not guaranteed executable in checkout.
+          chmod +x scripts/ops/backup.sh scripts/ops/verify-backup.sh \
+            scripts/ops/restore.sh scripts/ops/rehearse_backup_restore_ci.sh
           scripts/ops/rehearse_backup_restore_ci.sh
       - name: Sanitize and delete disposable environment
         if: always()
