@@ -756,8 +756,10 @@ export function DocumentPanel() {
                       </button>
                     )}
 
-                    {document.status === "failed" &&
-                      ![".png", ".jpg", ".jpeg", ".webp"].includes(document.file_extension) && (
+                    {/* Image OCR is a supported parser/queue route now. Retry
+                        remains owner-authenticated; the backend rejects
+                        unavailable legacy local originals without mutation. */}
+                    {document.status === "failed" && (
                       <button
                         type="button"
                         disabled={isProcessing}
