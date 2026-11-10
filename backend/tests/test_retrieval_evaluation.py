@@ -232,3 +232,62 @@ def test_mean_ndcg_handles_hits_and_abstention_misses() -> None:
     )
     assert report.mean_ndcg_at_k == pytest.approx(0.5)
     assert report.cases[1].ndcg_at_k == 0.0
+
+
+def test_precision_at_k_counts_missing_slots_and_deduplicates_ids() -> None:
+    case = RetrievalEvaluationCase(
+        query_id="precision-test",
+        query="Find two relevant chunks",
+        relevant_chunk_ids=frozenset({"a", "b"}),
+    )
+    result = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=("a", "a", "noise", "b"),
+        k=4,
+    )
+    assert result.retrieved_chunk_ids == ("a", "noise", "b")
+    assert result.precision_at_k == pytest.approx(2 / 4)
+    assert result.recall_at_k == pytest.approx(1.0)
+    assert result.ndcg_at_k <= 1.0
+
+    # Do not inflate precision by dividing by the 1 returned candidate.
+    sparse = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=("a",),
+        k=4,
+    )
+    assert sparse.precision_at_k == pytest.approx(0.25)
+    assert sparse.recall_at_k == pytest.approx(0.5)
+
+    empty = evaluate_case(
+        case=case,
+        retrieved_chunk_ids=(),
+        k=4,
+    )
+    assert empty.precision_at_k == 0.0
+    assert empty.hit_at_k is False
+
+
+def test_mean_precision_macro_average_includes_misses() -> None:
+    cases = (
+        RetrievalEvaluationCase(
+            query_id="p1",
+            query="First",
+            relevant_chunk_ids=frozenset({"a"}),
+        ),
+        RetrievalEvaluationCase(
+            query_id="p2",
+            query="Second",
+            relevant_chunk_ids=frozenset({"b"}),
+        ),
+    )
+    summary = evaluate_rankings(
+        cases=cases,
+        rankings={"p1": ("a",), "p2": ()},
+        k=2,
+    )
+    # First has Precision@2 = 1/2, second = 0/2.
+    assert summary.mean_precision_at_k == pytest.approx(0.25)
+    assert summary.cases[0].precision_at_k == pytest.approx(0.5)
+    assert summary.cases[1].precision_at_k == 0.0
+    assert summary.hit_rate_at_k == pytest.approx(0.5)

@@ -46,6 +46,7 @@ class RetrievalCaseMetrics:
     relevant_hits: tuple[str, ...]
     retrieved_chunk_ids: tuple[str, ...]
     ndcg_at_k: float = 0.0
+    precision_at_k: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,7 @@ class RetrievalEvaluationSummary:
     mrr_at_k: float
     cases: tuple[RetrievalCaseMetrics, ...]
     mean_ndcg_at_k: float = 0.0
+    mean_precision_at_k: float = 0.0
 
 
 def _unique_ranked_ids(
@@ -124,6 +126,11 @@ def evaluate_case(
         / len(case.relevant_chunk_ids)
     )
 
+    # Standard Precision@K divides by the requested cutoff K, not the
+    # number of returned candidates. Duplicate chunk IDs are removed first;
+    # missing results therefore count as empty ranking slots.
+    precision_at_k = len(relevant_hits) / k
+
     reciprocal_rank = (
         1.0 / first_relevant_rank
         if first_relevant_rank is not None
@@ -148,6 +155,7 @@ def evaluate_case(
         query_id=case.query_id,
         hit_at_k=hit_at_k,
         recall_at_k=recall_at_k,
+        precision_at_k=precision_at_k,
         reciprocal_rank=reciprocal_rank,
         first_relevant_rank=(
             first_relevant_rank
@@ -246,6 +254,10 @@ def evaluate_rankings(
         cases=case_metrics,
         mean_ndcg_at_k=(
             math.fsum(result.ndcg_at_k for result in case_metrics)
+            / case_count
+        ),
+        mean_precision_at_k=(
+            math.fsum(result.precision_at_k for result in case_metrics)
             / case_count
         ),
     )
