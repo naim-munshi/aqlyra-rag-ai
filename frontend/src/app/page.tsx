@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { PublicHomePage } from "@/components/marketing/public-home";
 import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
 
@@ -27,6 +28,7 @@ async function getCurrentUser(): Promise<UserResponse | null> {
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
       },
     );
 
@@ -64,7 +66,14 @@ const PUBLIC_DESCRIPTION =
 export async function generateMetadata(): Promise<Metadata> {
   // A session can display private workspace content at this same route.
   // Never advertise the signed-in view to web crawlers.
-  const hasSession = Boolean(await getAccessToken());
+  let hasSession: boolean;
+  try {
+    hasSession = Boolean(await getAccessToken());
+  } catch {
+    // An expired JWT plus a sleeping provider must not expose a private
+    // session to crawlers or turn an outage into a redirect.
+    return { robots: { index: false, follow: false } };
+  }
   if (hasSession || process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true") {
     return { robots: { index: false, follow: false } };
   }
@@ -90,7 +99,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Home() {
-  const user = await getCurrentUser();
+  let user: UserResponse | null;
+  try {
+    user = await getCurrentUser();
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
 
   if (!user) {
     // Keep existing portfolio/demo behavior. Real production exposes only
