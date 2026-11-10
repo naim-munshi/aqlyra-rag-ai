@@ -26,6 +26,7 @@ import { detectChatArtifactIntent, wantsChatArtifactList } from "@/lib/chat-arti
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
+import { formatSimilarity } from "@/lib/format-similarity";
 import {
   buildConversationTitle,
 } from "@/lib/conversation/title";
@@ -401,11 +402,6 @@ function getDuplicateDocumentId(
   return null;
 }
 
-function formatSimilarity(
-  score: number,
-) {
-  return score.toFixed(3);
-}
 
 export function RAGWorkspace({
   userId,
