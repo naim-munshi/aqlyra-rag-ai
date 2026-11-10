@@ -167,7 +167,7 @@ class RAGCitationResponse(BaseModel):
     start_page: int | None
     end_page: int | None
 
-    similarity_score: float
+    similarity_score: float | None
 
     excerpt: str
     was_truncated: bool
