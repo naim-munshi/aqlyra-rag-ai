@@ -43,6 +43,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/aqlyra-semantic-benchmark"
+          # Runtime image intentionally runs as UID 10002, not host runner.
+          # Grant only this synthetic CI report directory to that UID.
+          sudo chown 10002:10002 "$RUNNER_TEMP/aqlyra-semantic-benchmark"
           docker run --rm --memory=512m --memory-swap=512m \
             --mount "type=bind,src=$PWD/backend/evaluation,dst=/app/evaluation,readonly" \
             --mount "type=bind,src=$PWD/backend/app/chunking,dst=/app/app/chunking,readonly" \
