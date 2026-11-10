@@ -70,3 +70,10 @@ def test_http_entrypoint_cannot_run_in_worker_role():
     assert 'settings.AQLYRA_PROCESS_ROLE != "api"' in code
     image = (Path(__file__).resolve().parents[1] / "Dockerfile.voice").read_text()
     assert "ENV AQLYRA_PROCESS_ROLE=voice_worker" in image
+
+
+def test_railway_one_gib_worker_never_prewarms_idle_livekit_children():
+    """Guard against default production process pool near 1-GiB RSS limit."""
+    text = (Path(__file__).resolve().parents[1] / "app" / "voice" / "worker.py").read_text()
+    assert "AgentServer(num_idle_processes=0)" in text
+    assert text.count("server = AgentServer(") == 1
