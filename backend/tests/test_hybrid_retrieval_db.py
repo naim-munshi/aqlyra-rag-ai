@@ -564,7 +564,7 @@ def test_stale_content_hash_vectors_are_not_scored(
         headers=headers,
         filename="stale-cosine.md",
         content=(
-            "# Internal record\\n\\n"
+            "# Internal record\n\n"
             f"The verified owner code is {EXACT_TERM} "
             "and must remain available for lexical search."
         ),
