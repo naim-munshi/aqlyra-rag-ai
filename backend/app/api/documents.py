@@ -295,7 +295,7 @@ def process_uploaded_document(
             detail=str(exc),
         ) from exc
 
-    except StoredDocumentNotFoundError as exc:
+    except StoredFileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -392,7 +392,7 @@ def retry_knowledge_index(
             ) from exc
     else:
         try:
-            _resolve_stored_document_path(document.storage_path)
+            resolve_stored_file_path(document.storage_path)
         except StoredDocumentNotFoundError as exc:
             raise HTTPException(
                 status_code=409,
