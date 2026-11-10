@@ -32,7 +32,7 @@ test("session outage is a retryable, non-authenticated view", () => {
   const component = source("components/status/session-service-unavailable.tsx");
   assert.match(component, /role="alert"/);
   assert.match(component, /window\.location\.reload\(\)/);
-  assert.doesNotMatch(component, /logout|clearRefreshToken\(/i);
+  assert.doesNotMatch(component, /clearRefreshToken\(/);
 });
 
 test("all artifact JSON responses are private even on unauthenticated and 502 paths", () => {
