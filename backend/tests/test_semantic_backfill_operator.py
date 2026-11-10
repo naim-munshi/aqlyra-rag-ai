@@ -419,3 +419,52 @@ def test_production_batch_budget_rejects_unbounded_vectors(
     import pytest
     with pytest.raises(ValueError, match="64 chunks"):
         mod.backfill_ready_semantic_embeddings(db=db_session)
+
+
+def test_production_verified_cloud_scan_requires_second_explicit_opt_in(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", "")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED", False)
+    _doc(db_session, "scan_disabled")
+    calls = _record_calls(monkeypatch)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session) == 0
+    assert calls == []
+
+
+def test_explicit_production_scan_respects_global_budget_across_documents(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", "")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED", True)
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_CHUNKS", 8)
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES", 2)
+    _doc(db_session, "budget_first")
+    _doc(db_session, "budget_second")
+    _doc(db_session, "budget_third")
+    calls = _record_calls(monkeypatch)  # fake one chunk per document
+    assert mod.backfill_ready_semantic_embeddings(db=db_session, limit=3) == 2
+    assert len(calls) == 2
+    assert len(set(calls)) == 2
+
+
+def test_global_recovery_stops_after_one_provider_failure(
+    db_session, monkeypatch,
+):
+    _active_provider(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_TARGET_DOCUMENT_ID", "")
+    monkeypatch.setattr(settings, "KNOWLEDGE_SEMANTIC_BACKFILL_ALL_VERIFIED_ENABLED", True)
+    _doc(db_session, "fail_first")
+    _doc(db_session, "fail_second")
+    calls = []
+    def fail_once(*, db, document, provider, max_chunks):
+        calls.append(document.id)
+        raise EmbeddingProviderRequestError("synthetic quota failure")
+    monkeypatch.setattr(mod, "reindex_missing_document_embeddings", fail_once)
+    assert mod.backfill_ready_semantic_embeddings(db=db_session, limit=3) == 0
+    assert len(calls) == 1
