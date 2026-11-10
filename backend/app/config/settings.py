@@ -297,6 +297,9 @@ class Settings(BaseSettings):
 
     # RAG query rewriting
     RAG_QUERY_REWRITE_ENABLED: bool = False
+    # Experimental JA->EN query translation; OFF until real model/provider
+    # evaluation shows improvement with intact tenant isolation and citations.
+    RAG_JAPANESE_TO_ENGLISH_RETRIEVAL_ENABLED: bool = False
     QUERY_REWRITER_PROVIDER: str = "llm"
     QUERY_REWRITER_MAX_CHARS: int = 500
     QUERY_REWRITER_MAX_OUTPUT_TOKENS: int = 256
