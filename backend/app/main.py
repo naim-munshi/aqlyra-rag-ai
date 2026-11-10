@@ -132,9 +132,13 @@ def start_knowledge_index_worker() -> None:
                 from app.database.connection import SessionLocal
                 from app.services.knowledge_semantic_backfill import (
                     backfill_ready_semantic_embeddings,
+                    run_verified_semantic_recovery_campaign,
                 )
                 with SessionLocal() as db:
-                    backfill_ready_semantic_embeddings(db=db, limit=1)
+                    if settings.KNOWLEDGE_SEMANTIC_RECOVERY_CAMPAIGN_ENABLED:
+                        run_verified_semantic_recovery_campaign(db=db)
+                    else:
+                        backfill_ready_semantic_embeddings(db=db, limit=1)
             except Exception as exc:
                 logging.getLogger(__name__).warning(
                     "knowledge_semantic_backfill status=ERROR error_type=%s",
