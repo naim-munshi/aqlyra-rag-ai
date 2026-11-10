@@ -6,9 +6,11 @@
 
 **Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
 
+**Multilingual evaluation (new):** Actual deployed-weight Aqlyra static 384D ONNX encoder, **60 synthetic queries** over 30 English-source chunks: **Hit Rate@1 = 70% EN / 35% JA / 60% BN**. [Real 512 MiB model CI](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42775027087). The separate Granite 97M run yielded **85% EN / 70% JA / 45% BN** on 60 synthetic queries. These are **offline dense retrieval**, not end-user answer accuracy; Japanese retrieval is a documented gap. [Full Phase 1 evidence and acceptance report](docs/PORTFOLIO_PHASE1_AUDIT_20261110.md).
+
 **See it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*no live inference in demo*) · [Backend evaluation protocol](backend/evaluation/REPRODUCIBLE_PROTOCOL.md).
 
-**Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, controlled semantic benchmark and backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
+**Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, representative live answer-quality evaluation and **cloud** backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
 
 ---
 
