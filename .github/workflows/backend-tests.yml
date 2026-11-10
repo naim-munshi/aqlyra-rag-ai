@@ -134,7 +134,7 @@ jobs:
         run: |
           python -m pytest -q test_ephemeral_chat_load.py
 
-      - name: Run bounded 10-100 synthetic chat load on disposable CI backend
+      - name: Run two-user HTTP privacy/RAG E2E and bounded 10-100 synthetic chat load
         if: matrix.postgres-version == 16
         env:
           AQLYRA_DISPOSABLE_LOAD_CONFIRMED: "yes"
@@ -163,6 +163,10 @@ jobs:
             exit 1
           fi
           cd ..
+          # Existing owner-vs-nonowner HTTP acceptance now runs for real
+          # against this disposable local FastAPI + pgvector stack.
+          # Guarded strictly to loopback / deterministic providers.
+          python scripts/ops/ephemeral_fullstack_e2e.py --base-url http://127.0.0.1:8000
           python scripts/ops/ephemeral_chat_load.py             --base-url http://127.0.0.1:8000             --report-file /tmp/aqlyra-synthetic-chat-load.json
           echo "Synthetic concurrency measurement complete"
 
