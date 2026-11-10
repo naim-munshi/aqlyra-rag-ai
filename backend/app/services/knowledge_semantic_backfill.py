@@ -6,7 +6,7 @@ chunks are reembedded in a transaction and existing vectors are preserved.
 """
 import logging
 import time
-from sqlalchemy import exists, select
+from sqlalchemy import exists, literal, select
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -74,6 +74,14 @@ def backfill_ready_semantic_embeddings(
             permitted_retrieval_document(),
             Document.storage_path.like("cloud://%"),
             CloudUploadIntent.status == "completed",
+            # A completed intent is not proof of this exact file unless the
+            # immutable finalized key and byte-level metadata still agree.
+            # Never re-index a deleted, remapped or inconsistent upload.
+            CloudUploadIntent.deleted_at.is_(None),
+            CloudUploadIntent.final_object_key.is_not(None),
+            Document.storage_path == literal("cloud://") + CloudUploadIntent.final_object_key,
+            Document.checksum_sha256 == CloudUploadIntent.expected_sha256,
+            Document.file_size == CloudUploadIntent.expected_size,
             Document.file_extension.in_(
                 (".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv")
             ),
