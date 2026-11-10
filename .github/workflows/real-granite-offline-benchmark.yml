@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "backend/scripts/benchmark_real_granite_offline.py"
+      - "backend/scripts/benchmark_real_granite_cross_language.py"
+      - "backend/evaluation/retrieval_cases_cross_language.json"
       - "backend/evaluation/corpus/**"
       - "backend/evaluation/retrieval_cases.json"
       - ".github/workflows/real-granite-offline-benchmark.yml"
@@ -14,7 +16,7 @@ permissions:
 
 jobs:
   granite-real-embeddings:
-    name: Real Granite 384D / 20 labeled synthetic queries
+    name: Real Granite 384D / 60 English-Japanese-Bengali synthetic queries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -39,11 +41,17 @@ jobs:
         run: |
           python backend/scripts/benchmark_real_granite_offline.py \
             --output backend/evaluation/reports/granite-97m-offline-ci.json
+      - name: Evaluate 60 labeled cross-language synthetic queries
+        run: |
+          python backend/scripts/benchmark_real_granite_cross_language.py \
+            --output backend/evaluation/reports/granite-97m-cross-language-ci.json
       - name: Publish raw measured JSON (not a production claim)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-granite-97m-offline-benchmark
-          path: backend/evaluation/reports/granite-97m-offline-ci.json
+          path: |
+            backend/evaluation/reports/granite-97m-offline-ci.json
+            backend/evaluation/reports/granite-97m-cross-language-ci.json
           if-no-files-found: warn
           retention-days: 30
