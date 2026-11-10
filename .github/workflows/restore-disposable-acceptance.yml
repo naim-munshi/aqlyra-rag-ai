@@ -1,0 +1,68 @@
+name: Disposable Backup + Restore Acceptance
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/restore-disposable-acceptance.yml"
+      - "scripts/ops/backup.sh"
+      - "scripts/ops/verify-backup.sh"
+      - "scripts/ops/restore.sh"
+      - "scripts/ops/rehearse_backup_restore_ci.sh"
+      - "backend/Dockerfile"
+      - "docker-compose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-database-and-upload-restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      BACKEND_ENV_FILE: ./backend/.env.example
+      AQ_DISPOSABLE_RESTORE_CONFIRMED: "yes"
+      # This CI job must never receive production database or S3 secrets.
+      LLM_PROVIDER: deterministic
+      EMBEDDING_PROVIDER: deterministic
+    steps:
+      - name: Checkout synthetic-only test infrastructure
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check synthetic environment and script syntax
+        run: |
+          set -Eeuo pipefail
+          test -f backend/.env.example
+          test "$GITHUB_ACTIONS" = "true"
+          test "$AQ_DISPOSABLE_RESTORE_CONFIRMED" = "yes"
+          test "$BACKEND_ENV_FILE" = "./backend/.env.example"
+          grep -q '^LLM_PROVIDER=deterministic$' backend/.env.example
+          grep -q '^EMBEDDING_PROVIDER=deterministic$' backend/.env.example
+          for script in scripts/ops/{backup,verify-backup,restore,rehearse_backup_restore_ci}.sh; do
+            bash -n "$script"
+          done
+      - name: Start disposable pgvector Redis FastAPI
+        run: |
+          set -Eeuo pipefail
+          docker compose --env-file backend/.env.example up --build -d postgres redis backend
+          ready=0
+          for attempt in $(seq 1 75); do
+            if curl -fsS --max-time 4 http://127.0.0.1:8000/api/v1/readiness >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 3
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Disposable backend never became ready"
+            exit 1
+          fi
+      - name: Rehearse verified backup and destructive restore in disposable CI ONLY
+        run: |
+          set -Eeuo pipefail
+          scripts/ops/rehearse_backup_restore_ci.sh
+      - name: Sanitize and delete disposable environment
+        if: always()
+        run: |
+          docker compose --env-file backend/.env.example down --volumes --remove-orphans || true
