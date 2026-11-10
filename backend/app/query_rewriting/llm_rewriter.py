@@ -130,6 +130,17 @@ def _validate_rewrite(
             "Rewritten query exceeds maximum length"
         )
 
+    # Japanese numeric tokens may touch Kanji (2026年) and bypass the
+    # ASCII/Unicode word boundary in protected identifier extraction.
+    # Compare the complete numeric multiset to reject silent date drift.
+    number_pattern = re.compile(r"\d+(?:[.:/%-]\d+)*")
+    if sorted(number_pattern.findall(original)) != sorted(
+        number_pattern.findall(normalized)
+    ):
+        raise QueryRewriteValidationError(
+            "Rewritten query changed a numeric value"
+        )
+
     # Negation flips and dropped exact quotations can silently invert
     # answers, even when numbers and identifiers are preserved.
     if bool(_NEGATION_PATTERN.search(original)) != bool(
