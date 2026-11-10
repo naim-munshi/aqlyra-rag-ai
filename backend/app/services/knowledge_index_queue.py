@@ -44,8 +44,11 @@ def safe_index_failure_reason(exc: Exception) -> str:
     return "document_parse_error_other"
 
 log = logging.getLogger(__name__)
+# Keep the background queue aligned with the actual parser registry.
+# Images are processed with bounded OCR, not synthetic embeddings.
 INDEXABLE_EXTENSIONS = frozenset({
     ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".md", ".csv",
+    ".png", ".jpg", ".jpeg", ".webp",
 })
 _RECLAIM_AFTER = timedelta(minutes=30)
 
