@@ -730,7 +730,11 @@ logger.info(
 )
 
 
-server = AgentServer()
+# A 1-GiB Railway worker cannot safely prewarm the production default
+# number of child processes while accepting RTC jobs. Load Silero once per
+# actual call instead. This trades first-call latency for memory headroom.
+# The setting does not claim to repair LiveKit network transport failures.
+server = AgentServer(num_idle_processes=0)
 
 
 @server.rtc_session(
