@@ -300,4 +300,4 @@ def test_admin_rag_coverage_reports_empty_index_safely(
     })
     assert response.status_code == 200
     assert response.json()["semantic_index"]["eligible_chunks"] == 0
-    assert response.json()["semantic_index"]["coverage_percent"] == 100.0
+    assert response.json()["semantic_index"]["coverage_percent"] is None
