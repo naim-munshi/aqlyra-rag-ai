@@ -393,7 +393,7 @@ def retry_knowledge_index(
     else:
         try:
             resolve_stored_file_path(document.storage_path)
-        except StoredDocumentNotFoundError as exc:
+        except (StoredFileNotFoundError, StoredDocumentNotFoundError) as exc:
             raise HTTPException(
                 status_code=409,
                 detail="Original file is no longer available in local storage. Please contact support for safe re-upload.",
