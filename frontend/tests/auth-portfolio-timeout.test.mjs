@@ -42,3 +42,21 @@ test("timeout abort really settles within a bounded interval", async () => {
   });
   await assert.rejects(result, (error) => error?.name === "TimeoutError");
 });
+
+
+test("current-user proxy times out gracefully while preserving refresh cookies", () => {
+  const currentUser = src("app/api/auth/me/route.ts");
+  assert.match(currentUser, /backendUrl\("\/users\/me"\)/);
+  assert.match(currentUser, /signal: AbortSignal\.timeout\(12_000\)/);
+  assert.match(currentUser, /cache: "no-store"/);
+  assert.match(currentUser, /error\.name === "TimeoutError"/);
+  assert.match(currentUser, /error\.name === "AbortError"/);
+  assert.match(currentUser, /status: isTimeout \? 503 : 502/);
+  assert.match(currentUser, /"Retry-After": "10"/);
+  assert.match(currentUser, /return privateJsonResponse\(/);
+  // Only a real 401 or 403 is allowed to revoke cookies.
+  assert.match(currentUser, /response\.status === 401/);
+  assert.match(currentUser, /response\.status === 403/);
+  const temporaryErrorBranch = currentUser.split("} catch (error) {").at(-1);
+  assert.doesNotMatch(temporaryErrorBranch, /clearAccessToken\(|clearRefreshToken\(/);
+});
