@@ -22,7 +22,7 @@ def cloud_processing_source(*, db, owner_id, document, store=None):
     tmp = None
     try:
         try:
-                result = storage.get_object(
+            result = storage.get_object(
                 Bucket=settings.OBJECT_STORAGE_BUCKET, Key=key,
             )
             body = result["Body"]
@@ -49,19 +49,15 @@ def cloud_processing_source(*, db, owner_id, document, store=None):
         except PrivateObjectStorageError:
             raise
         except Exception as exc:
-            # Only source retrieval/parsing errors are storage failures.
-            # A missing/denied S3 object must not escape as an HTTP 500
-            # with provider-specific details or private object keys.
+            # Only source retrieval/validation errors are storage failures.
+            # Never reveal SDK exception details or private object keys.
             raise PrivateObjectStorageError(
                 "Private cloud document source could not be verified"
             ) from exc
         else:
-            # Exceptions from the caller's parser or LLM must propagate
-            # unchanged; do not misclassify them as S3 failures.
+            # A user's downstream parser/LLM error must propagate unchanged,
+            # instead of being hidden as a storage failure.
             yield Path(tmp.name)
-    # Exception raised by the user's vision/LLM call inside the with block
-    # must propagate unchanged; wrapping it as S3 failure hides the
-    # actual provider status and turns a recoverable 503 into a 500.
     finally:
         if body is not None and callable(getattr(body, "close", None)):
             body.close()
