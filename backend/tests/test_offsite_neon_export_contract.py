@@ -14,6 +14,17 @@ backup = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(backup)
 
 
+def test_backup_prefix_is_unique_even_when_started_same_second():
+    stamp = "20261111T130000Z"
+    first = backup._unique_backup_prefix(stamp)
+    second = backup._unique_backup_prefix(stamp)
+    assert first != second
+    assert first.startswith("aqlyra/backup-v1/" + stamp + "-")
+    assert second.startswith("aqlyra/backup-v1/" + stamp + "-")
+    with pytest.raises(backup.BackupRefused):
+        backup._unique_backup_prefix("../unsafe")
+
+
 def test_offsite_backup_fails_closed_without_confirmed_environment(monkeypatch):
     monkeypatch.delenv("AQ_OFFSITE_BACKUP_ENABLED", raising=False)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
