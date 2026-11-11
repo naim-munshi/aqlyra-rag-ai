@@ -17,7 +17,10 @@ from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.services.storage_durability_policy import local_writes_permitted
 from app.services.knowledge_index_queue import enqueue_document, should_index
-from app.services.cloud_document_access import private_document_read_grant
+from app.services.cloud_document_access import (
+    private_document_read_grant,
+    verified_cloud_document_key,
+)
 from app.services.cloud_process_io import cloud_processing_source
 from app.services.cloud_document_deletion import delete_cloud_document
 from app.services.private_object_storage import PrivateObjectStorageError
@@ -292,7 +295,7 @@ def process_uploaded_document(
             detail=str(exc),
         ) from exc
 
-    except StoredDocumentNotFoundError as exc:
+    except StoredFileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -372,6 +375,30 @@ def retry_knowledge_index(
         return DocumentResponse.model_validate(document)
     if document.status == "ready":
         return DocumentResponse.model_validate(document)
+
+    # A legacy failed local file may have disappeared on an ephemeral
+    # container; queuing it repeatedly cannot recover the missing bytes.
+    # Cloud files need an exact completed owner+checksum upload binding.
+    # Check BEFORE mutating job status, preserving the prior failure state.
+    if document.storage_path.startswith("cloud://"):
+        try:
+            verified_cloud_document_key(
+                db=db, owner_id=str(current_user.id), document=document,
+            )
+        except PrivateObjectStorageError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Private original cannot be verified. Please contact support before replacing this file.",
+            ) from exc
+    else:
+        try:
+            resolve_stored_file_path(document.storage_path)
+        except (StoredFileNotFoundError, StoredDocumentNotFoundError) as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Original file is no longer available in local storage. Please contact support for safe re-upload.",
+            ) from exc
+
     queued = enqueue_document(
         db=db, owner_id=str(current_user.id), document_id=document_id,
     )
