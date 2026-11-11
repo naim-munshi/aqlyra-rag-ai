@@ -1,3 +1,5 @@
+import os
+import re
 import tempfile
 
 from fastapi import (
@@ -26,6 +28,17 @@ from app.services.web_research_capability import public_web_research_status
 
 
 router = APIRouter()
+
+
+def _validated_render_revision() -> dict[str, str]:
+    """Expose only a valid Git SHA; never publish arbitrary environment text.
+
+    Render documents RENDER_GIT_COMMIT as a platform-provided value.
+    This is diagnostic metadata, not an authentication or deployment proof.
+    """
+    sha = os.environ.get("RENDER_GIT_COMMIT", "")
+    return {"deployment_git_sha": sha} if re.fullmatch(r"[0-9a-f]{40}", sha) else {}
+
 
 
 @router.get("/health")
@@ -194,6 +207,7 @@ def readiness():
         "status": "ready",
         "service": "aqlyra-rag-ai",
         "version": settings.VERSION,
+        **_validated_render_revision(),
         "checks": {
             "database": "ready",
             "storage": upload_storage_status,
