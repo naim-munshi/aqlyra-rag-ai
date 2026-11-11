@@ -22,6 +22,7 @@ jobs:
       AQ_OFFSITE_BACKUP_ENABLED: ${{ vars.AQ_OFFSITE_BACKUP_ENABLED }}
       AQ_OFFSITE_BACKUP_CONFIRMED: ${{ vars.AQ_OFFSITE_BACKUP_CONFIRMED }}
       AQ_NEON_DATABASE_URL: ${{ secrets.AQ_NEON_BACKUP_DATABASE_URL }}
+      AQ_PG18_IMAGE: ${{ vars.AQ_PG18_IMAGE }}
       AQ_SOURCE_S3_ENDPOINT: ${{ secrets.AQ_NEON_S3_ENDPOINT }}
       AQ_SOURCE_BUCKET: ${{ secrets.AQ_NEON_S3_BUCKET }}
       AQ_SOURCE_ACCESS_KEY_ID: ${{ secrets.AQ_NEON_S3_ACCESS_KEY_ID }}
@@ -47,8 +48,9 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends age
-          python -m pip install "psycopg[binary]>=3.2,<4" "boto3>=1.35,<2"
-          docker pull postgres:18
+          python -m pip install "psycopg==3.3.4" "psycopg-binary==3.3.4" "boto3==1.43.119"
+          [[ "${AQ_PG18_IMAGE:-}" =~ ^postgres:18@sha256:[0-9a-f]{64}$ ]] || { echo "Immutable PostgreSQL image digest required"; exit 1; }
+          docker pull "$AQ_PG18_IMAGE"
       - name: Bounded age-encrypted database and cloud object export
         run: |
           set -Eeuo pipefail
