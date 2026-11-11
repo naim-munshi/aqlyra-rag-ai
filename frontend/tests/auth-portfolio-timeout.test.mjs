@@ -54,6 +54,10 @@ test("current-user proxy times out gracefully while preserving refresh cookies",
   assert.match(currentUser, /status: isTimeout \? 503 : 502/);
   assert.match(currentUser, /"Retry-After": "10"/);
   assert.match(currentUser, /return privateJsonResponse\(/);
+  assert.match(currentUser, /typeof \(data as UserResponse\)\.id !== "string"/);
+  assert.match(currentUser, /typeof \(data as UserResponse\)\.email !== "string"/);
+  assert.match(currentUser, /Backend returned an invalid user response/);
+  assert.match(currentUser, /\{ status: 502 \}/);
   // Only a real 401 or 403 is allowed to revoke cookies.
   assert.match(currentUser, /response\.status === 401/);
   assert.match(currentUser, /response\.status === 403/);
