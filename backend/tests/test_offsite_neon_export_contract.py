@@ -25,6 +25,18 @@ def test_backup_prefix_is_unique_even_when_started_same_second():
         backup._unique_backup_prefix("../unsafe")
 
 
+def test_pg18_export_image_must_be_an_immutable_reviewed_digest(monkeypatch):
+    monkeypatch.delenv("AQ_PG18_IMAGE", raising=False)
+    with pytest.raises(backup.BackupRefused):
+        backup._pinned_pg18_image()
+    monkeypatch.setenv("AQ_PG18_IMAGE", "postgres:18")
+    with pytest.raises(backup.BackupRefused):
+        backup._pinned_pg18_image()
+    pinned = "postgres:18@sha256:" + ("a" * 64)
+    monkeypatch.setenv("AQ_PG18_IMAGE", pinned)
+    assert backup._pinned_pg18_image() == pinned
+
+
 def test_offsite_backup_fails_closed_without_confirmed_environment(monkeypatch):
     monkeypatch.delenv("AQ_OFFSITE_BACKUP_ENABLED", raising=False)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
