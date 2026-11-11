@@ -73,13 +73,21 @@ That metadata can include page, slide, sheet, filename, and document information
 
 ## 3. Embeddings
 
-The production template configures the following semantic embedding
-model (development and test environments use deterministic embeddings
-by default):
+Aqlyra's verified 10 November production release uses its authenticated
+`remote_onnx` semantic worker with the following real pretrained 384D
+embedding model identity (see
+`backend/app/embeddings/remote_semantic_provider.py`):
 
 ```text
-ibm-granite/granite-embedding-97m-multilingual-r2
+bekko-static-multilingual-int8-mrl384-v1
 ```
+
+The separate IBM Granite model,
+`ibm-granite/granite-embedding-97m-multilingual-r2`, was used for an
+**independent offline benchmark**. Those Granite scores are not the measured
+quality of the deployed worker. Local development and isolated tests default
+to deterministic embeddings unless an explicit real provider is configured;
+the defaults are not proof of a production model setting.
 
 Configured vector size:
 
@@ -87,7 +95,14 @@ Configured vector size:
 384
 ```
 
-Embeddings are stored with provider/model metadata so they can be replaced later without reparsing every source document.
+Vectors are stored with provider/model metadata **and current chunk content
+hashes**; stale hashes cannot be reused as fresh evidence. A model change
+requires a versioned, separately evaluated reindex. Never put new model
+vectors under the old model ID or silently overwrite existing user vectors.
+
+For model provenance, separate EN/JA/BN offline retrieval metrics, and limits
+of those synthetic evaluations, see
+[Phase 1 evidence](PORTFOLIO_PHASE1_AUDIT_20261110.md).
 
 ## 4. Dense retrieval
 
