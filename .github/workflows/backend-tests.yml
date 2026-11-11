@@ -27,7 +27,7 @@ concurrency:
 jobs:
   test:
     name: Python 3.13 / PostgreSQL ${{ matrix.postgres-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     strategy:
@@ -81,11 +81,6 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-
       - name: Install backend dependencies
         working-directory: backend
         run: |
@@ -93,29 +88,42 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Prepare PostgreSQL databases
-        env:
-          PGPASSWORD: postgres
+      # psycopg is a pinned application dependency. Avoid the runner-host
+      # apt repository entirely: Ubuntu mirror DNS outages must not make
+      # otherwise-correct PostgreSQL integration tests fail before startup.
+      - name: Prepare PostgreSQL databases via pinned psycopg
         run: |
-          psql \
-            --host localhost \
-            --username postgres \
-            --dbname postgres \
-            --set ON_ERROR_STOP=1 <<'SQL'
-          SELECT 'CREATE DATABASE aqlyra_rag_ai_test'
-          WHERE NOT EXISTS (
-              SELECT
-              FROM pg_database
-              WHERE datname = 'aqlyra_rag_ai_test'
-          )
-          \gexec
+          python - <<'PY'
+          import psycopg
+          from psycopg import sql
 
-          \connect aqlyra_rag_ai
-          CREATE EXTENSION IF NOT EXISTS vector;
+          # Disposable Actions service only; never a production database.
+          connection = "host=localhost port=5432 user=postgres password=postgres"
+          with psycopg.connect(
+              connection + " dbname=postgres", autocommit=True
+          ) as db:
+              existing = db.execute(
+                  "SELECT 1 FROM pg_database WHERE datname = %s",
+                  ("aqlyra_rag_ai_test",),
+              ).fetchone()
+              if existing is None:
+                  db.execute(
+                      sql.SQL("CREATE DATABASE {}").format(
+                          sql.Identifier("aqlyra_rag_ai_test")
+                      )
+                  )
 
-          \connect aqlyra_rag_ai_test
-          CREATE EXTENSION IF NOT EXISTS vector;
-          SQL
+          for database_name in ("aqlyra_rag_ai", "aqlyra_rag_ai_test"):
+              with psycopg.connect(
+                  connection + " dbname=" + database_name, autocommit=True,
+              ) as db:
+                  db.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                  row = db.execute(
+                      "SELECT extname FROM pg_extension WHERE extname = 'vector'"
+                  ).fetchone()
+                  assert row == ("vector",), "pgvector is unavailable"
+          print("CI_DISPOSABLE_PGVECTOR_PREP=PASS")
+          PY
 
       - name: Verify Alembic migrations
         working-directory: backend
