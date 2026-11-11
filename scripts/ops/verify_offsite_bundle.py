@@ -49,13 +49,20 @@ def _decrypt_pipe(encrypted, identity):
     )
 
 
+def _pinned_pg18_image():
+    image = os.environ.get("AQ_PG18_IMAGE", "")
+    if not re.fullmatch(r"postgres:18@sha256:[0-9a-f]{64}", image):
+        raise InvalidBackup("Immutable PostgreSQL 18 verifier image is required")
+    return image
+
+
 def verify_database(directory, identity):
     age = _decrypt_pipe(directory / "postgres.dump.age", identity)
     try:
         if age.stdout is None:
             raise InvalidBackup("Database decryption pipe unavailable")
         inspect = subprocess.Popen(
-            ["docker", "run", "--rm", "-i", "postgres:18",
+            ["docker", "run", "--rm", "-i", _pinned_pg18_image(),
              "pg_restore", "--list"],
             stdin=age.stdout, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
