@@ -38,6 +38,9 @@ export async function GET() {
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
+        // Avoid a Vercel function hanging during Render Free cold starts.
+        // A timeout is not evidence of an expired or revoked user session.
+        signal: AbortSignal.timeout(12_000),
       },
     );
 
@@ -52,18 +55,45 @@ export async function GET() {
       await clearRefreshToken();
     }
 
+    // A 200 with malformed/missing identity is an upstream failure, not
+    // successful authentication. Never let clients mistake it for a user.
+    if (
+      response.ok &&
+      (
+        !data ||
+        typeof data !== "object" ||
+        typeof (data as UserResponse).id !== "string" ||
+        !(data as UserResponse).id ||
+        typeof (data as UserResponse).email !== "string" ||
+        typeof (data as UserResponse).username !== "string"
+      )
+    ) {
+      return privateJsonResponse(
+        { detail: "Backend returned an invalid user response" },
+        { status: 502 },
+      );
+    }
+
     return privateJsonResponse(
-      data ?? {
-        detail: "Backend returned an invalid response",
+      data ?? { detail: "Backend returned an invalid response" },
+      { status: response.status },
+    );
+  } catch (error) {
+    // Keep HttpOnly cookies intact on transport/timeouts. A retry can
+    // recover the same authenticated session after Render wakes up.
+    const isTimeout =
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError");
+    return privateJsonResponse(
+      {
+        detail: isTimeout
+          ? "Session service temporarily unavailable. Please retry."
+          : "Backend service is unavailable",
       },
       {
-        status: response.status,
+        status: isTimeout ? 503 : 502,
+        headers: isTimeout ? { "Retry-After": "10" } : {},
       },
-    );
-  } catch {
-    return privateJsonResponse(
-      { detail: "Backend service is unavailable" },
-      { status: 502 },
     );
   }
 }
