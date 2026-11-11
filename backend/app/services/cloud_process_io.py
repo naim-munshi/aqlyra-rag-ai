@@ -21,31 +21,44 @@ def cloud_processing_source(*, db, owner_id, document, store=None):
     body = None
     tmp = None
     try:
-        result = storage.get_object(
-            Bucket=settings.OBJECT_STORAGE_BUCKET, Key=key,
-        )
-        body = result["Body"]
-        if int(result["ContentLength"]) != document.file_size:
-            raise PrivateObjectStorageError("Private document size mismatch")
-        tmp = tempfile.NamedTemporaryFile(
-            prefix="aqlyra-cloud-", suffix=document.file_extension,
-            delete=False,
-        )
-        total = 0
-        digest = hashlib.sha256()
-        with tmp:
-            for chunk in body.iter_chunks(chunk_size=1048576):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > document.file_size:
-                    raise PrivateObjectStorageError("Private file too large")
-                digest.update(chunk)
-                tmp.write(chunk)
-        if total != document.file_size or digest.hexdigest() != document.checksum_sha256:
-            raise PrivateObjectStorageError("Private file checksum mismatch")
-        _validate_file_content(Path(tmp.name), document.file_extension)
-        yield Path(tmp.name)
+        try:
+                result = storage.get_object(
+                Bucket=settings.OBJECT_STORAGE_BUCKET, Key=key,
+            )
+            body = result["Body"]
+            if int(result["ContentLength"]) != document.file_size:
+                raise PrivateObjectStorageError("Private document size mismatch")
+            tmp = tempfile.NamedTemporaryFile(
+                prefix="aqlyra-cloud-", suffix=document.file_extension,
+                delete=False,
+            )
+            total = 0
+            digest = hashlib.sha256()
+            with tmp:
+                for chunk in body.iter_chunks(chunk_size=1048576):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > document.file_size:
+                        raise PrivateObjectStorageError("Private file too large")
+                    digest.update(chunk)
+                    tmp.write(chunk)
+            if total != document.file_size or digest.hexdigest() != document.checksum_sha256:
+                raise PrivateObjectStorageError("Private file checksum mismatch")
+            _validate_file_content(Path(tmp.name), document.file_extension)
+        except PrivateObjectStorageError:
+            raise
+        except Exception as exc:
+            # Only source retrieval/parsing errors are storage failures.
+            # A missing/denied S3 object must not escape as an HTTP 500
+            # with provider-specific details or private object keys.
+            raise PrivateObjectStorageError(
+                "Private cloud document source could not be verified"
+            ) from exc
+        else:
+            # Exceptions from the caller's parser or LLM must propagate
+            # unchanged; do not misclassify them as S3 failures.
+            yield Path(tmp.name)
     # Exception raised by the user's vision/LLM call inside the with block
     # must propagate unchanged; wrapping it as S3 failure hides the
     # actual provider status and turns a recoverable 503 into a 500.
