@@ -38,6 +38,9 @@ export async function GET() {
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
+        // Avoid a Vercel function hanging during Render Free cold starts.
+        // A timeout is not evidence of an expired or revoked user session.
+        signal: AbortSignal.timeout(12_000),
       },
     );
 
@@ -60,10 +63,22 @@ export async function GET() {
         status: response.status,
       },
     );
-  } catch {
+  } catch (error) {
+    // Keep HttpOnly cookies intact on transport/timeouts. A retry can
+    // recover the same authenticated session after Render wakes up.
+    const isTimeout =
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError");
     return privateJsonResponse(
-      { detail: "Backend service is unavailable" },
-      { status: 502 },
+      {
+        detail: isTimeout
+          ? "Session service temporarily unavailable. Please retry."
+          : "Backend service is unavailable",
+      },
+      {
+        status: isTimeout ? 503 : 502,
+        headers: isTimeout ? { "Retry-After": "10" } : {},
+      },
     );
   }
 }
