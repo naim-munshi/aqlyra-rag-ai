@@ -159,3 +159,46 @@ def test_ready_document_cannot_be_processed_again(
 
     assert first_process_response.status_code == 200
     assert second_process_response.status_code == 409
+
+
+
+def test_missing_uploaded_original_returns_safe_conflict(
+    client: TestClient, monkeypatch,
+) -> None:
+    """Missing ephemeral originals are a user-fixable 409, not an HTTP 500.
+
+    Simulate the stored file disappearing without deleting any real upload.
+    The endpoint must not expose internal filesystem paths in its response.
+    """
+    import app.services.document_processing_service as processing
+    from app.services.document_processing_service import StoredDocumentNotFoundError
+
+    headers = create_auth_headers(client)
+    uploaded = upload_test_document(client, headers)
+    assert uploaded.status_code == 201
+    document_id = uploaded.json()["id"]
+
+    def lost_original(_path):
+        raise StoredDocumentNotFoundError(
+            "private/internal/uploads/path/missing-document.pdf"
+        )
+
+    monkeypatch.setattr(processing, "_resolve_stored_document_path", lost_original)
+    response = client.post(
+        f"/api/v1/documents/{document_id}/process",
+        headers=headers,
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == (
+        "Original document file is unavailable. Please upload it again."
+    )
+    assert "private/internal" not in response.text
+
+    # Processing records the error; it must never mark a missing file ready.
+    documents = client.get("/api/v1/documents", headers=headers)
+    assert documents.status_code == 200
+    record = next(
+        item for item in documents.json()["items"]
+        if item["id"] == document_id
+    )
+    assert record["status"] == "failed"
