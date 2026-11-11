@@ -55,13 +55,28 @@ export async function GET() {
       await clearRefreshToken();
     }
 
+    // A 200 with malformed/missing identity is an upstream failure, not
+    // successful authentication. Never let clients mistake it for a user.
+    if (
+      response.ok &&
+      (
+        !data ||
+        typeof data !== "object" ||
+        typeof (data as UserResponse).id !== "string" ||
+        !(data as UserResponse).id ||
+        typeof (data as UserResponse).email !== "string" ||
+        typeof (data as UserResponse).username !== "string"
+      )
+    ) {
+      return privateJsonResponse(
+        { detail: "Backend returned an invalid user response" },
+        { status: 502 },
+      );
+    }
+
     return privateJsonResponse(
-      data ?? {
-        detail: "Backend returned an invalid response",
-      },
-      {
-        status: response.status,
-      },
+      data ?? { detail: "Backend returned an invalid response" },
+      { status: response.status },
     );
   } catch (error) {
     // Keep HttpOnly cookies intact on transport/timeouts. A retry can
