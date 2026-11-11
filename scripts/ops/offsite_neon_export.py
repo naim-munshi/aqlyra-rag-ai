@@ -28,6 +28,7 @@ _KEY = re.compile(
     r"(\.(?:pdf|docx|xlsx|pptx|txt|md|csv|png|jpg|jpeg|webp))\Z"
 )
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
+_PG18_IMAGE = re.compile(r"postgres:18@sha256:[0-9a-f]{64}\\Z")
 _BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\Z")
 
 
@@ -49,6 +50,13 @@ def _required(name: str) -> str:
     if not value:
         raise BackupRefused("Offsite backup configuration is incomplete")
     return value
+
+
+def _pinned_pg18_image() -> str:
+    image = _required("AQ_PG18_IMAGE")
+    if not _PG18_IMAGE.fullmatch(image):
+        raise BackupRefused("A reviewed immutable PostgreSQL 18 image digest is required")
+    return image
 
 
 def _preflight():
@@ -77,6 +85,7 @@ def _preflight():
         raise BackupRefused("Source storage must use HTTPS")
     if not os.environ.get("AQ_OFFSITE_ENDPOINT", "https://s3.amazonaws.com").startswith("https://"):
         raise BackupRefused("Destination storage must use HTTPS")
+    _pinned_pg18_image()
     return recipient, source, dest
 
 
@@ -97,7 +106,7 @@ def _dump_pg18_to_encrypted_file(output: Path, recipient: str):
     env = {**os.environ, "PGDATABASE": _required("AQ_NEON_DATABASE_URL")}
     command = [
         "docker", "run", "--rm", "--network", "host",
-        "-e", "PGDATABASE", "postgres:18", "pg_dump",
+        "-e", "PGDATABASE", _pinned_pg18_image(), "pg_dump",
         "-Fc", "--no-owner", "--no-privileges",
     ]
     dump = subprocess.Popen(command, stdout=subprocess.PIPE,
