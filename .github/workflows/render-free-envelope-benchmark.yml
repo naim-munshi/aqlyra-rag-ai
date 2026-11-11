@@ -1,4 +1,6 @@
-# Isolated simulation of Render Free's CPU/RAM limits, NOT actual Render.
+# Isolated CPU/RAM envelope modeled on Render's documented Free compute plan.
+# 0.1 CPU + 512 MiB: https://render.com/docs/compute-plans
+# NOT a production capacity claim; actual Render, provider quotas, and Neon differ.
 # All identities/data are synthetic on ephemeral GitHub PostgreSQL.
 name: Render Free Resource-Envelope Benchmark
 
@@ -23,7 +25,7 @@ concurrency:
 
 jobs:
   deterministic-envelope:
-    name: 0.15 CPU / 512 MiB synthetic FastAPI chat
+    name: 0.1 CPU / 512 MiB synthetic FastAPI chat
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -135,14 +137,15 @@ jobs:
             cat /tmp/aqlyra-render-envelope-test.log
             exit 1
           fi
-          # This caps only the *actual* HTTP workload, not bcrypt setup.
-          docker update --cpus=0.15 --memory=512m --memory-swap=512m \
+          # Model Render Free's published 0.1 CPU/512MiB envelope;
+          # only measured chat HTTP is capped, not bcrypt account setup.
+          docker update --cpus=0.1 --memory=512m --memory-swap=512m \
             aqlyra-envelope-api > /dev/null
           nano="$(docker inspect -f '{{.HostConfig.NanoCpus}}' aqlyra-envelope-api)"
           ram="$(docker inspect -f '{{.HostConfig.Memory}}' aqlyra-envelope-api)"
-          test "$nano" = 150000000
+          test "$nano" = 100000000
           test "$ram" = 536870912
-          echo "RESOURCE_ENVELOPE=0.15_CPU_512_MiB"
+          echo "RESOURCE_ENVELOPE=0.1_CPU_512_MiB"
           touch /tmp/aqlyra-perf-resume
           set +e
           wait "$load_pid"
