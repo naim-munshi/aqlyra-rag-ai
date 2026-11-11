@@ -10,6 +10,7 @@ age decryption identity must NOT be stored in Actions or Neon.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 import hashlib
 import io
 import json
@@ -221,6 +222,13 @@ def _objects_to_encrypted_tar(output: Path, recipient: str, inventory, source_s3
             raise
 
 
+def _unique_backup_prefix(utc_stamp: str) -> str:
+    """A unique object namespace even for two runs in the same second."""
+    if not re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", utc_stamp):
+        raise BackupRefused("Invalid backup timestamp")
+    return f"aqlyra/backup-v1/{utc_stamp}-{uuid4().hex}"
+
+
 def main():
     recipient, source_bucket, dest_bucket = _preflight()
     import boto3
@@ -239,7 +247,7 @@ def main():
     )
 
     now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    prefix = f"aqlyra/backup-v1/{now}"
+    prefix = _unique_backup_prefix(now)
     # Scratch contains only ENCRYPTED archives. No raw SQL/object bytes.
     with tempfile.TemporaryDirectory(prefix="aqlyra-enc-") as name:
         root = Path(name)
