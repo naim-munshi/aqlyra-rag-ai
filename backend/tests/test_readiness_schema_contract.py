@@ -166,3 +166,29 @@ def test_readiness_still_rejects_unreviewed_future_revision(
     response = client.get("/api/v1/readiness")
     assert response.status_code == 503
     assert db.closed
+
+
+
+def test_render_git_sha_readiness_metadata_is_validated(
+    client, monkeypatch, tmp_path,
+):
+    expected = "a" * 40
+    _prepare(monkeypatch, tmp_path, revision=EXPECTED_HEAD, schema=True)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", expected)
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    assert response.json()["deployment_git_sha"] == expected
+    # No new metadata may affect the documented liveness response contract.
+    assert "deployment_git_sha" not in client.get("/api/v1/health").json()
+
+
+def test_bad_render_git_sha_does_not_leak_environment_text(
+    client, monkeypatch, tmp_path,
+):
+    _prepare(monkeypatch, tmp_path, revision=EXPECTED_HEAD, schema=True)
+    bad_value = "PRIVATE-SECRET-OR-OTHER-UNTRUSTED-ENVIRONMENT-DATA"
+    monkeypatch.setenv("RENDER_GIT_COMMIT", bad_value)
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    assert "deployment_git_sha" not in response.json()
+    assert bad_value not in response.text
