@@ -28,7 +28,7 @@ _KEY = re.compile(
     r"(\.(?:pdf|docx|xlsx|pptx|txt|md|csv|png|jpg|jpeg|webp))\Z"
 )
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
-_PG18_IMAGE = re.compile(r"postgres:18@sha256:[0-9a-f]{64}\\Z")
+_PG18_IMAGE = re.compile(r"postgres:18@sha256:[0-9a-f]{64}")
 _BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\Z")
 
 
