@@ -3,6 +3,10 @@ name: Protected Offsite Neon + Cloud Object Backup (Manual)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: aqlyra-offsite-encrypted-export
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
