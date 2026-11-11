@@ -8,16 +8,16 @@
 
 | Area | Verified evidence | Unverified / remaining |
 | --- | --- | --- |
-| Backend source | \`release/core-without-study-abroad-20261027\`; [PR #185](https://github.com/naim-munshi/aqlyra-rag-ai/pull/185) merged as \`4d8b799665a3bcd6aadb37fc526aa3874a190ed1\` after 8 green CI checks | Exact deployed Render commit **not checked in this review**; protected \`main\` differs |
-| Frontend live | \`aqlyra-ai.vercel.app\` production Vercel READY at commit \`e1ff769ba6820c7a26e11c7e2cf42e9a115da94b\`; auth hardening [PR #184](https://github.com/naim-munshi/aqlyra-rag-ai/pull/184) merged | Real successful Google/password account flow, cookies, refresh and logout not E2E verified |
-| Health check | Production homepage HTTP 200; \`/api/health\` initially HTTP 503, then HTTP 200 on a repeat GET on 11 Nov ~13:21–13:22 UTC | Intermittent upstream readiness root cause and uptime distribution not known; do not infer 24/7 stability from retry |
+| Backend source | `release/core-without-study-abroad-20261027`; [PR #185](https://github.com/naim-munshi/aqlyra-rag-ai/pull/185) merged as `4d8b799665a3bcd6aadb37fc526aa3874a190ed1` after 8 green CI checks | Exact deployed Render commit **not checked in this review**; protected `main` differs |
+| Frontend live | `aqlyra-ai.vercel.app` production Vercel READY at commit `e1ff769ba6820c7a26e11c7e2cf42e9a115da94b`; auth hardening [PR #184](https://github.com/naim-munshi/aqlyra-rag-ai/pull/184) merged | Real successful Google/password account flow, cookies, refresh and logout not E2E verified |
+| Health check | Production homepage HTTP 200; `/api/health` initially HTTP 503, then HTTP 200 on a repeat GET on 11 Nov ~13:21–13:22 UTC | Intermittent upstream readiness root cause and uptime distribution not known; do not infer 24/7 stability from retry |
 | Indexing | [10 Nov documented read-only evidence](PORTFOLIO_PHASE1_AUDIT_20261110.md): 1,035/1,035 eligible current-vector chunks; seven quarantined answer-key chunks excluded | Recheck live vector hash/version/count after deploy; this is not proof of answer quality |
 | RAG code | Auth-scoped retrieval; 384D static multilingual vectors + lexical fallback + RRF, citations, grounding/refusal; Japanese→English rewrite opt-in [PR #187](https://github.com/naim-munshi/aqlyra-rag-ai/pull/187) | Real user-grounded EN/JA/BN retrieval and answer quality; translation and reranker disabled until A/B validation |
 | RAG benchmark | Actual production-weight *offline synthetic dense* Hit@1: EN 0.70, JA 0.35, BN 0.60 on 20 questions per language | No validated live answer accuracy; Japanese is a measurable gap |
 | Security | GitHub backend PostgreSQL 16/18, SAST, dependency audit, synthetic security suites; two-user synthetic HTTP acceptance | Authorized real-account isolation and penetration testing in isolated staging |
 | Voice | LiveKit integration and Railway worker code | Real browser microphone→RTC→STT→AI→TTS→interrupt/end call with owner test account |
 | Backup/recovery | Disposable local PostgreSQL/uploads restore passed; [PR #188](https://github.com/naim-munshi/aqlyra-rag-ai/pull/188) prepares encrypted off-site export (NOT operational) | Independent S3 bucket/approval/keys, actual encrypted export, isolated *cloud* restore, measured RPO/RTO |
-| Protected main | \`main\` is a historical baseline; on 11 Nov core was 495 commits ahead of it prior to PR #185 | [PR #36](https://github.com/naim-munshi/aqlyra-rag-ai/pull/36) still requires scope/CI/protection review; do not blanket merge |
+| Protected main | `main` is a historical baseline; on 11 Nov core was 495 commits ahead of it prior to PR #185 | [PR #36](https://github.com/naim-munshi/aqlyra-rag-ai/pull/36) still requires scope/CI/protection review; do not blanket merge |
 
 ## P0 — Portfolio release blockers, in execution order
 
@@ -25,7 +25,7 @@
 
 **Read:** release heads, deployment metadata and CI, Vercel/Render logs and readiness sources, env **names only**, not values.
 
-**Execute:** compare deployed commit SHAs to GitHub release heads; create a reviewed, reversible backend deploy candidate; keep Render auto-deploy policy and staged approval; after deployment prove \`/health\`, \`/readiness\`, frontend \`/api/health\`, DB/Redis checks, semantic model identification and vector coverage. Test Render Free cold start using **low-rate** probes (no DoS). If staging or prod is unhealthy, roll back to previous known-good deploy. Do not claim PR merge equals production deployment.
+**Execute:** compare deployed commit SHAs to GitHub release heads; create a reviewed, reversible backend deploy candidate; keep Render auto-deploy policy and staged approval; after deployment prove `/health`, `/readiness`, frontend `/api/health`, DB/Redis checks, semantic model identification and vector coverage. Test Render Free cold start using **low-rate** probes (no DoS). If staging or prod is unhealthy, roll back to previous known-good deploy. Do not claim PR merge equals production deployment.
 
 **PASS evidence:** release SHA, CI URL/status for exact SHA, deployed backend SHA and deployment ID, readiness response, health before/after warmup, request latency samples and nonsecret error summary. **Current status: pending Render workspace selection and live deployment verification**.
 
@@ -72,14 +72,14 @@ A/B, **OFF by default** until data support them:
 
 ## P1 — Real-time Voice and usability
 
-Test on physical iOS and desktop with a consenting authorized account: connect, audio permission, Bengali/Japanese/English speaking, streaming, stop/interrupt (barge-in), reconnection after cold start, manual hang-up, microphone release, denial/error UX, and no recording leakage. Inspect Railway worker logs without exposing transcripts. Treat worker \`Online\` as insufficient proof of conversation. Preserve existing Voice architecture.
+Test on physical iOS and desktop with a consenting authorized account: connect, audio permission, Bengali/Japanese/English speaking, streaming, stop/interrupt (barge-in), reconnection after cold start, manual hang-up, microphone release, denial/error UX, and no recording leakage. Inspect Railway worker logs without exposing transcripts. Treat worker `Online` as insufficient proof of conversation. Preserve existing Voice architecture.
 
 Study Abroad UX should allow either ordinary chat or guided navigation while using the **existing** Fit Engine, eligibility/gap calculations and official-source research. No duplicate parallel engine or unnecessary registration funnel. Require real source attribution and data retention/consent checks before launch claims.
 
 ## P2 — Portfolio/release engineering and future enterprise extension
 
-- Record a **real, scripted-by-human walkthrough** separately from the explicitly non-inference \`/demo\`: two-user login, upload, cited Knowledge answer, no-evidence refusal, multilingual case, optional live voice if passed. Link reproducible CI, model provenance and limitations.
-- Reconcile stale \`main\` only through scope review of core and frontend, dependency audits, reviewer approvals and protected checks. Do not turn \`main\` into a substitute production trigger without acceptance.
+- Record a **real, scripted-by-human walkthrough** separately from the explicitly non-inference `/demo`: two-user login, upload, cited Knowledge answer, no-evidence refusal, multilingual case, optional live voice if passed. Link reproducible CI, model provenance and limitations.
+- Reconcile stale `main` only through scope review of core and frontend, dependency audits, reviewer approvals and protected checks. Do not turn `main` into a substitute production trigger without acceptance.
 - Keep CI matrix for Python 3.13 + PG16/18, Next.js lint/type/build, security, real-model 512 MiB, staging smoke, accessibility/mobile tests and release guard.
 - Enterprise Phase 2 (after Phase 1 passes): permission-aware Google Drive/other enterprise ingestion, connector change-data-capture, multi-source search, auditable policy-based tool actions, admin tenant billing/quotas and stronger isolation. Explicit consent, provider scopes, provenance and feature flags; **no replacement of current architecture**.
 
