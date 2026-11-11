@@ -2,6 +2,7 @@
 
 All fixtures are synthetic; no private customer files and no live cloud calls.
 """
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -101,12 +102,20 @@ def test_completed_owner_cloud_pdf_only_retries_after_verify(client, monkeypatch
         doc.status = "queued"
         return doc
 
+    @contextmanager
+    def verified_bytes(**kwargs):
+        calls.append("verify_bytes")
+        assert kwargs["owner_id"] == str(owner.id)
+        assert kwargs["document"] is doc
+        yield object()
+
     monkeypatch.setattr(documents, "verified_cloud_document_key", verified)
+    monkeypatch.setattr(documents, "cloud_processing_source", verified_bytes)
     monkeypatch.setattr(documents, "enqueue_document", enqueue)
     result = client.post(f"/api/v1/documents/{doc.id}/retry-index")
     assert result.status_code == 200
     assert result.json()["status"] == "queued"
-    assert calls == ["verify", "queue"]
+    assert calls == ["verify", "verify_bytes", "queue"]
 
 
 def test_nonowner_cannot_test_any_original_or_queue(client, monkeypatch):
@@ -118,8 +127,63 @@ def test_nonowner_cannot_test_any_original_or_queue(client, monkeypatch):
         lambda **kw: (_ for _ in ()).throw(AssertionError("Unauthorized verify")),
     )
     monkeypatch.setattr(
+        documents, "cloud_processing_source",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("Unauthorized cloud read")),
+    )
+    monkeypatch.setattr(
         documents, "enqueue_document",
         lambda **kw: (_ for _ in ()).throw(AssertionError("Unauthorized retry")),
     )
     result = client.post(f"/api/v1/documents/{foreign.id}/retry-index")
     assert result.status_code == 404
+
+
+
+def test_missing_cloud_bytes_after_valid_binding_never_queues(client, monkeypatch):
+    """A completed DB upload intent does not guarantee its S3 bytes still exist."""
+    owner = SimpleNamespace(id=uuid4())
+    doc = _document(str(owner.id), storage_path="cloud://verified/key", ext=".pdf")
+    _set_owner_and_doc(monkeypatch, owner, doc)
+    monkeypatch.setattr(
+        documents, "verified_cloud_document_key", lambda **kw: "verified/key",
+    )
+
+    @contextmanager
+    def missing_bytes(**kwargs):
+        raise PrivateObjectStorageError("PRIVATE-OBJECT-KEY-EXPOSED")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(documents, "cloud_processing_source", missing_bytes)
+    monkeypatch.setattr(
+        documents, "enqueue_document",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("Never enqueue missing S3 bytes")),
+    )
+    result = client.post(f"/api/v1/documents/{doc.id}/retry-index")
+    assert result.status_code == 409
+    assert "PRIVATE-OBJECT-KEY-EXPOSED" not in result.text
+    assert doc.status == "failed"
+
+
+def test_corrupted_cloud_bytes_after_valid_binding_never_queues(client, monkeypatch):
+    """A bad cloud checksum cannot cause an infinite retry-index loop."""
+    owner = SimpleNamespace(id=uuid4())
+    doc = _document(str(owner.id), storage_path="cloud://verified/key", ext=".png")
+    _set_owner_and_doc(monkeypatch, owner, doc)
+    monkeypatch.setattr(
+        documents, "verified_cloud_document_key", lambda **kw: "verified/key",
+    )
+
+    @contextmanager
+    def corrupt_bytes(**kwargs):
+        raise PrivateObjectStorageError("PRIVATE-BAD-CHECKSUM-SECRET")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(documents, "cloud_processing_source", corrupt_bytes)
+    monkeypatch.setattr(
+        documents, "enqueue_document",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("Never enqueue bad bytes")),
+    )
+    result = client.post(f"/api/v1/documents/{doc.id}/retry-index")
+    assert result.status_code == 409
+    assert "PRIVATE-BAD-CHECKSUM-SECRET" not in result.text
+    assert doc.status == "failed"

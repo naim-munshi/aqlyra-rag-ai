@@ -379,19 +379,27 @@ def retry_knowledge_index(
     if document.status == "ready":
         return DocumentResponse.model_validate(document)
 
-    # A legacy failed local file may have disappeared on an ephemeral
-    # container; queuing it repeatedly cannot recover the missing bytes.
-    # Cloud files need an exact completed owner+checksum upload binding.
-    # Check BEFORE mutating job status, preserving the prior failure state.
+    # Local originals may vanish on an ephemeral instance. Cloud metadata
+    # can also outlive its actual S3 object, so an upload-intent DB match
+    # alone does NOT prove the source bytes can still be recovered.
+    # Perform one bounded owner+checksum+content verification BEFORE
+    # mutating status. The context manager deletes its temporary file.
     if document.storage_path.startswith("cloud://"):
         try:
             verified_cloud_document_key(
                 db=db, owner_id=str(current_user.id), document=document,
             )
+            with cloud_processing_source(
+                db=db, owner_id=str(current_user.id), document=document,
+            ):
+                pass
         except PrivateObjectStorageError as exc:
             raise HTTPException(
                 status_code=409,
-                detail="Private original cannot be verified. Please contact support before replacing this file.",
+                detail=(
+                    "Private original is missing or could not be verified. "
+                    "Please contact support before replacing this file."
+                ),
             ) from exc
     else:
         try:
