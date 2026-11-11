@@ -295,10 +295,13 @@ def process_uploaded_document(
             detail=str(exc),
         ) from exc
 
-    except StoredFileNotFoundError as exc:
+    except (StoredDocumentNotFoundError, StoredFileNotFoundError) as exc:
+        # process_document raises StoredDocumentNotFoundError for local
+        # originals that vanished between upload and manual processing.
+        # Do not misclassify that expected condition as an internal 500.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
+            detail="Original document file is unavailable. Please upload it again.",
         ) from exc
 
     except PrivateObjectStorageError as exc:
