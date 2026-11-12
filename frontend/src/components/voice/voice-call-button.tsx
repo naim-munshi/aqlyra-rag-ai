@@ -1050,6 +1050,14 @@ export function VoiceCallButton({
             </div>
           </div>
 
+          {callTransport === "browser" && (
+            <p className="mt-3 text-center text-[10px] leading-4 text-[var(--aq-muted)]">
+              Free turn-based voice uses your browser&apos;s speech service;
+              audio recognition may be processed by the browser provider.
+              Normal Aqlyra AI chat quotas still apply.
+            </p>
+          )}
+
           <div className="mt-4 w-full space-y-1.5">
             {liveUserText ? (
               <div className="flex gap-2 text-[11px] leading-4">
