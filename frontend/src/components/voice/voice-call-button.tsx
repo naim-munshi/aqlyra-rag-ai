@@ -143,7 +143,7 @@ function compactText(
 
 async function waitForVoiceAgent(
   room: Room,
-  timeoutMs = 20000,
+  timeoutMs = 45000,
 ): Promise<void> {
   if (room.remoteParticipants.size > 0) {
     return;
