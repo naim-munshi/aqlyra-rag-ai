@@ -18,8 +18,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const token = await getAccessToken();
-  let revoked = !token;
+  // A sleeping backend can make refresh throw before the local logout.
+  // Explicit user sign-out must still clear every local auth cookie.
+  let token: string | null = null;
+  let sessionLookupFailed = false;
+  try {
+    token = await getAccessToken();
+  } catch {
+    sessionLookupFailed = true;
+  }
+  let revoked = !token && !sessionLookupFailed;
 
   if (token) {
     try {
@@ -27,6 +35,7 @@ export async function POST(request: Request) {
         method: "POST",
         headers: { Authorization: "Bearer " + token },
         cache: "no-store",
+        signal: AbortSignal.timeout(8_000),
       });
       revoked = response.ok || response.status === 401;
     } catch {
