@@ -2324,7 +2324,7 @@ export function RAGWorkspace({
             <button
               type="submit"
               aria-label="Send message"
-              disabled=
+              disabled={
                 ragLoading ||
                 uploadState !== "idle" ||
                 !question.trim() &&
