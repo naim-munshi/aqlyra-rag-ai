@@ -65,5 +65,6 @@ test("chat-mode, Send and voice controls stay available in both layouts", () => 
   assert.match(source, /onSubmit=\{handleSubmit\}/);
   assert.match(source, /aria-label="Start voice conversation"|<VoiceCallButton/);
   assert.match(source, /\{chatMode === "normal"/);
-  assert.match(source, /Send\s*<\/button>/);
+  assert.match(source, /aria-label="Send message"/);
+  assert.match(source, /<span className="hidden sm:inline">Send<\/span>/);
 });
