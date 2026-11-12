@@ -6,6 +6,7 @@ import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-work
 import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
+import { isValidUserIdentity } from "@/lib/auth/user-response";
 
 import type {
   BackendError,
@@ -45,11 +46,10 @@ async function getCurrentUser(): Promise<UserResponse | null> {
         response,
       );
 
-    if (
-      !data ||
-      !("username" in data)
-    ) {
-      return null;
+    if (!isValidUserIdentity(data)) {
+      // Do not disguise a malformed 200 as sign-out, or render a
+      // private workspace with a missing user ID/disabled account.
+      throw new Error("Backend returned an invalid user profile");
     }
 
     return data;
