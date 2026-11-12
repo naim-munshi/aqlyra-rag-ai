@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import { backendUrl } from "@/lib/api/backend";
 import {
@@ -9,7 +10,14 @@ import {
 } from "@/lib/auth/session";
 
 /** Revoke the JWT server-side, then always remove local cookies. */
-export async function POST() {
+export async function POST(request: Request) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const token = await getAccessToken();
   let revoked = !token;
 
