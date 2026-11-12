@@ -141,6 +141,82 @@ function compactText(
 }
 
 
+async function waitForVoiceAgent(
+  room: Room,
+  timeoutMs = 20000,
+): Promise<void> {
+  if (room.remoteParticipants.size > 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      room.off(
+        RoomEvent.ParticipantConnected,
+        onConnected,
+      );
+      room.off(
+        RoomEvent.Disconnected,
+        onDisconnected,
+      );
+    };
+
+    const onConnected = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const onDisconnected = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          "Voice connection ended before the assistant joined.",
+        ),
+      );
+    };
+
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          "Voice assistant did not join. The voice service may be offline.",
+        ),
+      );
+    }, timeoutMs);
+
+    room.on(
+      RoomEvent.ParticipantConnected,
+      onConnected,
+    );
+    room.on(
+      RoomEvent.Disconnected,
+      onDisconnected,
+    );
+
+    // A remote participant can join between the initial
+    // check and listener registration.
+    if (room.remoteParticipants.size > 0) {
+      onConnected();
+    }
+  });
+}
+
+
 export function VoiceCallButton({
   mode,
   conversationId,
@@ -459,6 +535,10 @@ export function VoiceCallButton({
         session.participant_token,
       );
 
+      // A connected room is not proof the voice worker is
+      // ready. Wait for the agent before enabling the mic.
+      await waitForVoiceAgent(room);
+
       onConversationStarted?.(
         session.conversation_id,
       );
@@ -568,6 +648,15 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
+
+        {error ? (
+          <div
+            role="alert"
+            className="fixed bottom-24 right-4 z-50 max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-red-500/30 bg-[var(--aq-card)] px-3 py-2 text-xs text-red-500 shadow-lg"
+          >
+            {error}
+          </div>
+        ) : null}
 
         <div
           ref={audioContainerRef}
