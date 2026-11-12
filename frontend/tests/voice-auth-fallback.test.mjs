@@ -7,14 +7,22 @@ const voice = readFileSync(
   "utf8",
 );
 
-test("signed-out and unavailable calls cannot silently switch to browser speech", () => {
+test("LiveKit unavailability never silently switches transport and browser voice is explicitly selected", () => {
   assert.match(voice, /response\.status === 401/);
   assert.match(voice, /requiresAuth: true/);
   assert.match(voice, /Sign in to use voice calls/);
   assert.match(voice, /if \(!availability\?\.available\)/);
-  assert.doesNotMatch(voice, /startBrowserVoiceMode|startBrowserSpeech|browserSpeechIsSupported/);
-  assert.doesNotMatch(voice, /Aqlyra Browser Voice|Device \/ Auto/);
-  assert.doesNotMatch(voice, /Recognition language|Stop reply/);
+  assert.match(voice, /function startFreeBrowserCall\(\)/);
+  assert.match(voice, /onClick=\{startFreeBrowserCall\}/);
+  assert.match(voice, /browserSpeechIsSupported\(\)/);
+  assert.match(voice, /startBrowserVoiceMode\(\{/);
+  assert.match(voice, /Browser speech is opt-in, not a silent downgrade/);
+  assert.match(voice, /availability\?\.requiresAuth/);
+  assert.match(voice, /Start free browser voice conversation/);
+  assert.match(voice, /onClick=\{\(\) => \{ void startCall\(\); \}\}/);
+  assert.match(voice, /Stop reply/);
+  assert.match(voice, /browserControllerRef\.current\?\.stop\(\)/);
+  assert.match(voice, /browserControllerRef\.current\?\.setMuted\(nextMuted\)/);
   assert.match(voice, /refreshVoiceAvailability\(\)/);
 });
 

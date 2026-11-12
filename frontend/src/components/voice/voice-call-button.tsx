@@ -23,6 +23,11 @@ import {
   VoiceOrb,
   type VoiceVisualState,
 } from "@/components/voice/voice-orb";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 import type {
   ConversationMode,
 } from "@/types/conversation";
@@ -161,6 +166,7 @@ export function VoiceCallButton({
   const roomRef =
     useRef<Room | null>(null);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
+  const browserControllerRef = useRef<BrowserVoiceController | null>(null);
   const callAttemptRef = useRef(0);
   const startingRef = useRef(false);
   const agentEverJoinedRef = useRef(false);
@@ -175,6 +181,9 @@ export function VoiceCallButton({
 
   const [active, setActive] =
     useState(false);
+  const [callTransport, setCallTransport] =
+    useState<"browser" | "livekit" | null>(null);
+  const [speechLocale, setSpeechLocale] = useState("auto");
 
   const [starting, setStarting] =
     useState(false);
@@ -352,6 +361,8 @@ export function VoiceCallButton({
       roomRef.current;
 
     roomRef.current = null;
+    browserControllerRef.current?.stop();
+    browserControllerRef.current = null;
 
     // Release the device immediately, even if network teardown stalls.
     stopMicrophoneTrack();
@@ -364,6 +375,7 @@ export function VoiceCallButton({
 
     setActive(false);
     setStarting(false);
+    setCallTransport(null);
     setMuted(false);
     setAgentState("idle");
     setLiveUserText("");
@@ -372,6 +384,106 @@ export function VoiceCallButton({
     setError("");
   }
 
+
+
+  function startFreeBrowserCall() {
+    if (disabled || active || starting || startingRef.current) return;
+    if (availability?.requiresAuth) {
+      const message = "Sign in to use voice calls.";
+      setError(message);
+      onError?.(message);
+      return;
+    }
+    // Browser speech is opt-in, not a silent downgrade of LiveKit RTC.
+    // Its recognition runs in the user's browser and may be processed by
+    // the browser vendor. AI text turns still use the authenticated API.
+    if (!browserSpeechIsSupported()) {
+      const message =
+        "Free Browser Voice is not supported on this browser. Try Safari or Chrome with microphone permission, or use text chat.";
+      setError(message);
+      onError?.(message);
+      return;
+    }
+
+    const attempt = ++callAttemptRef.current;
+    startingRef.current = true;
+    setCallTransport("browser");
+    setStarting(true);
+    setActive(true);
+    setMuted(false);
+    setNeedsAudioUnlock(false);
+    setError("");
+    setLiveUserText("");
+    setLiveAgentText("");
+    setAgentState("connecting");
+
+    // startBrowserVoiceMode installs recognition synchronously before
+    // resolving, preserving the direct-tap microphone permission on iOS.
+    void startBrowserVoiceMode({
+      mode,
+      conversationId,
+      documentIds,
+      speechLocale,
+      onConversationStarted: id => {
+        if (callAttemptRef.current !== attempt) return;
+        onConversationStarted?.(id);
+      },
+      onUserTranscript: (text, isFinal) => {
+        if (callAttemptRef.current !== attempt) return;
+        setLiveUserText(text);
+        onUserTranscript?.(text, isFinal);
+      },
+      onAgentTranscript: (text, isFinal) => {
+        if (callAttemptRef.current !== attempt) return;
+        setLiveAgentText(text);
+        onAgentTranscript?.(text, isFinal);
+      },
+      onState: state => {
+        if (callAttemptRef.current === attempt) setAgentState(state);
+      },
+      onError: message => {
+        if (callAttemptRef.current !== attempt) return;
+        setError(message);
+        onError?.(message);
+      },
+      onAudioBlocked: () => {
+        if (callAttemptRef.current === attempt) setNeedsAudioUnlock(true);
+      },
+      onAudioStarted: () => {
+        if (callAttemptRef.current === attempt) setNeedsAudioUnlock(false);
+      },
+      onStopped: () => {
+        if (callAttemptRef.current !== attempt) return;
+        callAttemptRef.current += 1;
+        browserControllerRef.current = null;
+        startingRef.current = false;
+        setActive(false);
+        setStarting(false);
+        setCallTransport(null);
+        setNeedsAudioUnlock(false);
+        setMuted(false);
+      },
+    }).then(browserController => {
+      if (callAttemptRef.current !== attempt) {
+        browserController.stop();
+        return;
+      }
+      browserControllerRef.current = browserController;
+      startingRef.current = false;
+      setStarting(false);
+    }).catch(startError => {
+      if (callAttemptRef.current !== attempt) return;
+      startingRef.current = false;
+      setStarting(false);
+      setActive(false);
+      setCallTransport(null);
+      setAgentState("error");
+      const message = startError instanceof Error
+        ? startError.message : "Unable to start Browser Voice.";
+      setError(message);
+      onError?.(message);
+    });
+  }
 
   async function startCall() {
     if (
@@ -397,6 +509,7 @@ export function VoiceCallButton({
     startingRef.current = true;
     agentEverJoinedRef.current = false;
     const attempt = ++callAttemptRef.current;
+    setCallTransport("livekit");
     setStarting(true);
     setError("");
     setLiveUserText("");
@@ -741,6 +854,7 @@ export function VoiceCallButton({
       setAgentState("error");
       setStarting(false);
       setActive(false);
+      setCallTransport(null);
       setNeedsAudioUnlock(false);
 
       onError?.(message);
@@ -749,6 +863,16 @@ export function VoiceCallButton({
 
 
   async function enableAudio() {
+    if (callTransport === "browser") {
+      // Must execute synchronously on the button tap for iOS speech audio.
+      if (browserControllerRef.current?.retryAudio()) {
+        setNeedsAudioUnlock(false);
+        setError("");
+      } else {
+        setError("There is no speech to replay yet. Try speaking again.");
+      }
+      return;
+    }
     const room = roomRef.current;
     if (!room) return;
     try {
@@ -763,6 +887,12 @@ export function VoiceCallButton({
   }
 
   async function toggleMute() {
+    if (callTransport === "browser") {
+      const nextMuted = !muted;
+      browserControllerRef.current?.setMuted(nextMuted);
+      setMuted(nextMuted);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -799,6 +929,8 @@ export function VoiceCallButton({
       sessionRequestControllerRef.current = null;
       startingRef.current = false;
       clearAgentJoinTimer();
+      browserControllerRef.current?.stop();
+      browserControllerRef.current = null;
       stopMicrophoneTrack();
       const room =
         roomRef.current;
@@ -820,11 +952,9 @@ export function VoiceCallButton({
         <button
           type="button"
           disabled={disabled}
-          aria-label="Start voice conversation"
-          title={availability?.requiresAuth ? "Sign in to use voice calls" : availability?.available === false ? "Real-time voice unavailable" : "Start natural voice conversation"}
-          onClick={() => {
-            void startCall();
-          }}
+          aria-label="Start free browser voice conversation"
+          title="Free Browser Voice · no separate voice server · supported browsers only"
+          onClick={startFreeBrowserCall}
           className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className="absolute inset-1 rounded-full transition group-hover:shadow-[0_0_18px_rgba(34,211,238,0.22)]" />
@@ -834,6 +964,19 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
+
+        {availability?.available && (
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label="Start LiveKit real-time voice"
+            title="LiveKit real-time voice requires an online hosted agent"
+            onClick={() => { void startCall(); }}
+            className="rounded-full border border-[var(--aq-border)] px-2 py-1 text-[10px] font-medium text-[var(--aq-muted)] hover:text-[var(--aq-cyan)] disabled:opacity-50"
+          >
+            LiveKit
+          </button>
+        )}
 
         {error && (
           <div
@@ -880,7 +1023,9 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              Aqlyra Voice
+              {callTransport === "browser"
+                ? "Aqlyra · Free Browser Voice"
+                : "Aqlyra Voice"}
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -904,6 +1049,14 @@ export function VoiceCallButton({
               )}
             </div>
           </div>
+
+          {callTransport === "browser" && (
+            <p className="mt-3 text-center text-[10px] leading-4 text-[var(--aq-muted)]">
+              Free turn-based voice uses your browser&apos;s speech service;
+              audio recognition may be processed by the browser provider.
+              Normal Aqlyra AI chat quotas still apply.
+            </p>
+          )}
 
           <div className="mt-4 w-full space-y-1.5">
             {liveUserText ? (
@@ -941,7 +1094,9 @@ export function VoiceCallButton({
                   ? "Waiting for the AI voice agent to join..."
                   : agentState === "error"
                     ? "The AI voice agent is unavailable."
-                    : "Speak naturally. Aqlyra is listening."}
+                    : callTransport === "browser"
+                     ? "Take turns speaking. Browser Voice cannot hear interruptions during playback."
+                     : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>
@@ -960,6 +1115,39 @@ export function VoiceCallButton({
             >
               Enable sound
             </button>
+          )}
+
+          {callTransport === "browser" && (
+            <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2">
+              <label htmlFor="browser-voice-locale" className="text-[11px] text-[var(--aq-muted)]">
+                Listen in
+              </label>
+              <select
+                id="browser-voice-locale"
+                value={speechLocale}
+                onChange={event => {
+                  const locale = event.target.value;
+                  setSpeechLocale(locale);
+                  browserControllerRef.current?.setSpeechLocale(locale);
+                }}
+                className="rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-2 py-1 text-xs text-[var(--aq-text)]"
+              >
+                <option value="auto">Device language</option>
+                <option value="en-US">English</option>
+                <option value="bn-BD">বাংলা</option>
+                <option value="ja-JP">日本語</option>
+                <option value="hi-IN">हिन्दी</option>
+              </select>
+              {agentState === "speaking" && (
+                <button
+                  type="button"
+                  onClick={() => { browserControllerRef.current?.interruptSpeech(); }}
+                  className="rounded-lg border border-[var(--aq-border)] px-2 py-1 text-xs font-semibold text-[var(--aq-cyan)]"
+                >
+                  Stop reply
+                </button>
+              )}
+            </div>
           )}
 
           <div className="mt-4 flex items-center justify-center gap-3">
