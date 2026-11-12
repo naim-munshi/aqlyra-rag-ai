@@ -2189,7 +2189,9 @@ export function RAGWorkspace({
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
-              !event.shiftKey
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              event.nativeEvent.keyCode !== 229
             ) {
               event.preventDefault();
 
