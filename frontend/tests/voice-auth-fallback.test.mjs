@@ -7,19 +7,23 @@ const voice = readFileSync(
   "utf8",
 );
 
-test("LiveKit unavailability never silently switches transport and browser voice is explicitly selected", () => {
+test("a single microphone starts browser voice first and retains RTC fallback", () => {
   assert.match(voice, /response\.status === 401/);
   assert.match(voice, /requiresAuth: true/);
   assert.match(voice, /Sign in to use voice calls/);
   assert.match(voice, /if \(!availability\?\.available\)/);
   assert.match(voice, /function startFreeBrowserCall\(\)/);
-  assert.match(voice, /onClick=\{startFreeBrowserCall\}/);
+  assert.match(voice, /aria-label="Start voice conversation"/);
+  assert.match(voice, /if \(browserSpeechIsSupported\(\)\) \{\s*startFreeBrowserCall\(\);\s*\} else \{\s*void startCall\(\);/);
   assert.match(voice, /browserSpeechIsSupported\(\)/);
   assert.match(voice, /startBrowserVoiceMode\(\{/);
   assert.match(voice, /Browser speech is opt-in, not a silent downgrade/);
   assert.match(voice, /availability\?\.requiresAuth/);
-  assert.match(voice, /Start free browser voice conversation/);
-  assert.match(voice, /onClick=\{\(\) => \{ void startCall\(\); \}\}/);
+  assert.match(voice, /title="Start voice conversation"/);
+  assert.doesNotMatch(voice, /aria-label="Start LiveKit real-time voice"/);
+  assert.doesNotMatch(voice, />\s*LiveKit\s*<\/button>/);
+  assert.equal((voice.match(/aria-label="Start voice conversation"/g) || []).length, 1);
+  assert.match(voice, /async function startCall\(\)/);
   assert.match(voice, /Stop reply/);
   assert.match(voice, /browserControllerRef\.current\?\.stop\(\)/);
   assert.match(voice, /browserControllerRef\.current\?\.setMuted\(nextMuted\)/);
