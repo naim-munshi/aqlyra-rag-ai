@@ -183,7 +183,6 @@ export function VoiceCallButton({
     useState(false);
   const [callTransport, setCallTransport] =
     useState<"browser" | "livekit" | null>(null);
-  const [speechLocale, setSpeechLocale] = useState("auto");
 
   const [starting, setStarting] =
     useState(false);
@@ -423,7 +422,6 @@ export function VoiceCallButton({
       mode,
       conversationId,
       documentIds,
-      speechLocale,
       onConversationStarted: id => {
         if (callAttemptRef.current !== attempt) return;
         onConversationStarted?.(id);
@@ -1006,182 +1004,107 @@ export function VoiceCallButton({
 
   return (
     <>
-      <div className="absolute bottom-[72px] right-2 z-40 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col items-center">
+      <div
+        role="region"
+        aria-label="Voice conversation"
+        className="absolute bottom-[60px] right-0 z-40 w-[min(296px,calc(100vw-24px))] rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)]/95 p-3 shadow-xl backdrop-blur-xl"
+      >
+        <div className="flex items-center gap-3">
           <VoiceOrb
-            state={
-              starting
-                ? "connecting"
-                : agentState
-            }
+            compact
+            state={starting ? "connecting" : agentState}
             muted={muted}
           />
-
-          <div className="-mt-1 text-center">
-            <div className="text-sm font-semibold text-[var(--aq-text)]">
-              {callTransport === "browser"
-                ? "Aqlyra · Free Browser Voice"
-                : "Aqlyra Voice"}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-[var(--aq-text)]">
+              Aqlyra Voice
             </div>
-
-            <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
+            <div
+              aria-live="polite"
+              className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--aq-muted)]"
+            >
               <span
+                aria-hidden="true"
                 className={[
-                  "h-1.5 w-1.5 rounded-full",
-                  muted
-                    ? "bg-[var(--aq-muted)]"
-                    : agentState ===
-                        "speaking"
-                      ? "animate-pulse bg-[var(--aq-cyan)]"
-                      : "animate-pulse bg-[var(--aq-blue)]",
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  muted ? "bg-[var(--aq-muted)]" : "animate-pulse bg-[var(--aq-cyan)]",
                 ].join(" ")}
               />
-
-              {stateLabel(
-                starting
-                  ? "connecting"
-                  : agentState,
-                muted,
-              )}
+              {stateLabel(starting ? "connecting" : agentState, muted)}
             </div>
           </div>
+          <button
+            type="button"
+            aria-label="End voice conversation"
+            title="End call"
+            onClick={() => { void endCall(); }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-600"
+          >
+            <PhoneOff size={17} />
+          </button>
+        </div>
 
-          {callTransport === "browser" && (
-            <p className="mt-3 text-center text-[10px] leading-4 text-[var(--aq-muted)]">
-              Free turn-based voice uses your browser&apos;s speech service;
-              audio recognition may be processed by the browser provider.
-              Normal Aqlyra AI chat quotas still apply.
-            </p>
+        {(liveAgentText || liveUserText) && (
+          <p className="mt-2 max-h-12 overflow-y-auto border-t border-[var(--aq-border)] pt-2 text-xs leading-5 text-[var(--aq-text)]">
+            <span className="mr-1 font-semibold text-[var(--aq-cyan)]">
+              {liveAgentText ? "Aqlyra:" : "You:"}
+            </span>
+            {compactText(liveAgentText || liveUserText)}
+          </p>
+        )}
+
+        {error && (
+          <p role="alert" className="mt-2 rounded-lg bg-red-500/10 px-2 py-1.5 text-xs leading-4 text-red-400">
+            {error}
+          </p>
+        )}
+
+        {needsAudioUnlock && (
+          <button
+            type="button"
+            onClick={() => { void enableAudio(); }}
+            className="mt-2 min-h-10 w-full rounded-lg bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
+          >
+            Enable sound
+          </button>
+        )}
+
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--aq-border)] pt-2">
+          {callTransport === "browser" ? (
+            <details className="min-w-0 text-[10px] leading-4 text-[var(--aq-muted)]">
+              <summary className="cursor-pointer select-none font-medium">
+                About voice privacy
+              </summary>
+              <p className="mt-1">
+                Speech recognition may be processed by your browser provider.
+                Normal Aqlyra AI chat limits still apply. The mic pauses
+                while Aqlyra speaks.
+              </p>
+            </details>
+          ) : (
+            <span className="text-[11px] text-[var(--aq-muted)]">
+              Voice conversation
+            </span>
           )}
-
-          <div className="mt-4 w-full space-y-1.5">
-            {liveUserText ? (
-              <div className="flex gap-2 text-[11px] leading-4">
-                <span className="shrink-0 font-semibold text-[var(--aq-blue)]">
-                  You
-                </span>
-
-                <span className="min-w-0 text-[var(--aq-muted)]">
-                  {compactText(
-                    liveUserText,
-                  )}
-                </span>
-              </div>
-            ) : null}
-
-            {liveAgentText ? (
-              <div className="flex gap-2 text-[11px] leading-4">
-                <span className="shrink-0 font-semibold text-[var(--aq-cyan)]">
-                  AI
-                </span>
-
-                <span className="min-w-0 text-[var(--aq-text)]">
-                  {compactText(
-                    liveAgentText,
-                  )}
-                </span>
-              </div>
-            ) : null}
-
-            {!liveUserText &&
-            !liveAgentText ? (
-              <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                {agentState === "connecting"
-                  ? "Waiting for the AI voice agent to join..."
-                  : agentState === "error"
-                    ? "The AI voice agent is unavailable."
-                    : callTransport === "browser"
-                     ? "Take turns speaking. Browser Voice cannot hear interruptions during playback."
-                     : "Speak naturally. Aqlyra is listening."}
-              </div>
-            ) : null}
-          </div>
-
-          {error ? (
-            <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
-              {error}
-            </div>
-          ) : null}
-
-          {needsAudioUnlock && (
-            <button
-              type="button"
-              onClick={() => { void enableAudio(); }}
-              className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
-            >
-              Enable sound
-            </button>
-          )}
-
-          {callTransport === "browser" && (
-            <div className="mt-3 flex w-full flex-wrap items-center justify-center gap-2">
-              <label htmlFor="browser-voice-locale" className="text-[11px] text-[var(--aq-muted)]">
-                Listen in
-              </label>
-              <select
-                id="browser-voice-locale"
-                value={speechLocale}
-                onChange={event => {
-                  const locale = event.target.value;
-                  setSpeechLocale(locale);
-                  browserControllerRef.current?.setSpeechLocale(locale);
-                }}
-                className="rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-2 py-1 text-xs text-[var(--aq-text)]"
+          <div className="flex shrink-0 items-center gap-2">
+            {callTransport === "browser" && agentState === "speaking" && (
+              <button
+                type="button"
+                onClick={() => { browserControllerRef.current?.interruptSpeech(); }}
+                className="rounded-lg border border-[var(--aq-border)] px-2 py-1.5 text-xs font-medium text-[var(--aq-text)]"
               >
-                <option value="auto">Device language</option>
-                <option value="en-US">English</option>
-                <option value="bn-BD">বাংলা</option>
-                <option value="ja-JP">日本語</option>
-                <option value="hi-IN">हिन्दी</option>
-              </select>
-              {agentState === "speaking" && (
-                <button
-                  type="button"
-                  onClick={() => { browserControllerRef.current?.interruptSpeech(); }}
-                  className="rounded-lg border border-[var(--aq-border)] px-2 py-1 text-xs font-semibold text-[var(--aq-cyan)]"
-                >
-                  Stop reply
-                </button>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4 flex items-center justify-center gap-3">
+                Stop reply
+              </button>
+            )}
             <button
               type="button"
               disabled={starting}
-              aria-label={
-                muted
-                  ? "Unmute microphone"
-                  : "Mute microphone"
-              }
-              title={
-                muted
-                  ? "Unmute"
-                  : "Mute"
-              }
-              onClick={() => {
-                void toggleMute();
-              }}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:border-[var(--aq-cyan)]/50 hover:text-[var(--aq-cyan)] disabled:opacity-50"
+              aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+              title={muted ? "Unmute" : "Mute"}
+              onClick={() => { void toggleMute(); }}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:text-[var(--aq-cyan)] disabled:opacity-50"
             >
-              {muted ? (
-                <MicOff size={18} />
-              ) : (
-                <Mic size={18} />
-              )}
-            </button>
-
-            <button
-              type="button"
-              aria-label="End voice conversation"
-              title="End call"
-              onClick={() => {
-                void endCall();
-              }}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:scale-105 hover:bg-red-600"
-            >
-              <PhoneOff size={18} />
+              {muted ? <MicOff size={17} /> : <Mic size={17} />}
             </button>
           </div>
         </div>
