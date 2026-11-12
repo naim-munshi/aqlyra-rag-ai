@@ -37,7 +37,9 @@ test("LiveKit voice-only user experience supports natural hands-free interruptio
   assert.match(voice, /room\.startAudio\(\)/);
   assert.match(voice, /waitForAgent\(room\)/);
   assert.match(voice, /Aqlyra Voice/);
-  assert.match(voice, /Speak naturally/);
+  assert.match(voice, /aria-label="Voice conversation"/);
+  assert.match(voice, /aria-live="polite"/);
+  assert.match(voice, /aria-label="End voice conversation"/);
 });
 
 test("worker join timeout is visible and releases microphone, never fakes a live call", () => {
