@@ -11,6 +11,8 @@ test("iPhone keyboard focus cannot autozoom the Aqlyra composer", () => {
   assert.match(source, /text-base leading-6[^"]*sm:text-sm/);
   assert.match(source, /aria-label="Message Aqlyra"/);
   assert.match(source, /enterKeyHint="send"/);
+  assert.match(source, /!event\.nativeEvent\.isComposing/);
+  assert.match(source, /event\.nativeEvent\.keyCode !== 229/);
   assert.match(source, /Math\.min\(112, Math\.max\(24, textarea\.scrollHeight\)\)/);
   assert.match(source, /\}, \[question\]\)/);
   assert.match(source, /className="mt-2 flex[^"]*sm:mt-3/);
