@@ -952,9 +952,18 @@ export function VoiceCallButton({
         <button
           type="button"
           disabled={disabled}
-          aria-label="Start free browser voice conversation"
-          title="Free Browser Voice · no separate voice server · supported browsers only"
-          onClick={startFreeBrowserCall}
+          aria-label="Start voice conversation"
+          title="Start voice conversation"
+          onClick={() => {
+            // A single microphone is the voice entry point. Prefer
+            // server-free browser voice, with existing RTC retained for
+            // browsers that do not implement speech recognition.
+            if (browserSpeechIsSupported()) {
+              startFreeBrowserCall();
+            } else {
+              void startCall();
+            }
+          }}
           className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className="absolute inset-1 rounded-full transition group-hover:shadow-[0_0_18px_rgba(34,211,238,0.22)]" />
@@ -964,19 +973,6 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
-
-        {availability?.available && (
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label="Start LiveKit real-time voice"
-            title="LiveKit real-time voice requires an online hosted agent"
-            onClick={() => { void startCall(); }}
-            className="rounded-full border border-[var(--aq-border)] px-2 py-1 text-[10px] font-medium text-[var(--aq-muted)] hover:text-[var(--aq-cyan)] disabled:opacity-50"
-          >
-            LiveKit
-          </button>
-        )}
 
         {error && (
           <div
