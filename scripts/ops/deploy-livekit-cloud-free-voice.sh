@@ -7,7 +7,7 @@ umask 077
 usage() {
   cat <<'EOF'
 Usage: AQLYRA_VOICE_SECRETS_FILE=/private/path/voice.env \
-         scripts/ops/deploy-livekit-cloud-free-voice.sh create|deploy|status
+         bash scripts/ops/deploy-livekit-cloud-free-voice.sh create|deploy|status
 
 Prerequisites:
   * LiveKit CLI installed; run 'lk cloud auth' and set the correct default project.
