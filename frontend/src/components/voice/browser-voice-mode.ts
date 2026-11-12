@@ -339,10 +339,11 @@ export async function startBrowserVoiceMode(
       // After an actual transcript exists, adapt STT for the next spoken
       // turn. TTS already follows the language of each AI reply. This is
       // best-effort and does not claim audio-first language detection.
-      recognition.lang = speechLanguage(text);
       busy = true;
       processing = true;
       try { recognition.stop(); } catch { /* already ended */ }
+      // Switch only after stopping the previous recognition session.
+      recognition.lang = speechLanguage(text);
       options.onState("thinking");
       void (async () => {
         try {
