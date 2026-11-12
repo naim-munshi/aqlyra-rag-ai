@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ChevronDown,
   LoaderCircle,
   Mic,
   MicOff,
@@ -166,6 +167,7 @@ export function VoiceCallButton({
   const roomRef =
     useRef<Room | null>(null);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
+  const voiceOptionsRef = useRef<HTMLDivElement | null>(null);
   const browserControllerRef = useRef<BrowserVoiceController | null>(null);
   const callAttemptRef = useRef(0);
   const startingRef = useRef(false);
@@ -183,6 +185,7 @@ export function VoiceCallButton({
     useState(false);
   const [callTransport, setCallTransport] =
     useState<"browser" | "livekit" | null>(null);
+  const [voiceOptionsOpen, setVoiceOptionsOpen] = useState(false);
   const [speechLocale, setSpeechLocale] = useState("auto");
 
   const [starting, setStarting] =
@@ -282,6 +285,25 @@ export function VoiceCallButton({
   }, []);
 
 
+  useEffect(() => {
+    if (!voiceOptionsOpen) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node &&
+          !voiceOptionsRef.current?.contains(event.target)) {
+        setVoiceOptionsOpen(false);
+      }
+    };
+    const dismissEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setVoiceOptionsOpen(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissEscape);
+    };
+  }, [voiceOptionsOpen]);
+
   function clearAgentJoinTimer() {
     if (agentJoinTimerRef.current !== null) {
       clearTimeout(agentJoinTimerRef.current);
@@ -376,6 +398,7 @@ export function VoiceCallButton({
     setActive(false);
     setStarting(false);
     setCallTransport(null);
+    setVoiceOptionsOpen(false);
     setMuted(false);
     setAgentState("idle");
     setLiveUserText("");
@@ -388,6 +411,7 @@ export function VoiceCallButton({
 
   function startFreeBrowserCall() {
     if (disabled || active || starting || startingRef.current) return;
+    setVoiceOptionsOpen(false);
     if (availability?.requiresAuth) {
       const message = "Sign in to use voice calls.";
       setError(message);
@@ -506,6 +530,7 @@ export function VoiceCallButton({
     }
 
     clearAgentJoinTimer();
+    setVoiceOptionsOpen(false);
     startingRef.current = true;
     agentEverJoinedRef.current = false;
     const attempt = ++callAttemptRef.current;
@@ -949,34 +974,60 @@ export function VoiceCallButton({
   if (!active && !starting) {
     return (
       <>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label="Start free browser voice conversation"
-          title="Free Browser Voice · no separate voice server · supported browsers only"
-          onClick={startFreeBrowserCall}
-          className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="absolute inset-1 rounded-full transition group-hover:shadow-[0_0_18px_rgba(34,211,238,0.22)]" />
-
-          <Mic
-            size={18}
-            className="relative z-10"
-          />
-        </button>
-
-        {availability?.available && (
+        <div ref={voiceOptionsRef} className="relative flex shrink-0 items-center gap-0.5">
           <button
             type="button"
             disabled={disabled}
-            aria-label="Start LiveKit real-time voice"
-            title="LiveKit real-time voice requires an online hosted agent"
-            onClick={() => { void startCall(); }}
-            className="rounded-full border border-[var(--aq-border)] px-2 py-1 text-[10px] font-medium text-[var(--aq-muted)] hover:text-[var(--aq-cyan)] disabled:opacity-50"
+            aria-label="Start free browser voice conversation"
+            title="Start voice conversation"
+            onClick={startFreeBrowserCall}
+            className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            LiveKit
+            <Mic size={18} className="relative z-10" />
           </button>
-        )}
+
+          {availability?.available && (
+            <>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label="More voice options"
+                title="More voice options"
+                aria-expanded={voiceOptionsOpen}
+                aria-haspopup="menu"
+                onClick={() => setVoiceOptionsOpen(open => !open)}
+                className="flex h-10 w-7 items-center justify-center rounded-lg text-[var(--aq-muted)] hover:bg-[var(--aq-control)] hover:text-[var(--aq-text)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)] disabled:opacity-50"
+              >
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
+              {voiceOptionsOpen && (
+                <div
+                  role="menu"
+                  aria-label="Voice options"
+                  className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-[min(245px,calc(100vw-24px))] rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl"
+                >
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--aq-muted)]">
+                    Voice modes
+                  </p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={disabled}
+                    aria-label="Start LiveKit real-time voice"
+                    title="Requires an online hosted agent"
+                    onClick={() => { void startCall(); }}
+                    className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm text-[var(--aq-text)] hover:bg-[var(--aq-control)] focus-visible:outline-2 focus-visible:outline-[var(--aq-blue)] disabled:opacity-50"
+                  >
+                    Real-time voice
+                  </button>
+                  <p className="px-3 pb-1 text-[11px] leading-4 text-[var(--aq-muted)]">
+                    LiveKit · requires an online agent
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
         {error && (
           <div
