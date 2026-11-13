@@ -115,3 +115,35 @@ def test_matching_default_model_avoids_recreating_same_provider(monkeypatch):
         lambda **kwargs: pytest.fail("Same model must not create duplicate provider"),
     )
     assert router.select_provider_for_normal_chat(message="Analyze this") is base
+
+
+
+def test_default_off_keeps_legacy_chat_factory_integration(monkeypatch):
+    """Changing the router must not bypass injected configured providers."""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from app.services import chat_service
+
+    monkeypatch.setattr(settings, "LLM_QUALITY_ROUTING_ENABLED", False)
+    default = object()
+    monkeypatch.setattr(
+        chat_service, "create_configured_llm_provider", lambda: default,
+    )
+    monkeypatch.setattr(
+        chat_service, "get_recent_messages_for_conversation",
+        lambda **kwargs: [],
+    )
+    monkeypatch.setattr(
+        chat_service, "_retrieve_normal_chat_memories",
+        lambda **kwargs: (),
+    )
+    selected, payload = chat_service._prepare_normal_chat_generation(
+        db=Mock(),
+        conversation=SimpleNamespace(
+            id="synthetic-conversation", user_id="synthetic-owner",
+        ),
+        message="Can you help explain this?",
+    )
+    assert selected is default
+    assert '"current_user_message": "Can you help explain this?"' in payload
