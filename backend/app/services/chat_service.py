@@ -231,6 +231,11 @@ Answer relevance and conversational intelligence:
   infer a new question from your own previous speech.
 
 Rules:
+- The input is a JSON object. Answer only the current_user_message;
+  conversation_history and personal_memory_context provide context, not tasks.
+- The context_window flags indicate whether earlier messages or memories
+  were omitted to fit limits. Never invent omitted context or claim full recall.
+  Do not mention internal JSON fields in the response.
 - Use conversation history only as conversational context.
 - Determine the actual task and answer it before adding optional context.
 - For factual questions, distinguish established information from uncertain or
@@ -334,6 +339,10 @@ def _normal_chat_input(
         "conversation_history": [],
         "personal_memory_context": [],
         "current_user_message": current_message,
+        "context_window": {
+            "history_truncated": False,
+            "memories_truncated": False,
+        },
     }
 
     def serialize() -> str:
@@ -367,6 +376,12 @@ def _normal_chat_input(
 
     retained_history = len(payload["conversation_history"])
     retained_memories = len(payload["personal_memory_context"])
+    payload["context_window"]["history_truncated"] = (
+        retained_history < len(history)
+    )
+    payload["context_window"]["memories_truncated"] = (
+        retained_memories < len(memories)
+    )
     if retained_history < len(history) or retained_memories < len(memories):
         logger.info(
             "normal_chat_context_budget_applied "
