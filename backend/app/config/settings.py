@@ -278,6 +278,9 @@ class Settings(BaseSettings):
     # Hard total safety budget: max_chunks * max_batches <= 64.
     KNOWLEDGE_SEMANTIC_BACKFILL_MAX_BATCHES: int = Field(default=1, ge=1, le=8)
     KNOWLEDGE_LEXICAL_FALLBACK_ENABLED: bool = False
+    # Extra owner-scoped Unicode query runs only on multilingual lexical FTS hits.
+    # Opt in after real PostgreSQL/latency and user-isolation acceptance.
+    KNOWLEDGE_MULTILINGUAL_UNICODE_FUSION_ENABLED: bool = False
     # Avoid remote semantic calls for tenant-scoped Knowledge without vectors.
     # Default OFF until production read-only coverage and CI acceptance.
     KNOWLEDGE_SKIP_DENSE_WHEN_UNINDEXED_ENABLED: bool = False
