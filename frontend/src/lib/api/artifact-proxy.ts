@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { forwardedBackendHeaders } from "@/lib/api/response-headers";
@@ -12,11 +12,11 @@ export async function artifactJsonProxy(
   method: "GET" | "POST" | "DELETE",
 ): Promise<Response> {
   if (!hasTrustedRequestOrigin(request)) {
-    return NextResponse.json({ detail: "Untrusted request origin" }, { status: 403 });
+    return privateJsonResponse({ detail: "Untrusted request origin" }, { status: 403 });
   }
   const token = await getAccessToken();
   if (!token) {
-    return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
+    return privateJsonResponse({ detail: "Not authenticated" }, { status: 401 });
   }
   let payload: string | undefined;
   if (method === "POST") {
@@ -27,9 +27,9 @@ export async function artifactJsonProxy(
       payload = raw;
     } catch (error) {
       if (error instanceof RequestBodyTooLargeError) {
-        return NextResponse.json({ detail: "Request too large" }, { status: 413 });
+        return privateJsonResponse({ detail: "Request too large" }, { status: 413 });
       }
-      return NextResponse.json({ detail: "Invalid JSON body" }, { status: 400 });
+      return privateJsonResponse({ detail: "Invalid JSON body" }, { status: 400 });
     }
   }
   try {
@@ -43,10 +43,10 @@ export async function artifactJsonProxy(
       cache: "no-store",
     });
     if (response.status === 204) {
-      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+      return new Response(null, { status: 204, headers: { "Cache-Control": "private, no-store", "Vary": "Cookie" } });
     }
     const data = await readJson<unknown>(response);
-    return NextResponse.json(data ?? { detail: "Invalid backend response" }, {
+    return privateJsonResponse(data ?? { detail: "Invalid backend response" }, {
       status: response.status,
       headers: {
         ...forwardedBackendHeaders(response),
@@ -54,7 +54,7 @@ export async function artifactJsonProxy(
       },
     });
   } catch {
-    return NextResponse.json({ detail: "Artifact backend unavailable" }, { status: 502 });
+    return privateJsonResponse({ detail: "Artifact backend unavailable" }, { status: 502 });
   }
 }
 

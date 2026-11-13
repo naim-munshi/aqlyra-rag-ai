@@ -9,11 +9,13 @@ export type VoiceVisualState =
 type VoiceOrbProps = {
   state: VoiceVisualState;
   muted?: boolean;
+  compact?: boolean;
 };
 
 export function VoiceOrb({
   state,
   muted = false,
+  compact = false,
 }: VoiceOrbProps) {
   const active =
     state === "listening" ||
@@ -24,10 +26,17 @@ export function VoiceOrb({
     state === "connecting";
 
   return (
-    <div className="relative flex h-24 w-24 items-center justify-center">
+    <div
+      aria-hidden="true"
+      className={[
+        "relative flex shrink-0 items-center justify-center",
+        compact ? "h-12 w-12" : "h-24 w-24",
+      ].join(" ")}
+    >
       <div
         className={[
-          "absolute inset-0 rounded-full border border-[var(--aq-cyan)]/30",
+          "absolute rounded-full border border-[var(--aq-cyan)]/30",
+          compact ? "inset-1" : "inset-0",
           active && !muted
             ? "animate-ping"
             : "",
@@ -45,7 +54,8 @@ export function VoiceOrb({
 
       <div
         className={[
-          "absolute inset-4 rounded-full border border-[var(--aq-cyan)]/40",
+          "absolute rounded-full border border-[var(--aq-cyan)]/40",
+          compact ? "inset-3" : "inset-4",
           state === "speaking" && !muted
             ? "animate-pulse"
             : "",
@@ -54,7 +64,8 @@ export function VoiceOrb({
 
       <div
         className={[
-          "relative flex h-12 w-12 items-center justify-center rounded-full",
+          "relative flex items-center justify-center rounded-full",
+          compact ? "h-7 w-7" : "h-12 w-12",
           "border border-[var(--aq-border)] bg-[var(--aq-control)]",
           "shadow-[0_0_30px_rgba(34,211,238,0.18)]",
           muted
@@ -64,7 +75,7 @@ export function VoiceOrb({
       >
         <div
           className={[
-            "h-5 w-5 rounded-full",
+            compact ? "h-3 w-3 rounded-full" : "h-5 w-5 rounded-full",
             state === "error"
               ? "bg-red-500"
               : "bg-[var(--aq-cyan)]",
@@ -83,7 +94,7 @@ export function VoiceOrb({
               style={{
                 height:
                   state === "speaking"
-                    ? `${height}px`
+                    ? `${compact ? Math.round(height * 0.7) : height}px`
                     : "3px",
               }}
               className={[

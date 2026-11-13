@@ -1,4 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+const description = "Learn how to use Aqlyra's AI conversation, document search, grounded citations and file tools, with guidance on privacy and model limitations.";
+
+export const metadata: Metadata = {
+  title: "Help and Knowledge Workspace Guide",
+  description,
+  alternates: { canonical: "https://aqlyra-ai.vercel.app/help" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    url: "https://aqlyra-ai.vercel.app/help",
+    siteName: "Aqlyra",
+    title: "Aqlyra Help — AI Knowledge Workspace Guide",
+    description,
+  },
+  twitter: { card: "summary", title: "Aqlyra Help", description },
+};
 
 const topics = [
   {
@@ -25,6 +43,9 @@ export default function HelpPage() {
       <div className="mx-auto max-w-3xl">
         <Link href="/" className="text-sm text-[var(--aq-blue)] hover:underline">
           Back to Aqlyra
+        </Link>
+        <Link href="/how-it-works" className="ml-5 text-sm text-[var(--aq-blue)] hover:underline">
+          How RAG works
         </Link>
         <h1 className="mt-5 text-3xl font-bold">Aqlyra Help</h1>
         <p className="mt-3 text-sm leading-7 text-[var(--aq-muted)]">

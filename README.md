@@ -1,10 +1,26 @@
-# Aqlyra RAG AI
+# Aqlyra AI
+
+**Full-stack AI Engineering portfolio · Deployed engineering beta (10 November 2026)**
+
+A multilingual, document-grounded AI knowledge application: **Next.js/Vercel** frontend, **FastAPI/Render** backend, **Neon PostgreSQL + pgvector**, Redis, an isolated 384D semantic worker, private Knowledge retrieval and traceable citations. Designed to keep source ownership and tenant-scoped retrieval in the backend.
+
+**Verified engineering result:** 1,035/1,035 eligible production Knowledge chunks have matching, real 384D semantic vectors (as of 10 November); 7 quarantined answer-key chunks are excluded. This is **index coverage, not measured answer accuracy**. A separate IBM Granite 97M R2 offline dense-only run on 20 English synthetic labeled queries and 30 chunks measured **Hit Rate@1 90%, Hit Rate@3 100%, MRR@5 0.933**. [Measured CI evidence](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012).
+
+**Experience:** [Deployed app](https://aqlyra-ai.vercel.app) · [Clearly labeled scripted demo](https://aqlyra-ai.vercel.app/demo) (no live inference) · [Backend release source](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027).
+
+**Correct deployment refs:** Vercel frontend: `fix/center-empty-chat-composer-20261102`; Render backend: `release/core-without-study-abroad-20261027`. Protected `main` is a historical ancestor. The frontend branch's embedded backend source is **not** automatically the deployed backend.
+
+**Acceptance boundary:** Public engineering beta, **not an enterprise-production certification**. End-to-end Google/password sign-in, real multilingual microphone/RTC voice, direct cloud Neon+private-object-storage disaster recovery and independent two-account security acceptance are outstanding. Render Free cold starts, provider quotas and test-only local artifact storage remain limitations.
+
+---
+
+## Architecture, security and historical implementation details
 
 Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
 
 **Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
 
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
+**Historical baseline note:** The former pre-production status described the original local/CI release snapshot, not today's deployed Vercel/Render beta. Independent provider-backed E2E, off-host recovery and operations acceptance are still required.
 
 It has two main modes:
 
@@ -282,7 +298,7 @@ aqlyra-rag-ai/
 
 The `backend/evaluation/corpus/` Markdown files contain synthetic retrieval-test data, **not real operational policies**. The benchmark numbers in `backend/evaluation/BASELINE.md` are historical controlled measurements, not production semantic quality results.
 
-The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
+**Historical benchmark note:** An earlier October CI run recorded **380 passing tests** ([historical run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)). This is not the test count or deployment status of the current release. The active Render backend release passed **21/21 exact-commit checks** on 10 November 2026; the active Vercel frontend commit passed **16/16 checks**. Actual user-login, voice-RTC and cloud-recovery E2E remain separate acceptance gates.
 
 The tests cover:
 

@@ -23,6 +23,11 @@ import {
   VoiceOrb,
   type VoiceVisualState,
 } from "@/components/voice/voice-orb";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 import type {
   ConversationMode,
 } from "@/types/conversation";
@@ -161,8 +166,10 @@ export function VoiceCallButton({
   const roomRef =
     useRef<Room | null>(null);
   const microphoneTrackRef = useRef<LocalAudioTrack | null>(null);
+  const browserControllerRef = useRef<BrowserVoiceController | null>(null);
   const callAttemptRef = useRef(0);
   const startingRef = useRef(false);
+  const agentEverJoinedRef = useRef(false);
   const sessionRequestControllerRef = useRef<AbortController | null>(null);
   const agentJoinTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,6 +181,8 @@ export function VoiceCallButton({
 
   const [active, setActive] =
     useState(false);
+  const [callTransport, setCallTransport] =
+    useState<"browser" | "livekit" | null>(null);
 
   const [starting, setStarting] =
     useState(false);
@@ -290,6 +299,7 @@ export function VoiceCallButton({
   function waitForAgent(room: Room) {
     clearAgentJoinTimer();
     if (hasVoiceAgent(room)) {
+      agentEverJoinedRef.current = true;
       setError("");
       setAgentState((current) =>
         current === "connecting" || current === "error"
@@ -350,6 +360,8 @@ export function VoiceCallButton({
       roomRef.current;
 
     roomRef.current = null;
+    browserControllerRef.current?.stop();
+    browserControllerRef.current = null;
 
     // Release the device immediately, even if network teardown stalls.
     stopMicrophoneTrack();
@@ -362,6 +374,7 @@ export function VoiceCallButton({
 
     setActive(false);
     setStarting(false);
+    setCallTransport(null);
     setMuted(false);
     setAgentState("idle");
     setLiveUserText("");
@@ -370,6 +383,105 @@ export function VoiceCallButton({
     setError("");
   }
 
+
+
+  function startFreeBrowserCall() {
+    if (disabled || active || starting || startingRef.current) return;
+    if (availability?.requiresAuth) {
+      const message = "Sign in to use voice calls.";
+      setError(message);
+      onError?.(message);
+      return;
+    }
+    // Browser speech is opt-in, not a silent downgrade of LiveKit RTC.
+    // Its recognition runs in the user's browser and may be processed by
+    // the browser vendor. AI text turns still use the authenticated API.
+    if (!browserSpeechIsSupported()) {
+      const message =
+        "Free Browser Voice is not supported on this browser. Try Safari or Chrome with microphone permission, or use text chat.";
+      setError(message);
+      onError?.(message);
+      return;
+    }
+
+    const attempt = ++callAttemptRef.current;
+    startingRef.current = true;
+    setCallTransport("browser");
+    setStarting(true);
+    setActive(true);
+    setMuted(false);
+    setNeedsAudioUnlock(false);
+    setError("");
+    setLiveUserText("");
+    setLiveAgentText("");
+    setAgentState("connecting");
+
+    // startBrowserVoiceMode installs recognition synchronously before
+    // resolving, preserving the direct-tap microphone permission on iOS.
+    void startBrowserVoiceMode({
+      mode,
+      conversationId,
+      documentIds,
+      onConversationStarted: id => {
+        if (callAttemptRef.current !== attempt) return;
+        onConversationStarted?.(id);
+      },
+      onUserTranscript: (text, isFinal) => {
+        if (callAttemptRef.current !== attempt) return;
+        setLiveUserText(text);
+        onUserTranscript?.(text, isFinal);
+      },
+      onAgentTranscript: (text, isFinal) => {
+        if (callAttemptRef.current !== attempt) return;
+        setLiveAgentText(text);
+        onAgentTranscript?.(text, isFinal);
+      },
+      onState: state => {
+        if (callAttemptRef.current === attempt) setAgentState(state);
+      },
+      onError: message => {
+        if (callAttemptRef.current !== attempt) return;
+        setError(message);
+        onError?.(message);
+      },
+      onAudioBlocked: () => {
+        if (callAttemptRef.current === attempt) setNeedsAudioUnlock(true);
+      },
+      onAudioStarted: () => {
+        if (callAttemptRef.current === attempt) setNeedsAudioUnlock(false);
+      },
+      onStopped: () => {
+        if (callAttemptRef.current !== attempt) return;
+        callAttemptRef.current += 1;
+        browserControllerRef.current = null;
+        startingRef.current = false;
+        setActive(false);
+        setStarting(false);
+        setCallTransport(null);
+        setNeedsAudioUnlock(false);
+        setMuted(false);
+      },
+    }).then(browserController => {
+      if (callAttemptRef.current !== attempt) {
+        browserController.stop();
+        return;
+      }
+      browserControllerRef.current = browserController;
+      startingRef.current = false;
+      setStarting(false);
+    }).catch(startError => {
+      if (callAttemptRef.current !== attempt) return;
+      startingRef.current = false;
+      setStarting(false);
+      setActive(false);
+      setCallTransport(null);
+      setAgentState("error");
+      const message = startError instanceof Error
+        ? startError.message : "Unable to start Browser Voice.";
+      setError(message);
+      onError?.(message);
+    });
+  }
 
   async function startCall() {
     if (
@@ -393,7 +505,9 @@ export function VoiceCallButton({
 
     clearAgentJoinTimer();
     startingRef.current = true;
+    agentEverJoinedRef.current = false;
     const attempt = ++callAttemptRef.current;
+    setCallTransport("livekit");
     setStarting(true);
     setError("");
     setLiveUserText("");
@@ -449,6 +563,16 @@ export function VoiceCallButton({
           | VoiceSessionResponse
           | VoiceApiError;
 
+      if (response.status === 429) {
+        // Retrying repeatedly can only deepen the per-user voice limit.
+        // Preserve the backend's Retry-After without silently restarting.
+        const retry = Number(response.headers.get("Retry-After"));
+        throw new Error(
+          Number.isFinite(retry) && retry > 0
+            ? `Too many voice reconnect attempts. Retry in ${Math.ceil(retry)} seconds.`
+            : "Too many voice reconnect attempts. Try again shortly.",
+        );
+      }
       if (
         !response.ok ||
         !(
@@ -585,6 +709,7 @@ export function VoiceCallButton({
             participant.attributes["lk.publish_on_behalf"]
           ) return;
           clearAgentJoinTimer();
+          agentEverJoinedRef.current = true;
           setError("");
           const state =
             normalizeAgentState(
@@ -640,6 +765,8 @@ export function VoiceCallButton({
       room.on(
         RoomEvent.Disconnected,
         () => {
+          // Unexpected RTC drops must never look like a user-initiated
+          // hangup. endCall and unmount clear roomRef before disconnect.
           if (roomRef.current !== room) return;
           clearAgentJoinTimer();
           roomRef.current = null;
@@ -647,11 +774,16 @@ export function VoiceCallButton({
           stopMicrophoneTrack();
           clearAudioElements();
 
+          const message = agentEverJoinedRef.current
+            ? "Voice call disconnected unexpectedly. Check your connection and try again."
+            : "LiveKit disconnected before the AI agent joined. Please check the voice connection and try again.";
           setActive(false);
           setStarting(false);
           setMuted(false);
           setNeedsAudioUnlock(false);
-          setAgentState("idle");
+          setAgentState("error");
+          setError(message);
+          onError?.(message);
         },
       );
 
@@ -720,6 +852,7 @@ export function VoiceCallButton({
       setAgentState("error");
       setStarting(false);
       setActive(false);
+      setCallTransport(null);
       setNeedsAudioUnlock(false);
 
       onError?.(message);
@@ -728,6 +861,16 @@ export function VoiceCallButton({
 
 
   async function enableAudio() {
+    if (callTransport === "browser") {
+      // Must execute synchronously on the button tap for iOS speech audio.
+      if (browserControllerRef.current?.retryAudio()) {
+        setNeedsAudioUnlock(false);
+        setError("");
+      } else {
+        setError("There is no speech to replay yet. Try speaking again.");
+      }
+      return;
+    }
     const room = roomRef.current;
     if (!room) return;
     try {
@@ -742,6 +885,12 @@ export function VoiceCallButton({
   }
 
   async function toggleMute() {
+    if (callTransport === "browser") {
+      const nextMuted = !muted;
+      browserControllerRef.current?.setMuted(nextMuted);
+      setMuted(nextMuted);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -778,6 +927,8 @@ export function VoiceCallButton({
       sessionRequestControllerRef.current = null;
       startingRef.current = false;
       clearAgentJoinTimer();
+      browserControllerRef.current?.stop();
+      browserControllerRef.current = null;
       stopMicrophoneTrack();
       const room =
         roomRef.current;
@@ -800,9 +951,16 @@ export function VoiceCallButton({
           type="button"
           disabled={disabled}
           aria-label="Start voice conversation"
-          title={availability?.requiresAuth ? "Sign in to use voice calls" : availability?.available === false ? "Real-time voice unavailable" : "Start natural voice conversation"}
+          title="Start voice conversation"
           onClick={() => {
-            void startCall();
+            // A single microphone is the voice entry point. Prefer
+            // server-free browser voice, with existing RTC retained for
+            // browsers that do not implement speech recognition.
+            if (browserSpeechIsSupported()) {
+              startFreeBrowserCall();
+            } else {
+              void startCall();
+            }
           }}
           className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -846,137 +1004,107 @@ export function VoiceCallButton({
 
   return (
     <>
-      <div className="absolute bottom-[72px] right-2 z-40 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-[24px] border border-[var(--aq-border)] bg-[var(--aq-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col items-center">
+      <div
+        role="region"
+        aria-label="Voice conversation"
+        className="absolute bottom-[60px] right-0 z-40 w-[min(296px,calc(100vw-24px))] rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)]/95 p-3 shadow-xl backdrop-blur-xl"
+      >
+        <div className="flex items-center gap-3">
           <VoiceOrb
-            state={
-              starting
-                ? "connecting"
-                : agentState
-            }
+            compact
+            state={starting ? "connecting" : agentState}
             muted={muted}
           />
-
-          <div className="-mt-1 text-center">
-            <div className="text-sm font-semibold text-[var(--aq-text)]">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-[var(--aq-text)]">
               Aqlyra Voice
             </div>
-
-            <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
+            <div
+              aria-live="polite"
+              className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--aq-muted)]"
+            >
               <span
+                aria-hidden="true"
                 className={[
-                  "h-1.5 w-1.5 rounded-full",
-                  muted
-                    ? "bg-[var(--aq-muted)]"
-                    : agentState ===
-                        "speaking"
-                      ? "animate-pulse bg-[var(--aq-cyan)]"
-                      : "animate-pulse bg-[var(--aq-blue)]",
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  muted ? "bg-[var(--aq-muted)]" : "animate-pulse bg-[var(--aq-cyan)]",
                 ].join(" ")}
               />
-
-              {stateLabel(
-                starting
-                  ? "connecting"
-                  : agentState,
-                muted,
-              )}
+              {stateLabel(starting ? "connecting" : agentState, muted)}
             </div>
           </div>
+          <button
+            type="button"
+            aria-label="End voice conversation"
+            title="End call"
+            onClick={() => { void endCall(); }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-600"
+          >
+            <PhoneOff size={17} />
+          </button>
+        </div>
 
-          <div className="mt-4 w-full space-y-1.5">
-            {liveUserText ? (
-              <div className="flex gap-2 text-[11px] leading-4">
-                <span className="shrink-0 font-semibold text-[var(--aq-blue)]">
-                  You
-                </span>
+        {(liveAgentText || liveUserText) && (
+          <p className="mt-2 max-h-12 overflow-y-auto border-t border-[var(--aq-border)] pt-2 text-xs leading-5 text-[var(--aq-text)]">
+            <span className="mr-1 font-semibold text-[var(--aq-cyan)]">
+              {liveAgentText ? "Aqlyra:" : "You:"}
+            </span>
+            {compactText(liveAgentText || liveUserText)}
+          </p>
+        )}
 
-                <span className="min-w-0 text-[var(--aq-muted)]">
-                  {compactText(
-                    liveUserText,
-                  )}
-                </span>
-              </div>
-            ) : null}
+        {error && (
+          <p role="alert" className="mt-2 rounded-lg bg-red-500/10 px-2 py-1.5 text-xs leading-4 text-red-400">
+            {error}
+          </p>
+        )}
 
-            {liveAgentText ? (
-              <div className="flex gap-2 text-[11px] leading-4">
-                <span className="shrink-0 font-semibold text-[var(--aq-cyan)]">
-                  AI
-                </span>
+        {needsAudioUnlock && (
+          <button
+            type="button"
+            onClick={() => { void enableAudio(); }}
+            className="mt-2 min-h-10 w-full rounded-lg bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
+          >
+            Enable sound
+          </button>
+        )}
 
-                <span className="min-w-0 text-[var(--aq-text)]">
-                  {compactText(
-                    liveAgentText,
-                  )}
-                </span>
-              </div>
-            ) : null}
-
-            {!liveUserText &&
-            !liveAgentText ? (
-              <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                {agentState === "connecting"
-                  ? "Waiting for the AI voice agent to join..."
-                  : agentState === "error"
-                    ? "The AI voice agent is unavailable."
-                    : "Speak naturally. Aqlyra is listening."}
-              </div>
-            ) : null}
-          </div>
-
-          {error ? (
-            <div role="alert" className="mt-3 w-full rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-500">
-              {error}
-            </div>
-          ) : null}
-
-          {needsAudioUnlock && (
-            <button
-              type="button"
-              onClick={() => { void enableAudio(); }}
-              className="mt-3 min-h-11 w-full rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white"
-            >
-              Enable sound
-            </button>
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--aq-border)] pt-2">
+          {callTransport === "browser" ? (
+            <details className="min-w-0 text-[10px] leading-4 text-[var(--aq-muted)]">
+              <summary className="cursor-pointer select-none font-medium">
+                About voice privacy
+              </summary>
+              <p className="mt-1">
+                Speech recognition may be processed by your browser provider.
+                Normal Aqlyra AI chat limits still apply. The mic pauses
+                while Aqlyra speaks.
+              </p>
+            </details>
+          ) : (
+            <span className="text-[11px] text-[var(--aq-muted)]">
+              Voice conversation
+            </span>
           )}
-
-          <div className="mt-4 flex items-center justify-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            {callTransport === "browser" && agentState === "speaking" && (
+              <button
+                type="button"
+                onClick={() => { browserControllerRef.current?.interruptSpeech(); }}
+                className="rounded-lg border border-[var(--aq-border)] px-2 py-1.5 text-xs font-medium text-[var(--aq-text)]"
+              >
+                Stop reply
+              </button>
+            )}
             <button
               type="button"
               disabled={starting}
-              aria-label={
-                muted
-                  ? "Unmute microphone"
-                  : "Mute microphone"
-              }
-              title={
-                muted
-                  ? "Unmute"
-                  : "Mute"
-              }
-              onClick={() => {
-                void toggleMute();
-              }}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:border-[var(--aq-cyan)]/50 hover:text-[var(--aq-cyan)] disabled:opacity-50"
+              aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+              title={muted ? "Unmute" : "Mute"}
+              onClick={() => { void toggleMute(); }}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-control)] text-[var(--aq-text)] transition hover:text-[var(--aq-cyan)] disabled:opacity-50"
             >
-              {muted ? (
-                <MicOff size={18} />
-              ) : (
-                <Mic size={18} />
-              )}
-            </button>
-
-            <button
-              type="button"
-              aria-label="End voice conversation"
-              title="End call"
-              onClick={() => {
-                void endCall();
-              }}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:scale-105 hover:bg-red-600"
-            >
-              <PhoneOff size={18} />
+              {muted ? <MicOff size={17} /> : <Mic size={17} />}
             </button>
           </div>
         </div>

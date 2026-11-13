@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Eye,
   EyeOff,
@@ -8,7 +9,6 @@ import {
   LockKeyhole,
   Mail,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
@@ -23,6 +23,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -44,6 +45,7 @@ export function LoginForm() {
         body: JSON.stringify({
           email,
           password,
+          remember_me: rememberMe,
         }),
       });
 
@@ -58,7 +60,7 @@ export function LoginForm() {
             "aqlyra_pending_email",
             email.trim().toLowerCase(),
           );
-          router.push("/verify-email");
+          router.replace("/verify-email");
           return;
         }
 
@@ -71,8 +73,8 @@ export function LoginForm() {
         return;
       }
 
-      router.push("/");
-      router.refresh();
+      // One navigation avoids an extra duplicate authenticated page load.
+      router.replace("/");
     } catch {
       setError("Unable to connect to Aqlyra.");
     } finally {
@@ -176,6 +178,19 @@ export function LoginForm() {
           {error}
         </div>
       )}
+
+      <label className="mt-5 flex items-start gap-3 text-xs text-[var(--aq-muted)]">
+        <input
+          type="checkbox"
+          checked={rememberMe}
+          onChange={(event) => setRememberMe(event.target.checked)}
+          className="mt-0.5 accent-[var(--aq-blue)]"
+        />
+        <span>
+          Keep me signed in on this device for up to 14 days.
+          You can sign out anytime.
+        </span>
+      </label>
 
       <button
         type="submit"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import { trustedProxyClientIp } from "@/lib/security/client-ip";
@@ -8,6 +9,13 @@ import { completeAuthentication } from "@/lib/auth/complete-authentication";
 import type { GoogleCredentialInput } from "@/types/auth";
 
 export async function POST(request: Request) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   let body: GoogleCredentialInput;
 
   try {
@@ -39,6 +47,9 @@ export async function POST(request: Request) {
         headers: backendHeaders,
         body: JSON.stringify(body),
         cache: "no-store",
+        // The upstream may cold-start; never leave browser sign-in pending
+        // until the Vercel function's platform timeout.
+        signal: AbortSignal.timeout(45_000),
       },
     );
 
@@ -46,10 +57,17 @@ export async function POST(request: Request) {
       response,
       "Google sign-in failed",
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { detail: "Sign-in service is temporarily unavailable. Please retry." },
+        { status: 503, headers: { "Retry-After": "10", "Cache-Control": "private, no-store" } },
+      );
+    }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
-      { status: 502 },
+      { status: 502, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }

@@ -26,6 +26,7 @@ import { detectChatArtifactIntent, wantsChatArtifactList } from "@/lib/chat-arti
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { DocumentPanel } from "@/components/documents/document-panel";
 import { VoiceCallButton } from "@/components/voice/voice-call-button";
+import { formatSimilarity } from "@/lib/format-similarity";
 import {
   buildConversationTitle,
 } from "@/lib/conversation/title";
@@ -401,11 +402,6 @@ function getDuplicateDocumentId(
   return null;
 }
 
-function formatSimilarity(
-  score: number,
-) {
-  return score.toFixed(3);
-}
 
 export function RAGWorkspace({
   userId,
@@ -415,6 +411,9 @@ export function RAGWorkspace({
 
   const fileInputRef =
     useRef<HTMLInputElement>(null);
+
+  const composerTextareaRef =
+    useRef<HTMLTextAreaElement>(null);
 
   const chatEndRef =
     useRef<HTMLDivElement>(null);
@@ -2115,6 +2114,16 @@ export function RAGWorkspace({
     );
   }
 
+  // Grow only as the user types, never start with an oversized empty box.
+  // Keep the textarea mounted across the welcome/history layout switch.
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "24px";
+    textarea.style.height =
+      Math.min(112, Math.max(24, textarea.scrollHeight)) + "px";
+  }, [question]);
+
   function renderComposer(
     centered: boolean,
   ) {
@@ -2122,7 +2131,7 @@ export function RAGWorkspace({
       <form
         onSubmit={handleSubmit}
         className={[
-          "min-w-0 w-full rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-3 shadow-xl sm:p-4",
+          "min-w-0 w-full rounded-[22px] border border-[var(--aq-border)] bg-[var(--aq-card-strong)] px-3 py-2.5 shadow-[0_8px_28px_rgba(0,0,0,0.12)] transition-colors focus-within:border-[var(--aq-border-hover)] sm:rounded-2xl sm:p-4 sm:shadow-xl",
           centered
             ? "max-w-[760px]"
             : "max-w-[900px]",
@@ -2167,7 +2176,10 @@ export function RAGWorkspace({
         )}
 
         <textarea
-          rows={2}
+          ref={composerTextareaRef}
+          rows={1}
+          aria-label="Message Aqlyra"
+          enterKeyHint="send"
           value={question}
           disabled={ragLoading}
           onChange={(event) => {
@@ -2177,7 +2189,9 @@ export function RAGWorkspace({
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
-              !event.shiftKey
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              event.nativeEvent.keyCode !== 229
             ) {
               event.preventDefault();
 
@@ -2191,10 +2205,10 @@ export function RAGWorkspace({
               ? "Ask Aqlyra anything..."
               : "Ask Aqlyra about your documents..."
           }
-          className="w-full resize-none bg-transparent text-sm leading-6 text-[var(--aq-text)] outline-none placeholder:text-[var(--aq-muted)]"
+          className="block w-full min-h-6 max-h-28 resize-none overflow-y-auto bg-transparent text-base leading-6 text-[var(--aq-text)] outline-none placeholder:text-[var(--aq-muted)] sm:text-sm"
         />
 
-        <div className="mt-3 flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="mt-2 flex min-w-0 items-center gap-2 sm:mt-3 sm:gap-3">
           <ChatToolsMenu
             mode={chatMode}
             disabled={ragLoading || uploadState !== "idle"}
@@ -2309,13 +2323,14 @@ export function RAGWorkspace({
 
             <button
               type="submit"
+              aria-label="Send message"
               disabled={
                 ragLoading ||
                 uploadState !== "idle" ||
                 !question.trim() &&
                 !attachedDocument
               }
-              className="flex h-10 items-center gap-2 rounded-xl bg-[var(--aq-blue)] px-3 text-xs font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
+              className="flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--aq-blue)] px-3 text-sm font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--aq-blue)] disabled:cursor-not-allowed disabled:opacity-50 sm:rounded-xl sm:px-5 sm:text-xs"
             >
               {ragLoading ? (
                 <LoaderCircle
@@ -2326,7 +2341,7 @@ export function RAGWorkspace({
                 <Send size={14} />
               )}
 
-              Send
+              <span className="hidden sm:inline">Send</span>
             </button>
           </div>
         </div>
@@ -2426,7 +2441,7 @@ export function RAGWorkspace({
         </div>
 
         {!hasConversation ? (
-          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-3 pb-4 sm:px-6 sm:pb-12">
+          <div className="flex min-h-0 min-w-0 flex-1 items-end justify-center px-3 pb-4 sm:px-6 sm:pb-5">
             <div className="flex w-full max-w-[760px] flex-col items-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-blue)]">
                 <Sparkles
@@ -2446,11 +2461,6 @@ export function RAGWorkspace({
                   : "Upload a document or ask a grounded question across your processed knowledge sources."}
               </p>
 
-              <div className="mt-7 w-full">
-                {renderComposer(
-                  true,
-                )}
-              </div>
             </div>
           </div>
         ) : (
@@ -2657,14 +2667,32 @@ export function RAGWorkspace({
               </div>
             </div>
 
-            <div className="min-w-0 shrink-0 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5">
-              <div className="mx-auto max-w-[900px]">
-                {renderComposer(
-                  false,
-                )}
-              </div>
-            </div>
           </>
+        )}
+
+        {/* Keep the LiveKit component mounted while voice history turns
+            transition from the empty welcome screen to the chat stream.
+            Moving the same composer between conditional branches used to
+            unmount VoiceCallButton, whose cleanup disconnects the RTC room. */}
+        <div
+          className={[
+            "min-w-0 shrink-0",
+            hasConversation
+              ? "px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:pb-5"
+              : "px-3 pb-2 pt-1 sm:px-6 sm:pb-3",
+          ].join(" ")}
+        >
+          <div className="mx-auto max-w-[900px]">
+            {renderComposer(
+              !hasConversation,
+            )}
+          </div>
+        </div>
+        {/* Matching flexible space below the one persistent composer
+            centers the entire welcome + input group on a new chat.
+            Conversation history uses the normal bottom-aligned composer. */}
+        {!hasConversation && (
+          <div aria-hidden="true" className="min-h-0 flex-1" />
         )}
       </section>
 

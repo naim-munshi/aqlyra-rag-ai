@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { AdminMonitor } from "@/components/admin/admin-monitor";
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
 import type { AdminOverview } from "@/types/admin";
@@ -13,7 +14,12 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminPage() {
-  const token = await getAccessToken();
+  let token: string | null;
+  try {
+    token = await getAccessToken();
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
   if (!token) redirect("/login");
 
   let response: Response;
@@ -27,7 +33,7 @@ export default async function AdminPage() {
   } catch {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#080b12] p-6 text-white">
-        <p role="status">Monitoring service is currently unavailable.</p>
+        <p role="status">Monitoring service is currently unavailable. Retry shortly.</p>
       </main>
     );
   }
@@ -36,7 +42,7 @@ export default async function AdminPage() {
   if (!response.ok) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#080b12] p-6 text-white">
-        <p role="status">Monitoring service is currently unavailable.</p>
+        <p role="status">Monitoring service is currently unavailable. Retry shortly.</p>
       </main>
     );
   }
