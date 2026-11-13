@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from sqlalchemy import (
@@ -12,6 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.retrieval import RetrievalQuery
@@ -225,6 +226,77 @@ def _fallback_unicode_chunks(db: Session, query: RetrievalQuery) -> list[Lexical
     ]
 
 
+
+def _fuse_multilingual_lexical_hits(
+    *,
+    fts_hits: list[LexicalRetrievalHit],
+    unicode_hits: list[LexicalRetrievalHit],
+    top_k: int,
+) -> list[LexicalRetrievalHit]:
+    """Fuse two real lexical rankings without mixing incomparable raw scores.
+
+    The Unicode channel is weighted slightly higher only for script-bearing
+    queries. FTS score and Unicode n-gram counts remain their original
+    measured values; metadata reports the RRF ordering score separately.
+    No vectors, citations, user content, or synthetic matches are created.
+    """
+    if not fts_hits:
+        return unicode_hits[:top_k]
+    if not unicode_hits:
+        return fts_hits[:top_k]
+
+    fts_rank = {
+        hit.chunk_id: index
+        for index, hit in enumerate(fts_hits, start=1)
+    }
+    unicode_rank = {
+        hit.chunk_id: index
+        for index, hit in enumerate(unicode_hits, start=1)
+    }
+    hits_by_id = {
+        hit.chunk_id: hit
+        for hit in unicode_hits
+    }
+    # Preserve the exact FTS lexical_score if both channels matched.
+    hits_by_id.update({
+        hit.chunk_id: hit
+        for hit in fts_hits
+    })
+
+    ranked: list[tuple[float, int, str, LexicalRetrievalHit]] = []
+    for chunk_id, hit in hits_by_id.items():
+        lexical_position = fts_rank.get(chunk_id)
+        unicode_position = unicode_rank.get(chunk_id)
+        score = (
+            (1.0 / (60 + lexical_position) if lexical_position else 0.0)
+            + (1.15 / (60 + unicode_position) if unicode_position else 0.0)
+        )
+        best_rank = min(
+            rank
+            for rank in (lexical_position, unicode_position)
+            if rank is not None
+        )
+        channels = []
+        if lexical_position is not None:
+            channels.append("fts")
+        if unicode_position is not None:
+            channels.append("unicode_substring")
+        metadata = dict(hit.metadata)
+        metadata.update({
+            "lexical_channels": channels,
+            "multilingual_rrf_score": score,
+        })
+        ranked.append((
+            -score,
+            best_rank,
+            str(chunk_id),
+            replace(hit, metadata=metadata),
+        ))
+
+    ranked.sort(key=lambda entry: entry[:3])
+    return [entry[3] for entry in ranked[:top_k]]
+
+
 def search_lexical_chunks(
     db: Session,
     query: RetrievalQuery,
@@ -340,6 +412,21 @@ def search_lexical_chunks(
                     chunk.chunk_metadata or {}
                 ),
             )
+        )
+
+    if (
+        hits
+        and settings.KNOWLEDGE_MULTILINGUAL_UNICODE_FUSION_ENABLED
+        and _unicode_search_terms(query.text)
+    ):
+        # FTS can match an incidental English term while missing the
+        # relevant Japanese/Bengali phrase. Keep both tenant-scoped
+        # candidate lists rather than suppressing Unicode retrieval.
+        unicode_hits = _fallback_unicode_chunks(db=db, query=query)
+        return _fuse_multilingual_lexical_hits(
+            fts_hits=hits,
+            unicode_hits=unicode_hits,
+            top_k=query.top_k,
         )
 
     return hits
