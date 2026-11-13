@@ -4,7 +4,7 @@ const SITE_URL = "https://aqlyra-ai.vercel.app";
 
 /** Never publish routes that render private, account-scoped content. */
 export default function sitemap(): MetadataRoute.Sitemap {
-  return ["/", "/about", "/how-it-works", "/demo", "/help"].map((route) => ({
+  return ["/", "/about", "/how-it-works", "/rag-evaluation", "/demo", "/help"].map((route) => ({
     url: SITE_URL + route,
     changeFrequency: "monthly" as const,
   }));
