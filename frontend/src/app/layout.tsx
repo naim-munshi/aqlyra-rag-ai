@@ -15,12 +15,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://aqlyra-ai.vercel.app"),
   title: {
-    default: "Aqlyra | Source-Grounded AI Knowledge Workspace",
+    default: "Aqlyra AI | Source-Grounded Document RAG Workspace",
     template: "%s | Aqlyra",
   },
   description:
     "Aqlyra is an AI knowledge workspace for private document search, citation-aware answers, and research workflows.",
-  applicationName: "Aqlyra",
+  applicationName: "Aqlyra AI",
   verification: {
     google: "m_rTNCg8wozqwUkzSrU0m4zlqwCHaOT04JeNUM26Cp8",
   },
