@@ -56,6 +56,9 @@ from app.services.memory_retrieval_service import (
 from app.services.memory_lexical_retrieval import (
     retrieve_lexical_memories_for_user,
 )
+from app.services.quality_model_routing import (
+    select_provider_for_normal_chat,
+)
 from app.services.social_turn_policy import is_low_information_social_turn
 from app.services.rag_answer_service import (
     answer_question,
@@ -664,9 +667,9 @@ def _prepare_normal_chat_generation(
     if founder_followup is not None:
         return ProductIdentityLLMProvider(founder_followup), message
 
-    active_provider = (
-        provider
-        or create_configured_llm_provider()
+    active_provider = select_provider_for_normal_chat(
+        message=message,
+        provider=provider,
     )
 
     memories = _retrieve_normal_chat_memories(
