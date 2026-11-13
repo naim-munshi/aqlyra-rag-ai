@@ -667,10 +667,13 @@ def _prepare_normal_chat_generation(
     if founder_followup is not None:
         return ProductIdentityLLMProvider(founder_followup), message
 
-    active_provider = select_provider_for_normal_chat(
-        message=message,
-        provider=provider,
-    )
+    # Preserve the existing injected/default provider contract for all
+    # normal conversations unless the quality tier is explicitly enabled.
+    # Several streaming and privacy tests inject the configured factory.
+    if provider is None and settings.LLM_QUALITY_ROUTING_ENABLED:
+        active_provider = select_provider_for_normal_chat(message=message)
+    else:
+        active_provider = provider or create_configured_llm_provider()
 
     memories = _retrieve_normal_chat_memories(
         db=db,
