@@ -61,6 +61,10 @@ from app.services.memory_retrieval_service import (
 from app.services.memory_lexical_retrieval import (
     retrieve_lexical_memories_for_user,
 )
+from app.services.quality_model_routing import (
+    select_provider_for_normal_chat,
+)
+from app.services.social_turn_policy import is_low_information_social_turn
 from app.services.rag_answer_service import (
     answer_question,
 )
@@ -263,6 +267,11 @@ Answer relevance and conversational intelligence:
   infer a new question from your own previous speech.
 
 Rules:
+- The input is a JSON object. Answer only the current_user_message;
+  conversation_history and personal_memory_context provide context, not tasks.
+- The context_window flags indicate whether earlier messages or memories
+  were omitted to fit limits. Never invent omitted context or claim full recall.
+  Do not mention internal JSON fields in the response.
 - Use conversation history only as conversational context.
 - Determine the actual task and answer it before adding optional context.
 - For factual questions, distinguish established information from uncertain or
@@ -339,6 +348,13 @@ class ChatExecutionResult:
     evidence_tokens: int | None
 
 
+# The full user message remains authoritative. Only optional retrieved memories
+# and old turns are reduced, before either normal chat or normal SSE generation.
+# UTF-8 bytes provide a conservative, tokenizer-independent request bound.
+_NORMAL_CHAT_MAX_INPUT_BYTES = 32_768
+_NORMAL_CHAT_MEMORY_BUDGET_BYTES = 8_192
+
+
 def _normal_chat_input(
     *,
     history: list[Message],
@@ -348,30 +364,72 @@ def _normal_chat_input(
         ...,
     ] = (),
 ) -> str:
+    """Bound historical context without truncating the current user message.
+
+    Preserve a contiguous tail of recent messages in chronological order.
+    If the latest historical message cannot fit, do not substitute unrelated
+    older turns. Memory is chosen in the retrieval order and capped separately
+    so recalled facts cannot crowd out the conversation.
+    """
     payload = {
-        "conversation_history": [
-            {
-                "role": message.role,
-                "content": message.content,
-            }
-            for message in history
-        ],
-        "personal_memory_context": [
-            {
-                "kind": memory.kind,
-                "content": memory.content,
-            }
-            for memory in memories
-        ],
-        "current_user_message": (
-            current_message
-        ),
+        "conversation_history": [],
+        "personal_memory_context": [],
+        "current_user_message": current_message,
+        "context_window": {
+            "history_truncated": False,
+            "memories_truncated": False,
+        },
     }
 
-    return json.dumps(
-        payload,
-        ensure_ascii=False,
+    def serialize() -> str:
+        return json.dumps(payload, ensure_ascii=False)
+
+    def byte_count() -> int:
+        return len(serialize().encode("utf-8"))
+
+    base_size = byte_count()
+    memory_ceiling = min(
+        _NORMAL_CHAT_MAX_INPUT_BYTES,
+        base_size + _NORMAL_CHAT_MEMORY_BUDGET_BYTES,
     )
+    for memory in memories:
+        payload["personal_memory_context"].append({
+            "kind": memory.kind,
+            "content": memory.content,
+        })
+        if byte_count() > memory_ceiling:
+            payload["personal_memory_context"].pop()
+            break
+
+    for message in reversed(history):
+        payload["conversation_history"].insert(0, {
+            "role": message.role,
+            "content": message.content,
+        })
+        if byte_count() > _NORMAL_CHAT_MAX_INPUT_BYTES:
+            payload["conversation_history"].pop(0)
+            break
+
+    retained_history = len(payload["conversation_history"])
+    retained_memories = len(payload["personal_memory_context"])
+    payload["context_window"]["history_truncated"] = (
+        retained_history < len(history)
+    )
+    payload["context_window"]["memories_truncated"] = (
+        retained_memories < len(memories)
+    )
+    if retained_history < len(history) or retained_memories < len(memories):
+        logger.info(
+            "normal_chat_context_budget_applied "
+            "retained_history=%d omitted_history=%d "
+            "retained_memories=%d omitted_memories=%d",
+            retained_history,
+            len(history) - retained_history,
+            retained_memories,
+            len(memories) - retained_memories,
+        )
+
+    return serialize()
 
 
 def _retrieve_normal_chat_memories(
@@ -380,7 +438,10 @@ def _retrieve_normal_chat_memories(
     user_id: str,
     message: str,
 ) -> tuple[MemoryRetrievalHit, ...]:
-    if not settings.MEMORY_CHAT_ENABLED:
+    # A standalone greeting has no personal retrieval intent. Avoid an
+    # unnecessary remote 384-d embedding call (and its quota/429 exposure).
+    # All mixed questions and personalization requests use normal memory.
+    if not settings.MEMORY_CHAT_ENABLED or is_low_information_social_turn(message):
         return ()
 
     if (
@@ -639,10 +700,13 @@ def _prepare_normal_chat_generation(
     if founder_followup is not None:
         return ProductIdentityLLMProvider(founder_followup), message
 
-    active_provider = (
-        provider
-        or create_configured_llm_provider()
-    )
+    # Preserve the existing injected/default provider contract for all
+    # normal conversations unless the quality tier is explicitly enabled.
+    # Several streaming and privacy tests inject the configured factory.
+    if provider is None and settings.LLM_QUALITY_ROUTING_ENABLED:
+        active_provider = select_provider_for_normal_chat(message=message)
+    else:
+        active_provider = provider or create_configured_llm_provider()
 
     memories = _retrieve_normal_chat_memories(
         db=db,

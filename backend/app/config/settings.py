@@ -258,6 +258,14 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 60.0
     LLM_MAX_RETRIES: int = 2
     LLM_REASONING_EFFORT: str = ""
+    # Optional single-call Groq quality tier for explicitly complex normal
+    # chat requests. Disabled until A/B relevance, p95 and quota tests pass.
+    # This never grants models extra tools or document permissions.
+    LLM_QUALITY_ROUTING_ENABLED: bool = False
+    LLM_QUALITY_MODEL: str = "openai/gpt-oss-120b"
+    LLM_QUALITY_MAX_OUTPUT_TOKENS: int = Field(
+        default=1_600, ge=256, le=2_048,
+    )
 
     # Durable Knowledge indexing. Disabled by default for legacy/staging.
     # Store queue state in existing Document.status (no schema migration).
