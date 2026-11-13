@@ -10,7 +10,7 @@ const production = "https://aqlyra-ai.vercel.app";
 test("only non-account pages are discoverable in sitemap", () => {
   const sitemap = source("src/app/sitemap.ts");
   assert.match(sitemap, /MetadataRoute\.Sitemap/);
-  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/demo", "\/help"\]/);
+  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/rag-evaluation", "\/demo", "\/help"\]/);
   for (const privatePath of ["/api", "/study-abroad", "/admin", "/guest", "/login",
     "/register", "/artifacts", "/web", "/agent"]) {
     assert.ok(!sitemap.includes('"' + privatePath + '"'),
@@ -145,4 +145,45 @@ test("software entity markup has one consistent current public identity", () => 
     assert.ok(page.includes('JSON.stringify(structuredData).replace'));
     assert.doesNotMatch(page, /aggregateRating|reviewCount|ratingValue|fake reviews/i);
   }
+});
+
+
+test("Aqlyra AI has a single consistent branded WebSite entity, not a duplicate SEO block", () => {
+  const marketing = source("src/components/marketing/public-home.tsx");
+  const home = source("src/app/page.tsx");
+  const layout = source("src/app/layout.tsx");
+  assert.match(marketing, /name: "Aqlyra AI"/);
+  assert.match(marketing, /"@id": "https:\/\/aqlyra-ai\.vercel\.app\/#website"/);
+  assert.match(marketing, /alternateName: \["Aqlyra RAG AI", "Aqlyra Knowledge Workspace"\]/);
+  assert.equal((marketing.match(/"@type": "WebSite"/g) || []).length, 1);
+  assert.equal((marketing.match(/"@type": "WebApplication"/g) || []).length, 1);
+  assert.match(layout, /applicationName: "Aqlyra AI"/);
+  assert.match(home, /Aqlyra AI — Private Document RAG & Source-Grounded Chat/);
+  assert.match(home, /siteName: "Aqlyra AI"/);
+  assert.match(home, /alternates: \{ canonical: "https:\/\/aqlyra-ai\.vercel\.app\/" \}/);
+});
+
+test("the real RAG evaluation is public, searchable, source-linked and not private user content", () => {
+  const page = source("src/app/rag-evaluation/page.tsx");
+  const sitemap = source("src/app/sitemap.ts");
+  const home = source("src/components/marketing/public-home.tsx");
+  const about = source("src/app/about/page.tsx");
+  const how = source("src/app/how-it-works/page.tsx");
+
+  assert.match(page, /robots: \{ index: true, follow: true \}/);
+  assert.match(page, /alternates: \{ canonical \}/);
+  assert.match(page, /<h1/);
+  assert.match(page, /<h2/);
+  assert.match(page, /TechArticle/);
+  assert.match(page, /"2026-11-13"/);
+  assert.ok(page.includes("20 labeled English synthetic questions"));
+  assert.ok(page.includes("1,035 of 1,035 eligible"));
+  assert.ok(page.includes("not the correctness"));
+  assert.ok(page.includes("not published as SEO pages"));
+  assert.ok(page.includes("https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012"));
+  for (const item of [sitemap, home, about, how]) {
+    assert.ok(item.includes("/rag-evaluation"), "Missing internal link or sitemap inclusion");
+  }
+  assert.doesNotMatch(page, /getAccessToken|backendUrl|cookies\(\)|Authorization|API_KEY|aggregateRating|reviewCount/);
+  assert.doesNotMatch(page, /100% accurate|guaranteed (?:ranking|admission|accuracy)/i);
 });
