@@ -34,16 +34,17 @@ const structuredData = {
   "@graph": [
     {
       "@type": "WebSite",
-      name: "Aqlyra",
-      alternateName: "Aqlyra AI",
+      "@id": "https://aqlyra-ai.vercel.app/#website",
+      name: "Aqlyra AI",
+      alternateName: ["Aqlyra RAG AI", "Aqlyra Knowledge Workspace"],
       url: "https://aqlyra-ai.vercel.app/",
       description: "Aqlyra AI knowledge workspace with source-grounded document search and AI conversations.",
     },
     {
       "@type": "WebApplication",
       "@id": "https://aqlyra-ai.vercel.app/#software",
-      name: "Aqlyra",
-      alternateName: "Aqlyra RAG AI",
+      name: "Aqlyra AI",
+      alternateName: ["Aqlyra", "Aqlyra RAG AI"],
       url: "https://aqlyra-ai.vercel.app/",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
@@ -143,6 +144,24 @@ export function PublicHomePage() {
           </div>
         </section>
 
+        <section aria-labelledby="engineering-evidence-heading" className="border-t border-[var(--aq-border)] py-16">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--aq-cyan)]">
+            Open engineering evidence
+          </p>
+          <h2 id="engineering-evidence-heading" className="mt-3 text-2xl font-bold sm:text-3xl">
+            How Aqlyra AI evaluates document retrieval
+          </h2>
+          <p className="mt-4 max-w-3xl text-sm leading-8 text-[var(--aq-muted)]">
+            Aqlyra documents its retrieval approach, source citation checks, and
+            limitations. Read the real, reproducible engineering evidence behind
+            the RAG workspace. A synthetic retrieval benchmark is not the same
+            as verified production answer accuracy.
+          </p>
+          <Link href="/rag-evaluation" className="mt-5 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
+            Read the Aqlyra RAG evaluation and limitations
+          </Link>
+        </section>
+
         <section className="my-10 rounded-3xl border border-[var(--aq-border)] bg-[var(--aq-panel)] px-6 py-12 sm:px-10" aria-labelledby="start-heading">
           <h2 id="start-heading" className="text-2xl font-bold">Ready to explore Aqlyra?</h2>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--aq-muted)]">
@@ -159,6 +178,7 @@ export function PublicHomePage() {
           <nav aria-label="Footer navigation" className="flex flex-wrap gap-5">
             <Link href="/about" className="hover:underline">About Aqlyra</Link>
             <Link href="/how-it-works" className="hover:underline">How RAG works</Link>
+            <Link href="/rag-evaluation" className="hover:underline">Engineering evidence</Link>
             <Link href="/help" className="hover:underline">Help and privacy guidance</Link>
             <Link href="/login" className="hover:underline">Sign in</Link>
           </nav>
