@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "article",
     url: canonical,
-    siteName: "Aqlyra",
+    siteName: "Aqlyra AI",
     title: "How Aqlyra AI Works — Private RAG and Source-Grounded Answers",
     description,
   },
@@ -112,6 +112,9 @@ export default function HowItWorksPage() {
             </Link>
             <Link href="/about" className="rounded-xl border border-[var(--aq-border)] px-5 py-3 hover:border-[var(--aq-blue)]">
               About Aqlyra
+            </Link>
+            <Link href="/rag-evaluation" className="rounded-xl border border-[var(--aq-border)] px-5 py-3 hover:border-[var(--aq-blue)]">
+              RAG evaluation
             </Link>
           </div>
         </header>
