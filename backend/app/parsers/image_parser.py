@@ -20,6 +20,8 @@ from app.parsers.types import (
 
 OCR_LANGUAGES = "eng+jpn+ben"
 OCR_TIMEOUT_SECONDS = 30
+# Bounded grayscale OCR within Render Free memory envelope.
+MAX_OCR_IMAGE_PIXELS = 9_000_000
 
 
 class ImageOCRParser:
@@ -42,6 +44,19 @@ class ImageOCRParser:
                     source_image.format
                     or "UNKNOWN"
                 )
+
+                # Check dimensions BEFORE EXIF rotation or raster conversion:
+                # Pillow would otherwise decode an oversized decompression
+                # bomb into process memory on the 512 MiB production tier.
+                raw_width, raw_height = source_image.size
+                if (
+                    raw_width < 1
+                    or raw_height < 1
+                    or raw_width * raw_height > MAX_OCR_IMAGE_PIXELS
+                ):
+                    raise DocumentParsingError(
+                        "Image OCR exceeds supported pixel limit"
+                    )
 
                 oriented_image = (
                     ImageOps.exif_transpose(

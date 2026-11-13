@@ -1,0 +1,181 @@
+# Isolated CPU/RAM envelope modeled on Render's documented Free compute plan.
+# 0.1 CPU + 512 MiB: https://render.com/docs/compute-plans
+# NOT a production capacity claim; actual Render, provider quotas, and Neon differ.
+# All identities/data are synthetic on ephemeral GitHub PostgreSQL.
+name: Render Free Resource-Envelope Benchmark
+
+on:
+  pull_request:
+    branches:
+      - release/core-without-study-abroad-20261027
+    paths:
+      - "scripts/ops/ephemeral_chat_load.py"
+      - ".github/workflows/render-free-envelope-benchmark.yml"
+      - "backend/app/**"
+      - "backend/Dockerfile"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-envelope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-envelope:
+    name: 0.1 CPU / 512 MiB synthetic FastAPI chat
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APP_ENV: development
+      DEBUG: "false"
+      SECRET_KEY: github-ci-deterministic-isolated-key-only-not-production
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aqlyra_rag_ai
+      LLM_PROVIDER: deterministic
+      EMBEDDING_PROVIDER: deterministic
+      EMAIL_VERIFICATION_REQUIRED: "false"
+      RATE_LIMIT_ENABLED: "false"
+      WEB_RESEARCH_ENABLED: "false"
+      KNOWLEDGE_BACKFILL_ON_STARTUP: "false"
+      AQLYRA_DISPOSABLE_LOAD_CONFIRMED: "yes"
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aqlyra_rag_ai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aqlyra_rag_ai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Confirm test cannot reach production
+        run: |
+          set -Eeuo pipefail
+          test "$APP_ENV" = development
+          test "$LLM_PROVIDER" = deterministic
+          test "$EMBEDDING_PROVIDER" = deterministic
+          test "$AQLYRA_DISPOSABLE_LOAD_CONFIRMED" = yes
+          test "$DATABASE_URL" = 'postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aqlyra_rag_ai'
+          python3 -m py_compile scripts/ops/ephemeral_chat_load.py
+          echo 'SAFE_DISPOSABLE_ENVIRONMENT=PASS'
+
+      - name: Build exact application Docker image
+        run: |
+          set -Eeuo pipefail
+          docker build -t aqlyra-envelope-ci:${{ github.sha }}             -f backend/Dockerfile backend
+
+      - name: Initialize disposable local pgvector database
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --network host \
+            --env APP_ENV --env SECRET_KEY --env DATABASE_URL \
+            --env LLM_PROVIDER --env EMBEDDING_PROVIDER \
+            --env EMAIL_VERIFICATION_REQUIRED \
+            --entrypoint sh aqlyra-envelope-ci:${{ github.sha }} -c '
+              python -c "from sqlalchemy import create_engine; from app.config.settings import settings; e=create_engine(settings.DATABASE_URL, isolation_level=\"AUTOCOMMIT\"); c=e.connect(); c.exec_driver_sql(\"CREATE EXTENSION IF NOT EXISTS vector\"); c.close(); e.dispose()" &&
+              alembic upgrade head
+            '
+
+      - name: Start the same FastAPI container on loopback
+        run: |
+          set -Eeuo pipefail
+          docker run -d --name aqlyra-envelope-api --network host \
+            --cpus=2 --memory=512m --memory-swap=512m \
+            --env APP_ENV --env DEBUG --env SECRET_KEY --env DATABASE_URL \
+            --env LLM_PROVIDER --env EMBEDDING_PROVIDER \
+            --env EMAIL_VERIFICATION_REQUIRED --env RATE_LIMIT_ENABLED \
+            --env WEB_RESEARCH_ENABLED --env KNOWLEDGE_BACKFILL_ON_STARTUP \
+            -e DATABASE_MIGRATION_MODE=manual \
+            aqlyra-envelope-ci:${{ github.sha }}
+          ready=0
+          for attempt in $(seq 1 100); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8000/api/v1/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'DISPOSABLE_HTTP_HEALTH=PASS'
+
+      - name: Pre-provision users, cap container to Render Free envelope, measure
+        run: |
+          set -Eeuo pipefail
+          rm -f /tmp/aqlyra-perf-prepared /tmp/aqlyra-perf-resume
+          python3 scripts/ops/ephemeral_chat_load.py \
+            --base-url http://127.0.0.1:8000 \
+            --pause-marker /tmp/aqlyra-perf-prepared \
+            --resume-marker /tmp/aqlyra-perf-resume \
+            --report-file /tmp/aqlyra-render-envelope-load.json \
+            > /tmp/aqlyra-render-envelope-test.log 2>&1 &
+          load_pid=$!
+          provisioned=0
+          for attempt in $(seq 1 180); do
+            if test -f /tmp/aqlyra-perf-prepared; then
+              provisioned=1
+              break
+            fi
+            if ! kill -0 "$load_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if test "$provisioned" -ne 1; then
+            echo 'Synthetic provisioning failed; no resource envelope measured.'
+            cat /tmp/aqlyra-render-envelope-test.log
+            exit 1
+          fi
+          # Model Render Free's published 0.1 CPU/512MiB envelope;
+          # only measured chat HTTP is capped, not bcrypt account setup.
+          docker update --cpus=0.1 --memory=512m --memory-swap=512m \
+            aqlyra-envelope-api > /dev/null
+          nano="$(docker inspect -f '{{.HostConfig.NanoCpus}}' aqlyra-envelope-api)"
+          ram="$(docker inspect -f '{{.HostConfig.Memory}}' aqlyra-envelope-api)"
+          test "$nano" = 100000000
+          test "$ram" = 536870912
+          echo "RESOURCE_ENVELOPE=0.1_CPU_512_MiB"
+          touch /tmp/aqlyra-perf-resume
+          set +e
+          wait "$load_pid"
+          result=$?
+          set -e
+          grep -E 'LOAD_TIER=|CONCURRENCY_BENCHMARK=|CI_SLO_AT_ALL_TIERS=' \
+            /tmp/aqlyra-render-envelope-test.log || true
+          exit "$result"
+
+      - name: Print bounded capacity findings
+        if: always()
+        run: |
+          if test -f /tmp/aqlyra-render-envelope-load.json; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/aqlyra-render-envelope-load.json").read_text())
+          for t in report["tiers"]:
+              print(
+                  f"ENVELOPE_TIER={t['requested_concurrent_users']} "
+                  f"success={t['successes']}/{t['requests']} "
+                  f"p95_ms={t['p95_latency_ms']} "
+                  f"rps={t['successful_rps']} "
+                  f"result={t['illustrative_ci_slo']}"
+              )
+          print("ENVELOPE_LIMITATIONS=NOT_RENDER_NOT_GROQ_NOT_NEON")
+          PY
+          fi
+
+      - name: Clean isolated container
+        if: always()
+        run: |
+          docker rm -f aqlyra-envelope-api >/dev/null 2>&1 || true

@@ -86,4 +86,7 @@ def create_configured_query_rewriter(
         max_chars=(
             settings.QUERY_REWRITER_MAX_CHARS
         ),
+        translate_japanese_to_english=(
+            settings.RAG_JAPANESE_TO_ENGLISH_RETRIEVAL_ENABLED
+        ),
     )

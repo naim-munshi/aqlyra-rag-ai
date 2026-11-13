@@ -1,3 +1,19 @@
+# Aqlyra public portfolio demo on Vercel
+
+**Updated 31 October 2026.** The full Aqlyra application now has a real authenticated Vercel/Render deployment. Its explicitly linked `/demo` route is *still deliberately scripted*, but it should also be accessible on real production as a clearly labeled product walkthrough; it does **not** run a real LLM or access user data.
+
+The previous instructions below are retained for **separate frontend-only portfolio builds**, not as the current real-production architecture. In production leave `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` unset/false: root redirects unauthenticated users to the real login while `/demo` shows the public walkthrough. In an isolated demo-only build set it true so the root redirects to `/demo`.
+
+Production: https://aqlyra-ai.vercel.app
+
+Public scripted demo: https://aqlyra-ai.vercel.app/demo
+
+Live, account-based acceptance: [PRODUCT_DEMO_AND_ACCEPTANCE.md](PRODUCT_DEMO_AND_ACCEPTANCE.md)
+
+Environment/backend status: [PRODUCTION_STATUS_2026-10-31.md](PRODUCTION_STATUS_2026-10-31.md)
+
+---
+
 # Aqlyra public portfolio preview (Vercel Hobby)
 
 Aqlyra is a full-stack application, not a Vercel-only backend.
@@ -5,9 +21,7 @@ The public /demo route is an **intentional, transparent, browser-only**
 walkthrough for recruiters, reviewers, and mobile visitors. It does not
 contact FastAPI, PostgreSQL, Redis, an LLM provider, or a voice service.
 
-The preview is separate from the actual authenticated app. Anonymous
-visits to / redirect to /demo, while authenticated users still enter
-the real workspace. /login and private APIs retain their original
+The preview is separate from the actual authenticated app. In a *demo-only* build, anonymous visitors to / redirect to /demo. In the real app, anonymous / redirects to /login; explicit /demo remains public. /login and private APIs retain their original
 behavior when a backend is available.
 
 ## What a visitor can do without an account

@@ -1,5 +1,16 @@
 from fastapi import APIRouter
 
+from app.api.web_research import router as web_research_router
+from app.api.browser_agent import router as browser_agent_router
+from app.api.study_abroad import router as study_abroad_router
+from app.api.study_fit import router as study_fit_router
+from app.api.study_evidence_brief import router as study_evidence_brief_router
+from app.api.study_program_research import router as study_program_research_router
+from app.api.artifacts import router as artifacts_router
+from app.api.admin import router as admin_router
+from app.api.admin_users import router as admin_users_router
+from app.api.cloud_uploads import router as cloud_uploads_router
+
 from app.api.auth import (
     router as auth_router,
 )
@@ -80,3 +91,15 @@ api_router.include_router(
 api_router.include_router(
     voice_router
 )
+
+api_router.include_router(web_research_router)
+
+api_router.include_router(browser_agent_router)
+api_router.include_router(study_abroad_router)
+api_router.include_router(study_fit_router)
+api_router.include_router(study_evidence_brief_router)
+api_router.include_router(study_program_research_router)
+api_router.include_router(artifacts_router)
+api_router.include_router(admin_router)
+api_router.include_router(admin_users_router)
+api_router.include_router(cloud_uploads_router)

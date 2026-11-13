@@ -17,6 +17,7 @@ _TOKEN_PATTERN = re.compile(
     r"|[\u3040-\u30ff]"
     r"|[\u3400-\u9fff]"
     r"|[\uac00-\ud7af]"
+    r"|[\u0980-\u09ff]+"
     r"|[^\s]",
     flags=re.UNICODE,
 )
@@ -47,7 +48,8 @@ def _count_words(text: str) -> int:
             r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*"
             r"|[\u3040-\u30ff]"
             r"|[\u3400-\u9fff]"
-            r"|[\uac00-\ud7af]",
+            r"|[\uac00-\ud7af]"
+    r"|[\u0980-\u09ff]+",
             text,
             flags=re.UNICODE,
         )

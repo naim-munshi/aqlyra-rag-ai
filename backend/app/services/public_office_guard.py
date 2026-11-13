@@ -1,0 +1,353 @@
+"""Conservative protection for time-sensitive public officeholder questions.
+
+No hardcoded politicians, country guesses, private memory, or web calls.
+This module prevents unverified LLM answers when live sourcing is unavailable.
+"""
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator
+from datetime import datetime, timezone
+
+from app.llms.types import LLMGeneration, LLMProviderInfo, LLMStreamEvent
+from app.services.web_research_capability import public_web_research_status
+
+
+# Correct only a short allowlist of common typos in a public-office role.
+# Do not perform fuzzy matching on arbitrary text or send private chat history.
+_PRESIDENT_TYPOS = re.compile(
+    r"\b(?:presodent|presedent|presadent|presdent|presidant|presdient|prezident)\b",
+    flags=re.IGNORECASE,
+)
+
+_ROLE = re.compile(
+    r"\b(?:prime\s+minister|president|head\s+of\s+(?:state|government))\b"
+    r"|প্রধানমন্ত্রী|রাষ্ট্রপতি|首相|総理大臣|大統領",
+    flags=re.IGNORECASE,
+)
+# Common romanized Bangla shorthand in Converse:
+# "prime minister nam" -> clarify, not a timeless explanation.
+# "prime minister name of Japan" -> present-tense public fact, not Groq.
+_ROMANIZED_PUBLIC_NAME = re.compile(
+    r"^(?:(?:current|present)\s+)?"
+    r"(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?"
+    r"(?:\s+(?:of|in)\s+[a-z][a-z .'-]{1,70})?$",
+    re.IGNORECASE,
+)
+_ROMANIZED_COUNTRY_FIRST = re.compile(
+    r"^[a-z][a-z .'-]{1,65}\s+"
+    r"(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?$",
+    re.IGNORECASE,
+)
+_ROMANIZED_AMBIGUOUS = re.compile(
+    r"^(?:prime\s+minister|president|pm)"
+    r"(?:\s+(?:nam|name|ke|who))?$",
+    re.IGNORECASE,
+)
+_EN_OFFICE_QUESTION = re.compile(
+    r"^\s*(?:who(?:'s|\s+is|\s+currently\s+is|\s+holds|\s+currently\s+holds)"
+    r"|what(?:'s|\s+is)\s+(?:the\s+)?name\s+of)\b",
+    flags=re.IGNORECASE,
+)
+_BN_JA_WHO = re.compile(r"কে(?:\s|\?|$)|কার\b|誰|だれ")
+_GENERIC_EN = re.compile(
+    r"(?:who(?:'s| is)|tell me who(?:'s| is))\s+"
+    r"(?:(?:the|our)\s+)?(?:(?:current|present)\s+)?"
+    r"(?:prime\s+minister|president|head\s+of\s+(?:state|government))"
+    r"(?:\s+(?:now|today|right now|currently))?",
+    flags=re.IGNORECASE,
+)
+_GENERIC_BN = re.compile(
+    r"(?:(?:বর্তমান|এখনকার)\s+)?(?:প্রধানমন্ত্রী|রাষ্ট্রপতি)\s*"
+    r"(?:কে|কে আছেন)",
+)
+_GENERIC_JA = re.compile(
+    r"(?:(?:今の|現在の)\s*)?(?:首相|総理大臣|大統領)"
+    r"(?:は)?(?:誰|だれ)(?:ですか)?",
+)
+_TERMINAL_PUNCTUATION = re.compile(r"[\s!?।。？]+$")
+_HISTORICAL = re.compile(
+    r"\b(?:was|were|former|previous|historical|history|in\s+(?:19|20)\d{2})\b"
+    r"|সাবেক|প্রাক্তন|以前|過去|歴代",
+    flags=re.IGNORECASE,
+)
+
+
+def _normalized(question: str) -> str:
+    text = " ".join(question.replace("’", "'").split()).strip()
+    return _PRESIDENT_TYPOS.sub("president", text)
+
+
+def is_public_officeholder_question(question: str) -> bool:
+    """Only questions asking *who* holds a public executive office."""
+    text = _normalized(question)
+    # Don't enforce a current-data guard on an explicit historical request.
+    if _HISTORICAL.search(text):
+        return False
+    romanized = _TERMINAL_PUNCTUATION.sub("", text)
+    # "tell me about BD PM" is a profile, not a name-only question.
+    # The broad legacy country-first matcher otherwise misclassifies
+    # "tell me about bd" as a country name.
+    if is_bangladesh_pm_profile_question(question):
+        return False
+    if _BD_PM_SHORT.fullmatch(romanized):
+        return True
+    if _ROMANIZED_PUBLIC_NAME.fullmatch(romanized) or _ROMANIZED_COUNTRY_FIRST.fullmatch(romanized):
+        return True
+    if not _ROLE.search(text):
+        return False
+    return bool(_EN_OFFICE_QUESTION.search(text) or _BN_JA_WHO.search(text))
+
+
+def is_ambiguous_public_officeholder_question(question: str) -> bool:
+    """Exact generic queries lack the country/jurisdiction needed to answer."""
+    text = _normalized(question)
+    text = _TERMINAL_PUNCTUATION.sub("", text)
+    return any(pattern.fullmatch(text) for pattern in (
+        _GENERIC_EN, _GENERIC_BN, _GENERIC_JA, _ROMANIZED_AMBIGUOUS,
+    ))
+
+
+def _language(question: str) -> str:
+    if any("\u0980" <= ch <= "\u09ff" for ch in question):
+        return "bn"
+    if any("\u3040" <= ch <= "\u30ff" or "\u3400" <= ch <= "\u9fff" for ch in question):
+        return "ja"
+    return "en"
+
+
+def unverified_officeholder_reply(question: str) -> str | None:
+    """Return a bounded response if an LLM would otherwise guess a live fact.
+
+    Called only on the ordinary (non-web) chat path. A real verified web
+    request does not call this function and preserves its sources.
+    """
+    if not (
+        is_public_officeholder_question(question)
+        or is_bangladesh_pm_profile_question(question)
+    ):
+        return None
+    lang = _language(question)
+    ambiguous = is_ambiguous_public_officeholder_question(question)
+    capability = public_web_research_status()
+    if lang == "bn":
+        if ambiguous:
+            return "কোন দেশের প্রধানমন্ত্রী বা রাষ্ট্রপতির কথা বলছেন?"
+        return (
+            "এই পদে বর্তমানে কে আছেন, তা লাইভ সূত্র দিয়ে যাচাই করতে পারছি না। "
+            + (
+                "Aqlyra-তে Tavily Web Search provider সংযুক্ত করা হয়নি। "
+                "Administrator-কে এটি configure করতে হবে।"
+                if capability in ("missing_tavily_api_key", "disabled_and_missing_key")
+                else "Aqlyra administrator Web Search বন্ধ রেখেছেন।"
+                if capability == "disabled_key_present"
+                else "Web Search Auto বা On করে আবার চেষ্টা করুন।"
+            )
+        )
+    if lang == "ja":
+        if ambiguous:
+            return "どの国の首相・大統領についてですか？"
+        return (
+            "現在の在職者をライブ情報で確認できません。"
+            + (
+                "Aqlyraの管理者によるTavily連携が必要です。"
+                if capability in ("missing_tavily_api_key", "disabled_and_missing_key")
+                else "Aqlyraの管理者がウェブ検索を無効にしています。"
+                if capability == "disabled_key_present"
+                else "Web SearchをAutoまたはOnにして再度お試しください。"
+            )
+        )
+    if ambiguous:
+        return "Which country do you mean?"
+    if capability in ("missing_tavily_api_key", "disabled_and_missing_key"):
+        return (
+            "I can't verify the current officeholder because Aqlyra's live "
+            "Web Search provider is not connected. The administrator needs "
+            "to configure Tavily; I won't guess from old model data."
+        )
+    if capability == "disabled_key_present":
+        return (
+            "I can't verify the current officeholder because Aqlyra's "
+            "live Web Search is disabled by its administrator. "
+            "I won't guess from old model data."
+        )
+    return (
+        "I can't verify the current officeholder from live sources right now. "
+        "If you selected Web Search Off, switch to Auto or On and try again."
+    )
+
+
+
+# Select an official publisher by office and jurisdiction, not by politician
+# name. Keep this narrow: "us" alone in ordinary prose is a pronoun.
+_BD_PM_SHORT = re.compile(
+    r"^(?:(?:tell me|give me|what is|what's)\s+)?(?:the\s+)?"
+    r"(?:bd|bangladesh)\s+(?:pm|prime\s+minister)"
+    r"(?:\s+(?:name|nam))?\??$",
+    re.IGNORECASE,
+)
+_BD_PM_PROFILE = re.compile(
+    r"^(?:tell|give)\s+me\s+(?:briefly\s+)?(?:about|information\s+about)\s+"
+    r"(?:the\s+)?(?:(?:current|present)\s+)?"
+    r"(?:bd|bangladesh)\s+(?:pm|prime\s+minister)\??$",
+    re.IGNORECASE,
+)
+
+def is_bangladesh_pm_profile_question(question: str) -> bool:
+    """A public profile needs factual synthesis, not just the person's name."""
+    return bool(_BD_PM_PROFILE.fullmatch(_normalized(question).rstrip(" ?")))
+
+
+_BD_PM_ROLE = re.compile(
+    r"\b(?:(?:bd|bangladesh)\s+(?:pm|prime\s+minister)"
+    r"|(?:pm|prime\s+minister)\s+(?:of\s+)?(?:bd|bangladesh))\b",
+    re.IGNORECASE,
+)
+
+_US_PRESIDENT = re.compile(
+    r"\b(?:(?:current|present)\s+)?(?:the\s+)?"
+    r"(?:u\.?s\.?a?\.?|united\s+states(?:\s+of\s+america)?|american)"
+    r"\s+president\b"
+    r"|\bpresident\s+of\s+(?:the\s+)?"
+    r"(?:u\.?s\.?a?\.?|united\s+states(?:\s+of\s+america)?|america)\b",
+    re.IGNORECASE,
+)
+
+
+def officeholder_primary_domains(question: str) -> list[str] | None:
+    """Server-owned official source scope; never trust a model-supplied URL."""
+    if not (
+        is_public_officeholder_question(question)
+        or is_bangladesh_pm_profile_question(question)
+    ):
+        return None
+    normalized = _normalized(question)
+    if _US_PRESIDENT.search(normalized):
+        return ["whitehouse.gov"]
+    if _BD_PM_ROLE.search(normalized):
+        return ["pmo.gov.bd", "cabinet.gov.bd"]
+    return None
+
+
+def officeholder_authoritative_url(question: str) -> str | None:
+    """Stable first-party endpoint. The live page must still be extracted."""
+    domains = officeholder_primary_domains(question)
+    if domains == ["whitehouse.gov"]:
+        return "https://www.whitehouse.gov/administration/"
+    if domains == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return "https://pmo.gov.bd/"
+    return None
+
+
+
+# Public directory locator verified independently against the real
+# Bangladesh Cabinet Division website (2026-11-04). This is a source URL,
+# never a hardcoded officeholder name. Search results take precedence when
+# the government publishes a new live listing.
+_BD_CURRENT_GOVERNMENT_DIRECTORY = (
+    "https://cabinet.gov.bd/pages/static-pages/"
+    "%E0%A6%AE%E0%A6%BE%E0%A6%A8%E0%A6%A8%E0%A7%80%E0%A7%9F-"
+    "%E0%A6%AA%E0%A7%8D%E0%A6%B0%E0%A6%A7%E0%A6%BE%E0%A6%A8"
+    "%E0%A6%AE%E0%A6%A8%E0%A7%8D%E0%A6%A4%E0%A7%8D%E0%A6%B0%E0%A7%80-"
+    "m7lus9-6993f46f91eb6d1a3a089524"
+)
+
+
+_BD_PMO_CURRENT_CABINET_ROSTER = (
+    "https://pmo.gov.bd/pages/static-pages/"
+    "%E0%A6%AE%E0%A6%A8%E0%A7%8D%E0%A6%A4%E0%A7%8D%E0%A6%B0"
+    "%E0%A6%BF%E0%A6%B8%E0%A6%AD%E0%A6%BE-"
+    "7wy8o4-699542d2f5e31263342f13b7"
+)
+
+
+def officeholder_additional_authoritative_urls(question: str) -> list[str]:
+    """Actual current-government directory rather than an empty homepage.
+
+    Keep the live search-result list first; this fallback is only a known
+    first-party path that still must provide readable government evidence.
+    """
+    if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return [
+            _BD_CURRENT_GOVERNMENT_DIRECTORY,
+            _BD_PMO_CURRENT_CABINET_ROSTER,
+        ]
+    return []
+
+
+def officeholder_source_query(question: str) -> str:
+    """Short high-precision search query, separate from answer instructions.
+
+    The model still receives the original public user's query and the
+    verified source excerpts; searching must not re-use verbose prompts.
+    """
+    if officeholder_primary_domains(question) == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        return (
+            "বাংলাদেশ বর্তমান প্রধানমন্ত্রী মন্ত্রিপরিষদ বিভাগ "
+            "প্রধানমন্ত্রী ও মন্ত্রিগণ সরকারি তালিকা "
+            "cabinet.gov.bd"
+        )
+    if officeholder_primary_domains(question) == ["whitehouse.gov"]:
+        return "site:whitehouse.gov/administration/ current president of the United States"
+    return question
+
+
+def officeholder_search_query(question: str) -> str:
+    """Add an as-of date to public search without transmitting chat history."""
+    is_profile = is_bangladesh_pm_profile_question(question)
+    if not is_public_officeholder_question(question) and not is_profile:
+        return question
+    date = datetime.now(timezone.utc).date().isoformat()
+    if is_profile:
+        return (
+            "Who is the current prime minister of Bangladesh? "
+            "Give a brief, factual profile including name, appointment "
+            f"date and background as of {date}; prioritize an official "
+            "government incumbent listing and corroborated biography."
+        )
+    # A primary-source query is more precise than a generic officeholder query,
+    # especially when the user misspells "president".
+    official = officeholder_primary_domains(question)
+    if official == ["whitehouse.gov"]:
+        return (
+            "Who is the current president of the United States "
+            f"as of {date}? White House administration president "
+            "official government source"
+        )
+    if official == ["pmo.gov.bd", "cabinet.gov.bd"]:
+        # Keep the public follow-up wording stable for existing users/tests.
+        return (
+            "Who is the prime minister of Bangladesh? "
+            f"current officeholder as of {date} official government source "
+            "Bangladesh Prime Minister's Office"
+        )
+    # Correct safe, role-only spelling variants in other public queries.
+    return f"{_normalized(question)} current officeholder as of {date} official government source"
+
+
+class PublicFactGuardProvider:
+    """Fixed, truthful user-visible reply with the normal streaming contract."""
+    def __init__(self, response: str):
+        self._response = response
+
+    @property
+    def info(self) -> LLMProviderInfo:
+        return LLMProviderInfo(
+            provider_name="aqlyra-public-fact-guard",
+            model_name="local-validation",
+            max_output_tokens=256,
+        )
+
+    def generate(self, *, instructions: str, input_text: str) -> LLMGeneration:
+        return LLMGeneration(
+            text=self._response,
+            provider_name=self.info.provider_name,
+            model_name=self.info.model_name,
+        )
+
+    def stream(self, *, instructions: str, input_text: str) -> Iterator[LLMStreamEvent]:
+        result = self.generate(instructions=instructions, input_text=input_text)
+        yield LLMStreamEvent(event_type="delta", delta_text=self._response)
+        yield LLMStreamEvent(event_type="complete", generation=result)

@@ -39,7 +39,8 @@ class MemoryRetrievalHit:
     importance: float
     confidence: float
     similarity_score: float
-    cosine_distance: float
+    cosine_distance: float | None
+    retrieval_mode: str = "semantic"
 
 
 def retrieve_memories_for_user(

@@ -33,6 +33,9 @@ class EvidenceContextConfig:
         "summary",
         "proposition",
     )
+    # Optional fair-share packing. Retrieval ranking, ownership and
+    # citation validation remain unchanged.
+    balance_source_budget: bool = False
 
     def __post_init__(self) -> None:
         if self.max_context_tokens < 1:
@@ -82,7 +85,7 @@ class EvidenceSource:
     section_path: tuple[str, ...]
     start_page: int | None
     end_page: int | None
-    similarity_score: float
+    similarity_score: float | None
     content: str
     was_truncated: bool
 

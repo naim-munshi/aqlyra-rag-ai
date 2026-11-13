@@ -1,0 +1,63 @@
+name: Static Security Analysis
+
+on:
+  pull_request:
+    branches: [main, "release/**", "fix/center-empty-chat-composer-20261102"]
+  push:
+    branches: [main, "release/**", "fix/center-empty-chat-composer-20261102"]
+    paths:
+      - "backend/app/**"
+      - "frontend/src/**"
+      - "frontend/tests/**"
+      - ".github/workflows/security-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bandit:
+    name: High-severity Python SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned static analyzer
+        run: python -m pip install bandit==1.9.4
+      - name: Fail on high-severity issues in application source
+        run: bandit -r backend/app -q -lll
+
+
+  frontend-security:
+    name: Frontend CSRF, XSS and proxy security regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install exact locked dependencies without lifecycle scripts
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test authentication boundaries, request origin, SSRF relay, XSS and headers
+        working-directory: frontend
+        run: |
+          node --test tests/security-*.test.mjs \
+            tests/origin.test.mjs \
+            tests/semantic-relay-security.test.mjs \
+            tests/study-private-proxy-hardening.test.mjs \
+            tests/voice-session-origin.test.mjs

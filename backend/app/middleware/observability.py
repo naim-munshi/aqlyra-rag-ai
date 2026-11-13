@@ -5,6 +5,8 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.config.settings import settings
+
 from app.core.logging import (
     app_logger,
     reset_request_id,
@@ -27,6 +29,7 @@ _QUIET_SUCCESS_PATHS = {
     "/api/v1/health",
     "/api/v1/readiness",
     "/api/v1/metrics",
+    "/api/v1/admin/overview",
 }
 
 
@@ -159,6 +162,21 @@ def setup_request_observability(
             response.headers[
                 "X-Request-ID"
             ] = request_id
+
+            # Render terminates HTTPS at its ingress. Protect direct API
+            # origins against subsequent cleartext downgrade without
+            # pinning custom domains or unverified subdomains.
+            if settings.is_production:
+                response.headers["Strict-Transport-Security"] = "max-age=31536000"
+
+            # Prevent sensitive account/document JSON from entering shared
+            # caches, even when a new API route forgets explicit headers.
+            # Keep narrower route-specific policies (including SSE
+            # no-transform) unchanged.
+            if path.startswith("/api/v1/"):
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                if "Cache-Control" not in response.headers:
+                    response.headers["Cache-Control"] = "private, no-store"
 
             if (
                 path not in
