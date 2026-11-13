@@ -61,7 +61,7 @@ async function getCurrentUser(): Promise<UserResponse | null> {
 }
 
 const PUBLIC_DESCRIPTION =
-  "Meet Aqlyra AI: chat with AI, ask questions about private documents, explore source-grounded RAG answers and research tools.";
+  "Aqlyra AI is a multilingual knowledge workspace for private document RAG, source citations, AI conversation and supported web research. Explore the public demo.";
 
 export async function generateMetadata(): Promise<Metadata> {
   // A session can display private workspace content at this same route.
@@ -79,20 +79,20 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   return {
-    title: "Aqlyra AI — Chat, Document Search and Grounded Answers",
+    title: "Aqlyra AI — Private Document RAG & Source-Grounded Chat",
     description: PUBLIC_DESCRIPTION,
     alternates: { canonical: "https://aqlyra-ai.vercel.app/" },
     robots: { index: true, follow: true },
     openGraph: {
       type: "website",
       url: "https://aqlyra-ai.vercel.app/",
-      siteName: "Aqlyra",
-      title: "Aqlyra AI — Chat, Search and Explore",
+      siteName: "Aqlyra AI",
+      title: "Aqlyra AI — Private Document RAG & Source-Grounded Chat",
       description: PUBLIC_DESCRIPTION,
     },
     twitter: {
       card: "summary",
-      title: "Aqlyra AI — Private Knowledge and AI Chat",
+      title: "Aqlyra AI — Document Search and Source-Grounded Chat",
       description: PUBLIC_DESCRIPTION,
     },
   };
