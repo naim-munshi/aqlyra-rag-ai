@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: canonical,
-    siteName: "Aqlyra",
+    siteName: "Aqlyra AI",
     title: "Aqlyra — Source-Grounded AI Knowledge Workspace",
     description,
   },
@@ -51,8 +51,8 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "@id": "https://aqlyra-ai.vercel.app/#software",
-  name: "Aqlyra",
-  alternateName: "Aqlyra RAG AI",
+  name: "Aqlyra AI",
+  alternateName: ["Aqlyra", "Aqlyra RAG AI"],
   url: "https://aqlyra-ai.vercel.app",
   description,
   applicationCategory: "BusinessApplication",
@@ -132,6 +132,9 @@ export default function AboutPage() {
           </p>
           <Link href="/how-it-works" className="mt-5 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
             Read the full RAG and citation explanation
+          </Link>
+          <Link href="/rag-evaluation" className="mt-5 ml-5 inline-block text-sm font-semibold text-[var(--aq-blue)] hover:underline">
+            RAG engineering evidence
           </Link>
         </section>
 
