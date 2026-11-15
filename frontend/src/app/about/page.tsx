@@ -3,7 +3,7 @@ import Link from "next/link";
 
 const canonical = "https://aqlyra-ai.vercel.app/about";
 const description =
-  "What is Aqlyra AI? An online AI assistant for conversation, private document search (RAG), cited answers and supported web research. See how it works.";
+  "Aqlyra AI is a document RAG and AI chat workspace, not a financial trading platform. Explore private knowledge search, cited answers and research.";
 
 export const metadata: Metadata = {
   title: "What Is Aqlyra AI? | AI Chat and Document RAG",
@@ -52,7 +52,7 @@ const structuredData = {
   "@type": "WebApplication",
   "@id": "https://aqlyra-ai.vercel.app/#software",
   name: "Aqlyra AI",
-  alternateName: ["Aqlyra", "Aqlyra RAG AI"],
+  alternateName: ["Aqlyra RAG AI", "Aqlyra Knowledge Workspace"],
   url: "https://aqlyra-ai.vercel.app",
   description,
   applicationCategory: "BusinessApplication",
@@ -96,6 +96,12 @@ export default function AboutPage() {
             generation (RAG). It can find relevant passages in your selected
             documents, provide source-referenced answers and support research
             workflows when its connected services are available.
+          </p>
+          <p className="mt-4 text-sm leading-7 text-[var(--aq-muted)]">
+            Aqlyra AI is a document and research assistant, not an automated
+            financial trading platform. It does not monitor markets or execute
+            financial trades. This is the official website for the AI knowledge
+            workspace described here.
           </p>
           <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold">
             <Link href="/demo" className="rounded-xl bg-[var(--aq-blue)] px-5 py-3 text-white hover:opacity-90">
