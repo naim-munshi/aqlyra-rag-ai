@@ -187,3 +187,17 @@ test("the real RAG evaluation is public, searchable, source-linked and not priva
   assert.doesNotMatch(page, /getAccessToken|backendUrl|cookies\(\)|Authorization|API_KEY|aggregateRating|reviewCount/);
   assert.doesNotMatch(page, /100% accurate|guaranteed (?:ranking|admission|accuracy)/i);
 });
+
+test("Aqlyra AI identity is unambiguous and matches visible public copy", () => {
+  const about = source("src/app/about/page.tsx");
+  const homepage = source("src/components/marketing/public-home.tsx");
+  assert.match(about, /What is Aqlyra AI\?/);
+  assert.match(about, /not an automated/);
+  assert.match(about, /financial trading platform/);
+  assert.match(about, /does not monitor markets or execute/);
+  assert.match(about, /official website for the AI knowledge/);
+  assert.match(about, /document RAG and AI chat workspace/);
+  assert.match(homepage, /document RAG workspace with private knowledge retrieval/);
+  assert.doesNotMatch(homepage, /alternateName: \["Aqlyra",/);
+  assert.doesNotMatch(about, /alternateName: \["Aqlyra",/);
+});
