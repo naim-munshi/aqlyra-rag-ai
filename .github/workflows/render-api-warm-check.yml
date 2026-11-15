@@ -1,0 +1,47 @@
+# Best-effort free-tier availability mitigation, not a production uptime guarantee.
+# Render Free spins down after 15 minutes without incoming requests.
+# GitHub schedules can be delayed/dropped. An always-on paid instance is the
+# only dependable remedy for this hosting-specific cold start.
+name: Render API Best-Effort Warm Check
+on:
+  schedule:
+    - cron: "6,16,26,36,46,56 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-api-best-effort-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check public API liveness without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://aqlyra-api-free-launch.onrender.com/api/v1/health"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          # The first request wakes a sleeping instance; do not use or log
+          # authentication tokens, customer data, or arbitrary third-party URLs.
+          for attempt in 1 2 3; do
+            http_code="$(curl --silent --show-error --max-time 45 \
+              --connect-timeout 10 --output "$response_file" \
+              --write-out '%{http_code}' "$endpoint" || true)"
+            if [ "$http_code" = "200" ] && \
+               grep -Eq '"status"[[:space:]]*:[[:space:]]*"healthy"' "$response_file"; then
+              echo "Aqlyra API responds healthy (attempt $attempt)."
+              exit 0
+            fi
+            echo "::warning::Aqlyra API not ready (HTTP $http_code), attempt $attempt."
+            if [ "$attempt" != "3" ]; then sleep 20; fi
+          done
+
+          echo "::error::Aqlyra API liveness check failed after three attempts."
+          exit 1
