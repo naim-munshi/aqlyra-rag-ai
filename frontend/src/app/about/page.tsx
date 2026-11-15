@@ -3,10 +3,10 @@ import Link from "next/link";
 
 const canonical = "https://aqlyra-ai.vercel.app/about";
 const description =
-  "Discover Aqlyra, an AI workspace for document search, source-grounded answers, citation-aware chat and research workflows. Explore the public demo.";
+  "What is Aqlyra AI? An online AI assistant for conversation, private document search (RAG), cited answers and supported web research. See how it works.";
 
 export const metadata: Metadata = {
-  title: "About Aqlyra — AI Knowledge Workspace",
+  title: "What Is Aqlyra AI? | AI Chat and Document RAG",
   description,
   alternates: { canonical },
   robots: { index: true, follow: true },
@@ -14,12 +14,12 @@ export const metadata: Metadata = {
     type: "website",
     url: canonical,
     siteName: "Aqlyra AI",
-    title: "Aqlyra — Source-Grounded AI Knowledge Workspace",
+    title: "What Is Aqlyra AI? | Document Search and AI Chat",
     description,
   },
   twitter: {
     card: "summary",
-    title: "Aqlyra — AI Knowledge Workspace",
+    title: "What Is Aqlyra AI?",
     description,
   },
 };
@@ -73,7 +73,7 @@ export default function AboutPage() {
       <div className="mx-auto max-w-4xl">
         <nav aria-label="Public navigation" className="flex flex-wrap items-center justify-between gap-4">
           <Link href="/about" className="text-lg font-bold tracking-tight text-[var(--aq-text)]">
-            Aqlyra
+            Aqlyra AI
           </Link>
           <div className="flex flex-wrap items-center gap-5 text-sm">
             <Link href="/demo" className="text-[var(--aq-blue)] hover:underline">Explore demo</Link>
@@ -88,12 +88,14 @@ export default function AboutPage() {
             Source-grounded knowledge AI
           </p>
           <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
-            Meet Aqlyra, an AI workspace for your knowledge
+            What is Aqlyra AI?
           </h1>
           <p className="mt-6 text-base leading-8 text-[var(--aq-muted)]">
-            Search documents, ask questions and explore research with citations
-            and reviewable sources. Aqlyra brings conversation, private knowledge
-            retrieval and practical planning tools into one workspace.
+            Aqlyra AI is a web-based AI assistant that combines general AI
+            conversation with private document search using retrieval-augmented
+            generation (RAG). It can find relevant passages in your selected
+            documents, provide source-referenced answers and support research
+            workflows when its connected services are available.
           </p>
           <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold">
             <Link href="/demo" className="rounded-xl bg-[var(--aq-blue)] px-5 py-3 text-white hover:opacity-90">
