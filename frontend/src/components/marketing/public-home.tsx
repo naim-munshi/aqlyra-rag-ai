@@ -44,13 +44,13 @@ const structuredData = {
       "@type": "WebApplication",
       "@id": "https://aqlyra-ai.vercel.app/#software",
       name: "Aqlyra AI",
-      alternateName: ["Aqlyra", "Aqlyra RAG AI"],
+      alternateName: ["Aqlyra RAG AI", "Aqlyra Knowledge Workspace"],
       url: "https://aqlyra-ai.vercel.app/",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       sameAs: "https://github.com/naim-munshi/aqlyra-rag-ai",
       description:
-        "AI assistant with document retrieval, citation-aware answers, web research and Study Abroad planning tools.",
+        "Aqlyra AI document RAG workspace with private knowledge retrieval, source citations, AI chat and supported research tools.",
     },
   ],
 };
