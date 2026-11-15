@@ -26,8 +26,7 @@ def test_tenant_rls_denies_missing_context_and_cross_user_reads_or_writes() -> N
     assert script.count("CREATE POLICY aqlyra_tenant_scope") == 17
     assert "GRANT ALL" not in script
     assert "GRANT USAGE ON SCHEMA public TO aqlyra_tenant_runtime" in script
-    executable_sql = "
-".join(
+    executable_sql = "\n".join(
         line for line in script.splitlines()
         if not line.lstrip().startswith("--")
     )
