@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { waitForBackendReady } from "@/lib/status/wait-for-backend-ready";
 
 type LoginError = {
   detail?: string;
@@ -27,6 +28,19 @@ export function LoginForm() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [warming, setWarming] = useState(false);
+
+  useEffect(() => {
+    // Wake a Render Free instance while the user types; no credentials sent.
+    const controller = new AbortController();
+    void fetch("/api/health", {
+      method: "GET",
+      credentials: "omit",
+      cache: "no-store",
+      signal: controller.signal,
+    }).catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
@@ -35,8 +49,15 @@ export function LoginForm() {
 
     setError("");
     setLoading(true);
+    setWarming(true);
 
     try {
+      // A readiness GET is safe to retry; credential-bearing login POST is not.
+      if (!(await waitForBackendReady())) {
+        setError("Aqlyra is still starting. Please try signing in shortly.");
+        return;
+      }
+      setWarming(false);
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -78,6 +99,7 @@ export function LoginForm() {
     } catch {
       setError("Unable to connect to Aqlyra.");
     } finally {
+      setWarming(false);
       setLoading(false);
     }
   }
@@ -204,7 +226,7 @@ export function LoginForm() {
           />
         )}
 
-        {loading ? "Signing in..." : "Sign in"}
+        {loading ? (warming ? "Connecting..." : "Signing in...") : "Sign in"}
       </button>
       </form>
     </>
