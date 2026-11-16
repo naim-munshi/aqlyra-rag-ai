@@ -32,6 +32,16 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      typeof body.email !== "string" || !body.email.trim() ||
+      typeof body.password !== "string" || !body.password ||
+      (body.remember_me !== undefined && typeof body.remember_me !== "boolean")) {
+    return NextResponse.json(
+      { detail: "Invalid login request" },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const backendHeaders = new Headers({
     "Content-Type": "application/json",
   });
