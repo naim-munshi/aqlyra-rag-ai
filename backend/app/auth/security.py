@@ -104,6 +104,7 @@ def decode_refresh_token_with_version(token: str) -> tuple[str, int]:
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type", "ver", "jti"]},
         )
     except JWTError as exc:
         raise InvalidTokenError("Invalid or expired refresh token") from exc
@@ -114,7 +115,7 @@ def decode_refresh_token_with_version(token: str) -> tuple[str, int]:
     token_id = payload.get("jti")
     if (
         not isinstance(subject, str)
-        or not subject
+        or not subject.strip()
         or type(version) is not int
         or version < 0
         or token_type != "refresh"
@@ -131,6 +132,7 @@ def decode_access_token_with_version(token: str) -> tuple[str, int]:
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type"]},
         )
     except JWTError as exc:
         raise InvalidTokenError(
@@ -140,7 +142,7 @@ def decode_access_token_with_version(token: str) -> tuple[str, int]:
     subject = payload.get("sub")
     token_type = payload.get("type")
 
-    if not isinstance(subject, str):
+    if not isinstance(subject, str) or not subject.strip():
         raise InvalidTokenError(
             "Token subject is missing",
         )
@@ -196,6 +198,7 @@ def decode_email_verification_token(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type", "cid"]},
         )
     except JWTError as exc:
         raise InvalidVerificationTokenError(
@@ -208,7 +211,9 @@ def decode_email_verification_token(
 
     if (
         not isinstance(subject, str)
+        or not subject.strip()
         or not isinstance(challenge_id, str)
+        or not challenge_id.strip()
         or token_type != "email_verification"
     ):
         raise InvalidVerificationTokenError(
