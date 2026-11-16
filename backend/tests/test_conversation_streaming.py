@@ -1,4 +1,7 @@
 import json
+from types import SimpleNamespace
+
+import app.api.conversations as conversation_module
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -394,4 +397,94 @@ def test_stream_rejects_knowledge_mode_for_now(
     assert response.json()["detail"] == (
         "Streaming currently supports "
         "normal conversations only"
+    )
+
+
+def test_stream_first_delta_metrics_distinguish_normal_and_verified_full_paths(
+    client: TestClient, db_session: Session, monkeypatch,
+) -> None:
+    user = create_user(db_session, suffix="stream-timing-labels")
+    authenticate_as(user)
+    events_logged: list[tuple[str, dict]] = []
+
+    class Recorder:
+        def info(self, event, **fields):
+            events_logged.append((event, fields))
+
+    monkeypatch.setattr(conversation_module, "app_logger", Recorder())
+    monkeypatch.setattr(
+        chat_module, "create_configured_llm_provider",
+        lambda: SuccessfulStreamingProvider(),
+    )
+    cid = create_conversation(client, mode="normal")
+    response = client.post(
+        f"/api/v1/conversations/{cid}/messages/stream",
+        json={"content": "Synthetic greeting", "web_mode": "off"},
+    )
+    assert response.status_code == 200
+    assert [event["event"] for event in parse_sse(response.text)] == [
+        "start", "delta", "delta", "complete",
+    ]
+    first = [
+        values for event, values in events_logged
+        if event == "chat_stream_first_delta"
+    ]
+    assert len(first) == 1
+    assert first[0]["path_type"] == "normal_model_delta"
+    assert first[0]["elapsed_ms"] >= 0
+
+    # The evidence/web path must emit one complete, validated result; this
+    # is not a model-token stream and must be measured in a different bucket.
+    events_logged.clear()
+    monkeypatch.setattr(
+        conversation_module, "resolve_public_research_followup",
+        lambda **kwargs: kwargs["message"],
+    )
+    monkeypatch.setattr(
+        conversation_module, "route_web_request",
+        lambda *args: "on",
+    )
+    monkeypatch.setattr(
+        conversation_module, "execute_chat_turn",
+        lambda **kwargs: SimpleNamespace(
+            content="Synthetic evidence-verified result",
+            mode="normal",
+            provider_name="synthetic",
+            model_name="synthetic-research",
+            response_id="safe-1",
+            citations=(),
+            is_refusal=False,
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+            evidence_tokens=0,
+        ),
+    )
+    monkeypatch.setattr(
+        conversation_module, "extract_memories_best_effort",
+        lambda **kwargs: None,
+    )
+    cid = create_conversation(client, mode="normal")
+    response = client.post(
+        f"/api/v1/conversations/{cid}/messages/stream",
+        json={"content": "Synthetic question", "web_mode": "on"},
+    )
+    assert response.status_code == 200
+    web_events = parse_sse(response.text)
+    assert [event["event"] for event in web_events] == [
+        "start", "tool_status", "delta", "complete",
+    ]
+    assert web_events[2]["data"]["text"] == "Synthetic evidence-verified result"
+    first = [
+        values for event, values in events_logged
+        if event == "chat_stream_first_delta"
+    ]
+    assert len(first) == 1
+    assert first[0]["path_type"] == "validated_full_answer"
+    assert first[0]["elapsed_ms"] >= 0
+    # Backend counters must never log the answer, user, or conversation ID.
+    assert not any(
+        "Synthetic evidence-verified result" in str(fields)
+        or cid in str(fields)
+        for _, fields in events_logged
     )
