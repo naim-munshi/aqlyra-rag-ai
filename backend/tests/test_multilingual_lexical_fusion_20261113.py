@@ -3,6 +3,15 @@
 Uses synthetic isolated PostgreSQL uploads, no paid LLM, external requests or
 production data. The feature is off by default pending real load measurement.
 """
+import json
+import math
+import time
+
+from sqlalchemy import select
+
+from app.models.document_chunk import DocumentChunk
+from app.retrieval.evaluation import RetrievalEvaluationCase, evaluate_rankings
+
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
@@ -229,3 +238,121 @@ def test_unicode_fallback_keeps_late_japanese_term_tenant_scoped(
     assert hits[0].document_id == target
     assert all(h.document_id != private for h in hits)
     assert all(h.metadata["lexical_match"] == "unicode_substring" for h in hits)
+
+
+def test_postgresql_multilingual_fusion_ab_quality_and_latency(
+    client: TestClient, db_session: Session, monkeypatch,
+):
+    """True PostgreSQL lexical A/B on tiny synthetic four-script cases.
+
+    This is NOT an LLM reranker or semantic-model accuracy benchmark, and
+    in-process wall times are NOT live network response / token latency.
+    """
+    owner, header = _owner(client, "ab_quality")
+    intruder, intruder_header = _owner(client, "ab_private")
+    language_docs = {
+        "english": _upload(
+            client, header, "english.md",
+            "Our support hours are 09:00 to 17:00 every business day.",
+        ),
+        "japanese": _upload(
+            client, header, "japanese.md",
+            "東京工芸大学の研究室では画像認識の実験を毎週水曜日に行います。",
+        ),
+        "bengali": _upload(
+            client, header, "bengali.md",
+            "返金返金. ফেরতের সময়সীমা পাঁচ কর্মদিবস এবং গ্রাহককে ইমেইল পাঠানো হয়।",
+        ),
+        "banglish": _upload(
+            client, header, "banglish.md",
+            "Amader onboarding guide e salary policy niye proshno kora jay.",
+        ),
+    }
+    _upload(client, header, "distractor.md",
+            "Our support desk handles refund and onboarding requests.")
+    private_id = _upload(
+        client, intruder_header, "other-owner.md",
+        "東京工芸大学ের গোপন ফেরতের সময়সীমা is not public.",
+    )
+    queries = {
+        "english": "support hours",
+        "japanese": "support 東京工芸大学の研究室",
+        "bengali": "refund ফেরতের সময়সীমা",
+        "banglish": "onboarding guide salary policy",
+    }
+    cases = []
+    for language, question in queries.items():
+        relevant = frozenset(db_session.scalars(
+            select(DocumentChunk.id).where(
+                DocumentChunk.document_id == language_docs[language],
+                DocumentChunk.chunk_role == "content",
+            )
+        ).all())
+        assert relevant
+        cases.append(RetrievalEvaluationCase(
+            query_id=language,
+            query=question,
+            relevant_chunk_ids=relevant,
+        ))
+
+    def run(enabled: bool):
+        monkeypatch.setattr(
+            settings, "KNOWLEDGE_MULTILINGUAL_UNICODE_FUSION_ENABLED", enabled,
+        )
+        rankings = {}
+        elapsed_ms = []
+        for _round in range(3):
+            for language, question in queries.items():
+                started = time.perf_counter()
+                hits = lexical.search_lexical_chunks(
+                    db_session,
+                    RetrievalQuery(
+                        user_id=owner, text=question, top_k=5,
+                        chunk_roles=("content",),
+                    ),
+                )
+                elapsed_ms.append((time.perf_counter() - started) * 1000.0)
+                assert all(hit.document_id != private_id for hit in hits)
+                rankings[language] = tuple(hit.chunk_id for hit in hits)
+        summaries = {
+            k: evaluate_rankings(
+                cases=tuple(cases), rankings=rankings, k=k,
+            )
+            for k in (1, 3)
+        }
+        latencies = sorted(elapsed_ms)
+        return rankings, summaries, {
+            "n": len(elapsed_ms),
+            "p50_ms": round(latencies[math.ceil(.5 * len(latencies)) - 1], 3),
+            "p95_ms": round(latencies[math.ceil(.95 * len(latencies)) - 1], 3),
+        }
+
+    baseline_ranks, baseline, baseline_latency = run(False)
+    fused_ranks, fused, fused_latency = run(True)
+    # English and Latin-only Banglish must not be degraded by Unicode fusion.
+    for language in ("english", "banglish"):
+        assert fused_ranks[language] == baseline_ranks[language]
+    for language in ("japanese", "bengali"):
+        expected = next(c.relevant_chunk_ids for c in cases if c.query_id == language)
+        assert any(chunk in expected for chunk in fused_ranks[language])
+    assert fused[1].hit_rate_at_k >= baseline[1].hit_rate_at_k
+    assert fused[3].mean_ndcg_at_k >= baseline[3].mean_ndcg_at_k
+
+    # Safe aggregate diagnostics: no document content, usernames or tokens.
+    report = {
+        "label": "synthetic_postgres_lexical_only_not_production",
+        "case_count": len(cases),
+        "baseline": {
+            "hit_at_1": baseline[1].hit_rate_at_k,
+            "mrr_at_3": baseline[3].mrr_at_k,
+            "ndcg_at_3": baseline[3].mean_ndcg_at_k,
+            "latency": baseline_latency,
+        },
+        "unicode_fusion": {
+            "hit_at_1": fused[1].hit_rate_at_k,
+            "mrr_at_3": fused[3].mrr_at_k,
+            "ndcg_at_3": fused[3].mean_ndcg_at_k,
+            "latency": fused_latency,
+        },
+    }
+    print("AQLYRA_SYNTHETIC_MULTILINGUAL_LEXICAL_AB=" + json.dumps(report))
