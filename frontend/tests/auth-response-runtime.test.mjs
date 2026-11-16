@@ -21,6 +21,28 @@ const user = { id: 'user-1', username: 'test', email: 'test@example.invalid',
   is_active: true, email_verified_at: null, created_at: '2026-11-16', updated_at: '2026-11-16' };
 const jwt = seconds => 'header.' + Buffer.from(JSON.stringify({ exp: Date.now() / 1000 + seconds })).toString('base64url') + '.signature';
 const validUser = moduleAt('lib/auth/user-response.ts', {});
+test('expired and malformed access-only cookies never become bearer tokens', async () => {
+  for (const token of [jwt(-60), 'not-a-jwt', '']) {
+    const session = moduleAt('lib/auth/session.ts', {
+      'next/headers': { cookies: async () => ({
+        get: name => name === 'aqlyra_access_token' && token ? { value: token } : undefined,
+      }) },
+      '@/lib/api/backend': { backendUrl: () => { throw new Error('Unexpected refresh call'); } },
+    });
+    assert.equal(await session.getAccessToken(), null);
+  }
+});
+test('short-lived but unexpired access-only cookie remains usable', async () => {
+  const token = jwt(20);
+  const session = moduleAt('lib/auth/session.ts', {
+    'next/headers': { cookies: async () => ({
+      get: name => name === 'aqlyra_access_token' ? { value: token } : undefined,
+    }) },
+    '@/lib/api/backend': { backendUrl: () => { throw new Error('Unexpected refresh call'); } },
+  });
+  assert.equal(await session.getAccessToken(), token);
+});
+
 const backend = { backendUrl: path => 'https://backend.invalid' + path,
   readJson: async response => { try { return await response.json(); } catch { return null; } } };
 const actualSession = moduleAt('lib/auth/session.ts', {
