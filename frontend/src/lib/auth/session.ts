@@ -12,7 +12,7 @@ type SessionOptions = {
   remember?: boolean;
 };
 
-function tokenRemainingSeconds(token: string): number | null {
+export function tokenRemainingSeconds(token: string): number | null {
   // Decode expiry only to decide when to *ask the backend* for a new token.
   // This is not an authorization decision: FastAPI verifies JWT signatures,
   // ticket type, user status and the auth_epoch for every request.
@@ -83,7 +83,14 @@ export async function getAccessToken(): Promise<string | null> {
   }
 
   const refreshTicket = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
-  if (!refreshTicket) return accessToken;
+  if (!refreshTicket) {
+    // Do not forward an expired or malformed cookie as a bearer token.
+    // A short-lived *valid* access token remains usable without a refresh
+    // ticket; the backend always verifies its signature and revocation.
+    return accessToken && remaining !== null && remaining > 0
+      ? accessToken
+      : null;
+  }
 
   let response: Response;
   try {
@@ -116,13 +123,15 @@ export async function getAccessToken(): Promise<string | null> {
     throw new Error("Session service temporarily unavailable");
   }
 
-  let data: { access_token?: unknown };
+  let data: unknown;
   try {
-    data = (await response.json()) as { access_token?: unknown };
+    data = await response.json();
   } catch {
     throw new Error("Session service returned an invalid response");
   }
-  if (typeof data.access_token !== "string" || !data.access_token) {
+  if (!data || typeof data !== "object" || !("access_token" in data) ||
+      typeof data.access_token !== "string" ||
+      (tokenRemainingSeconds(data.access_token) ?? 0) <= 0) {
     throw new Error("Session service returned an invalid response");
   }
 
