@@ -83,7 +83,14 @@ export async function getAccessToken(): Promise<string | null> {
   }
 
   const refreshTicket = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
-  if (!refreshTicket) return accessToken;
+  if (!refreshTicket) {
+    // Do not forward an expired or malformed cookie as a bearer token.
+    // A short-lived *valid* access token remains usable without a refresh
+    // ticket; the backend always verifies its signature and revocation.
+    return accessToken && remaining !== null && remaining > 0
+      ? accessToken
+      : null;
+  }
 
   let response: Response;
   try {
