@@ -148,20 +148,43 @@ def _unicode_search_terms(text: str) -> tuple[str, ...]:
     """Small bound for CJK and Bangla where PostgreSQL 'simple' FTS
     cannot reliably tokenize document/question text into the same words.
     """
-    values: list[str] = []
+    # The old first-16-grams strategy starved later phrases in long JP/BN
+    # questions. Sample from each bounded script span before taking a second
+    # gram from the same span, preserving informative terms after punctuation.
+    # These terms only rank existing tenant-scoped DB rows; they do not
+    # translate, synthesize evidence or make any additional model calls.
+    groups: list[list[str]] = []
     for match in _UNSEGMENTED_SCRIPT.finditer(text):
-        candidate = match.group(0)
+        candidate = match.group(0)[:64]
         if "\u0980" <= candidate[0] <= "\u09ff":
-            values.append(candidate[:36])
+            terms = [candidate[:36]]
             if len(candidate) > 5:
-                values.append(candidate[:5])
+                terms.append(candidate[:5])
         elif len(candidate) <= 3:
-            values.append(candidate)
+            terms = [candidate]
         else:
-            values.extend(candidate[i : i + 3] for i in range(len(candidate) - 2))
-        if len(values) >= 16:
+            terms = [
+                candidate[i : i + 3]
+                for i in range(len(candidate) - 2)
+            ]
+        groups.append(terms)
+        if len(groups) >= 16:
             break
-    return tuple(dict.fromkeys(values[:16]))
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for index in range(max((len(group) for group in groups), default=0)):
+        for group in groups:
+            if index >= len(group):
+                continue
+            term = group[index]
+            if term in seen:
+                continue
+            seen.add(term)
+            values.append(term)
+            if len(values) >= 16:
+                return tuple(values)
+    return tuple(values)
 
 
 def _fallback_unicode_chunks(db: Session, query: RetrievalQuery) -> list[LexicalRetrievalHit]:
