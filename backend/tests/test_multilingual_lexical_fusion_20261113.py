@@ -301,6 +301,9 @@ def test_postgresql_multilingual_fusion_ab_quality_and_latency(
         )
         rankings = {}
         elapsed_ms = []
+        by_language_latency: dict[str, list[float]] = {
+            name: [] for name in queries
+        }
         for _round in range(3):
             for language, question in queries.items():
                 started = time.perf_counter()
@@ -311,7 +314,9 @@ def test_postgresql_multilingual_fusion_ab_quality_and_latency(
                         chunk_roles=("content",),
                     ),
                 )
-                elapsed_ms.append((time.perf_counter() - started) * 1000.0)
+                elapsed = (time.perf_counter() - started) * 1000.0
+                elapsed_ms.append(elapsed)
+                by_language_latency[language].append(elapsed)
                 assert all(hit.document_id != private_id for hit in hits)
                 rankings[language] = tuple(hit.chunk_id for hit in hits)
         summaries = {
@@ -321,10 +326,15 @@ def test_postgresql_multilingual_fusion_ab_quality_and_latency(
             for k in (1, 3)
         }
         latencies = sorted(elapsed_ms)
+        per_language_p95 = {
+            name: round(sorted(samples)[math.ceil(.95 * len(samples)) - 1], 3)
+            for name, samples in by_language_latency.items()
+        }
         return rankings, summaries, {
             "n": len(elapsed_ms),
             "p50_ms": round(latencies[math.ceil(.5 * len(latencies)) - 1], 3),
             "p95_ms": round(latencies[math.ceil(.95 * len(latencies)) - 1], 3),
+            "per_language_p95_ms": per_language_p95,
         }
 
     baseline_ranks, baseline, baseline_latency = run(False)
@@ -342,6 +352,27 @@ def test_postgresql_multilingual_fusion_ab_quality_and_latency(
     report = {
         "label": "synthetic_postgres_lexical_only_not_production",
         "case_count": len(cases),
+        "per_language": {
+            lang: {
+                "baseline_hit_at_1": next(
+                    int(case.hit_at_k) for case in baseline[1].cases
+                    if case.query_id == lang
+                ),
+                "fusion_hit_at_1": next(
+                    int(case.hit_at_k) for case in fused[1].cases
+                    if case.query_id == lang
+                ),
+                "baseline_ndcg_at_3": next(
+                    round(case.ndcg_at_k, 4) for case in baseline[3].cases
+                    if case.query_id == lang
+                ),
+                "fusion_ndcg_at_3": next(
+                    round(case.ndcg_at_k, 4) for case in fused[3].cases
+                    if case.query_id == lang
+                ),
+            }
+            for lang in queries
+        },
         "baseline": {
             "hit_at_1": baseline[1].hit_rate_at_k,
             "mrr_at_3": baseline[3].mrr_at_k,
