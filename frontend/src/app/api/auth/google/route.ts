@@ -30,6 +30,14 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      typeof body.credential !== "string" || !body.credential.trim()) {
+    return NextResponse.json(
+      { detail: "Invalid Google sign-in request" },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const backendHeaders = new Headers({
     "Content-Type": "application/json",
   });
@@ -45,7 +53,7 @@ export async function POST(request: Request) {
       {
         method: "POST",
         headers: backendHeaders,
-        body: JSON.stringify(body),
+        body: JSON.stringify({ credential: body.credential }),
         cache: "no-store",
         // The upstream may cold-start; never leave browser sign-in pending
         // until the Vercel function's platform timeout.
