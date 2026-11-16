@@ -8,6 +8,7 @@ on:
       - "frontend/src/app/api/auth/**"
       - "frontend/src/lib/auth/**"
       - "frontend/tests/auth-portfolio-timeout.test.mjs"
+      - "frontend/tests/auth-response-runtime.test.mjs"
       - ".github/workflows/frontend-auth-portfolio-acceptance.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "frontend/src/app/api/auth/**"
       - "frontend/src/lib/auth/**"
       - "frontend/tests/auth-portfolio-timeout.test.mjs"
+      - "frontend/tests/auth-response-runtime.test.mjs"
       - ".github/workflows/frontend-auth-portfolio-acceptance.yml"
   workflow_dispatch:
 
@@ -43,6 +45,6 @@ jobs:
         run: |
           npm run lint
           npx tsc --noEmit
-          node --test tests/auth-portfolio-timeout.test.mjs
+          node --test tests/*.test.mjs
       - name: Production build (no deploy)
         run: npm run build
