@@ -70,6 +70,15 @@ def _install_scoped_tenant_role(
     user_id = session.info.get(_TENANT_INFO_KEY)
     if user_id is None or session.info.get(_ADMIN_INFO_KEY):
         return
+    # A privileged login can RESET ROLE and bypass PostgreSQL RLS even
+    # after SET LOCAL ROLE. This transitional mode must never be enabled
+    # while the application still connects as neondb_owner/BYPASSRLS.
+    privileged = connection.execute(text(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles "
+        "WHERE rolname = session_user"
+    )).scalar_one_or_none()
+    if privileged is not False:
+        raise RuntimeError("Tenant RLS requires a non-privileged database login")
     # No dynamic SQL identifiers. Fail closed on missing/grantless role.
     connection.exec_driver_sql("SET LOCAL ROLE aqlyra_tenant_runtime")
     connection.execute(
