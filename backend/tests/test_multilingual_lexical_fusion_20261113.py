@@ -175,3 +175,57 @@ def test_rrf_is_deterministic_bounded_and_does_not_fabricate_dense_scores():
         fts_hits=fts, unicode_hits=unicode, top_k=2,
     )
     assert [h.chunk_id for h in again] == [h.chunk_id for h in fused]
+
+
+def test_unicode_query_terms_cover_later_japanese_and_bangla_phrases():
+    # An early long Japanese span must not consume the entire 16-term cap.
+    japanese = (
+        "これは前置きとしてとても長い文章を書いていますが"
+        "ここからが質問の本題になります。東京工芸大学"
+    )
+    jp_terms = lexical._unicode_search_terms(japanese)
+    assert jp_terms
+    assert len(jp_terms) <= 16
+    assert any(term in "東京工芸大学" for term in jp_terms)
+
+    bangla = (
+        "বাংলাদেশেরক্রেতাদেরজন্যঅনেকদীর্ঘএকটিপ্রশ্ন।"
+        "ফেরতেরসময়সীমা"
+    )
+    bn_terms = lexical._unicode_search_terms(bangla)
+    assert bn_terms
+    assert len(bn_terms) <= 16
+    assert any(term in "ফেরতেরসময়সীমা" for term in bn_terms)
+
+    # Cost is bounded even for an unexpectedly long query.
+    assert len(lexical._unicode_search_terms("あ" * 10000 + "。東京工芸大学")) <= 16
+
+
+def test_unicode_fallback_keeps_late_japanese_term_tenant_scoped(
+    client: TestClient, db_session: Session,
+):
+    alice, ah = _owner(client, "late_jp_a")
+    bob, bh = _owner(client, "late_jp_b")
+    target = _upload(
+        client, ah, "university.md",
+        "東京工芸大学の研究室では画像認識の実験を毎週水曜日に行います。",
+    )
+    private = _upload(
+        client, bh, "secret.md",
+        "東京工芸大学には非公開の機密情報が保存されています。",
+    )
+    q = RetrievalQuery(
+        user_id=alice,
+        text=(
+            "これは前置きとしてとても長い文章を書いていますが"
+            "ここからが質問の本題になります。東京工芸大学"
+        ),
+        document_ids=(target, private),
+        chunk_roles=("content",),
+        top_k=5,
+    )
+    hits = lexical._fallback_unicode_chunks(db_session, q)
+    assert hits
+    assert hits[0].document_id == target
+    assert all(h.document_id != private for h in hits)
+    assert all(h.metadata["lexical_match"] == "unicode_substring" for h in hits)
