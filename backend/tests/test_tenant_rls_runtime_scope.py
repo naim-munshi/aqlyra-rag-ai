@@ -12,13 +12,17 @@ from app.database.connection import (
 
 
 class FakeConnection:
-    def __init__(self):
+    def __init__(self, *, privileged=False):
         self.calls = []
+        self.privileged = privileged
 
     def exec_driver_sql(self, statement):
         self.calls.append(("sql", statement))
 
-    def execute(self, statement, parameters):
+    def execute(self, statement, parameters=None):
+        if parameters is None:
+            self.calls.append(("role_check", str(statement)))
+            return SimpleNamespace(scalar_one_or_none=lambda: self.privileged)
         self.calls.append(("params", str(statement), parameters))
 
 
@@ -50,7 +54,10 @@ def test_auth_scopes_role_before_query_and_rejects_identity_switch(monkeypatch):
     session = FakeSession()
     bind_authenticated_tenant(session, "user-1")
     _install_scoped_tenant_role(session, None, session.connection_handle)
-    assert session.connection_handle.calls == [
+    calls = session.connection_handle.calls
+    assert calls[0][0] == "role_check"
+    assert "rolbypassrls" in calls[0][1]
+    assert calls[1:] == [
         ("sql", "SET LOCAL ROLE aqlyra_tenant_runtime"),
         (
             "params",
@@ -94,3 +101,15 @@ def test_admin_override_only_after_identity_verified(monkeypatch):
     assert session.connection_handle.calls == [("sql", "RESET ROLE")]
     _install_scoped_tenant_role(session, None, session.connection_handle)
     assert session.connection_handle.calls == [("sql", "RESET ROLE")]
+
+
+@pytest.mark.parametrize("privileged", [True, None])
+def test_rls_cannot_use_a_bypass_or_unknown_database_login(monkeypatch, privileged):
+    monkeypatch.setattr(settings, "TENANT_RLS_ENABLED", True)
+    session = FakeSession()
+    session.connection_handle = FakeConnection(privileged=privileged)
+    bind_authenticated_tenant(session, "verified-user")
+    with pytest.raises(RuntimeError, match="non-privileged database login"):
+        _install_scoped_tenant_role(session, None, session.connection_handle)
+    # No role switch and, critically, no tenant GUC assignment.
+    assert [call[0] for call in session.connection_handle.calls] == ["role_check"]
