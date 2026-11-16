@@ -1,4 +1,5 @@
 import json
+import time
 
 from fastapi.responses import StreamingResponse
 from fastapi import (
@@ -465,6 +466,8 @@ def create_message_stream_endpoint(
     )
 
     def event_stream():
+        stream_started = time.perf_counter()
+        first_delta_logged = False
         yield _encode_stream_event(
             "start",
             {
@@ -520,6 +523,17 @@ def create_message_stream_endpoint(
                 )
 
                 if result.content:
+                    # This path emits only after the document/web answer has
+                    # been fully assembled and validated. Never mislabel it
+                    # as true LLM token-streaming TTFT.
+                    app_logger.info(
+                        "chat_stream_first_delta",
+                        path_type="validated_full_answer",
+                        elapsed_ms=round(
+                            (time.perf_counter() - stream_started) * 1000, 2
+                        ),
+                    )
+                    first_delta_logged = True
                     yield _encode_stream_event(
                         "delta",
                         {
@@ -614,6 +628,15 @@ def create_message_stream_endpoint(
                     == "delta"
                 ):
                     if event.delta_text:
+                        if not first_delta_logged:
+                            app_logger.info(
+                                "chat_stream_first_delta",
+                                path_type="normal_model_delta",
+                                elapsed_ms=round(
+                                    (time.perf_counter() - stream_started) * 1000, 2
+                                ),
+                            )
+                            first_delta_logged = True
                         yield _encode_stream_event(
                             "delta",
                             {

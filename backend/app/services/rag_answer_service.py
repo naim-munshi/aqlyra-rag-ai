@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass, replace
 
 from app.rag.answer_types import INSUFFICIENT_EVIDENCE_SENTINEL
@@ -318,6 +319,7 @@ def answer_question(
         or create_configured_llm_provider()
     )
 
+    retrieval_started = time.perf_counter()
     hits = _retrieve_rag_hits(
         db=db,
         query=RetrievalQuery(
@@ -332,6 +334,8 @@ def answer_question(
         query_rewriter=query_rewriter,
     )
 
+    retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
+    context_started = time.perf_counter()
     evidence_context = build_evidence_context(
         hits=hits,
         config=EvidenceContextConfig(
@@ -352,7 +356,15 @@ def answer_question(
         ),
     )
 
+    context_ms = (time.perf_counter() - context_started) * 1000
+
     if not evidence_context.has_evidence:
+        logger.info(
+            "rag_stage_latency_ms retrieval=%.2f context=%.2f "
+            "generation=0.00 citation=0.00 verifier=0.00 repair=0.00 "
+            "verifier_calls=0 repair_calls=0 refused=true",
+            retrieval_ms, context_ms,
+        )
         return RAGAnswerResult(
             question=cleaned_question,
             answer_text=(
@@ -388,11 +400,19 @@ def answer_question(
             total_tokens=None,
         )
 
+    generation_started = time.perf_counter()
     draft = generate_grounded_answer_draft(
         question=cleaned_question,
         evidence_context=evidence_context,
         provider=active_provider,
     )
+
+    generation_ms = (time.perf_counter() - generation_started) * 1000
+    citation_ms = 0.0
+    verifier_ms = 0.0
+    repair_ms = 0.0
+    verifier_calls = 0
+    repair_calls = 0
 
     active_grounding_verifier = (
         grounding_verifier
@@ -410,20 +430,29 @@ def answer_question(
 
     for validation_attempt in range(3):
         try:
-            validated = (
-                validate_grounded_answer_draft(
-                    draft
+            validation_started = time.perf_counter()
+            try:
+                validated = (
+                    validate_grounded_answer_draft(
+                        draft
+                    )
                 )
-            )
+            finally:
+                citation_ms += (time.perf_counter() - validation_started) * 1000
 
             if (
                 not validated.is_refusal
                 and active_grounding_verifier
                 is not None
             ):
-                active_grounding_verifier.verify(
-                    answer=validated,
-                )
+                verify_started = time.perf_counter()
+                verifier_calls += 1
+                try:
+                    active_grounding_verifier.verify(
+                        answer=validated,
+                    )
+                finally:
+                    verifier_ms += (time.perf_counter() - verify_started) * 1000
 
             break
 
@@ -439,19 +468,27 @@ def answer_question(
                     ),
                 )
 
-                validated = (
-                    validate_grounded_answer_draft(
-                        safe_refusal_draft
+                validation_started = time.perf_counter()
+                try:
+                    validated = (
+                        validate_grounded_answer_draft(
+                            safe_refusal_draft
+                        )
                     )
-                )
-
+                finally:
+                    citation_ms += (time.perf_counter() - validation_started) * 1000
                 break
 
-            draft = repair_grounded_answer_draft(
-                draft=draft,
-                evidence_context=evidence_context,
-                provider=active_provider,
-            )
+            repair_started = time.perf_counter()
+            repair_calls += 1
+            try:
+                draft = repair_grounded_answer_draft(
+                    draft=draft,
+                    evidence_context=evidence_context,
+                    provider=active_provider,
+                )
+            finally:
+                repair_ms += (time.perf_counter() - repair_started) * 1000
 
     if validated.is_refusal:
         answer_text = (
@@ -472,6 +509,17 @@ def answer_question(
             validated.cited_sources
         )
 
+    # Log only numerical costs; never question, evidence, answer, user IDs,
+    # or source names. This is a backend blocking-RAG stage breakdown,
+    # NOT the first-token latency of the independent normal chat SSE path.
+    logger.info(
+        "rag_stage_latency_ms retrieval=%.2f context=%.2f "
+        "generation=%.2f citation=%.2f verifier=%.2f repair=%.2f "
+        "verifier_calls=%d repair_calls=%d refused=%s",
+        retrieval_ms, context_ms, generation_ms, citation_ms,
+        verifier_ms, repair_ms, verifier_calls, repair_calls,
+        str(validated.is_refusal).lower(),
+    )
     return RAGAnswerResult(
         question=cleaned_question,
         answer_text=answer_text,

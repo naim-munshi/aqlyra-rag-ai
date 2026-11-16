@@ -136,6 +136,15 @@ jobs:
         run: |
           python -m pytest
 
+      # A/B numbers are emitted only from the disposable pgvector DB with
+      # synthetic public text; these are not production or LLM accuracy.
+      - name: Report multilingual lexical A/B on disposable PostgreSQL
+        if: matrix.postgres-version == 16
+        working-directory: backend
+        run: |
+          python -m pytest -q -s \
+            tests/test_multilingual_lexical_fusion_20261113.py::test_postgresql_multilingual_fusion_ab_quality_and_latency
+
       - name: Verify benchmark cannot target real production or paid AI providers
         if: matrix.postgres-version == 16
         working-directory: scripts/ops
