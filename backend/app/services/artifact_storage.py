@@ -21,6 +21,7 @@ from app.config.settings import settings
 from app.services.storage_durability_policy import (
     artifact_writes_permitted,
     private_object_storage_configured,
+    private_object_storage_selected,
 )
 from app.services.artifact_rendering import MIMES, render_artifact
 from app.services.private_object_storage import _client as _private_s3_client
@@ -140,9 +141,11 @@ def _remote_artifact_count(client, user_id: str) -> int:
         result = client.list_objects_v2(
             Bucket=settings.OBJECT_STORAGE_BUCKET,
             Prefix=_artifact_prefix(user_id),
-            MaxKeys=MAX_ARTIFACTS_PER_USER + 1,
+            MaxKeys=(MAX_ARTIFACTS_PER_USER * 2) + 1,
         )
         objects = result.get("Contents", [])
+        if result.get("IsTruncated"):
+            raise ArtifactStorageError("Private artifact quota listing was truncated")
         return sum(
             1 for item in objects
             if isinstance(item, dict)
@@ -177,11 +180,10 @@ def _create_remote_artifact(*, client, metadata: dict, data: bytes, user_id: str
             CacheControl="private, no-store",
         )
     except Exception as exc:
-        if binary_written:
+        # Clean up both keys, including ambiguous metadata PUT failures.
+        for key in (metadata_key, binary_key):
             try:
-                client.delete_object(
-                    Bucket=settings.OBJECT_STORAGE_BUCKET, Key=binary_key,
-                )
+                client.delete_object(Bucket=settings.OBJECT_STORAGE_BUCKET, Key=key)
             except Exception:
                 pass
         raise ArtifactStorageError("Private artifact write failed") from exc
@@ -219,6 +221,10 @@ def create_artifact(
     metadata = {
         "id": artifact_id,
         "owner_id": owner_id,
+        "storage_backend": (
+            "private_object_storage" if private_object_storage_configured()
+            else "local"
+        ),
         "title": title[:120],
         "format": kind,
         "filename": filename,
@@ -269,8 +275,10 @@ def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
         item = _read_remote_metadata(
             _s3_client(), user_id=owner_id, artifact_id=identity,
         )
-        return item
-
+        if item is not None:
+            return item
+        # Backwards compatibility: artifacts created before private S3 support
+        # remain readable from the existing owner-scoped local directory.
     folder = _owner_dir(owner_id)
     path = _record_path(folder, identity)
     if not path.is_file() or path.is_symlink():
@@ -289,38 +297,47 @@ def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
 
 def list_artifacts(*, user_id: str) -> list[dict]:
     owner_id = _validated_uuid(user_id)
+    results: list[dict] = []
     if private_object_storage_configured():
         client = _s3_client()
         try:
             response = client.list_objects_v2(
                 Bucket=settings.OBJECT_STORAGE_BUCKET,
                 Prefix=_artifact_prefix(owner_id),
-                MaxKeys=MAX_ARTIFACTS_PER_USER,
+                # 50 artifacts have up to 100 objects (binary + metadata).
+                MaxKeys=(MAX_ARTIFACTS_PER_USER * 2) + 1,
             )
+            if response.get("IsTruncated"):
+                raise ArtifactStorageError("Private artifact listing was truncated")
             keys = [
                 str(item.get("Key", ""))
                 for item in response.get("Contents", [])
                 if isinstance(item, dict) and str(item.get("Key", "")).endswith(".json")
             ]
+        except ArtifactStorageError:
+            raise
         except Exception as exc:
             raise ArtifactStorageError("Private artifact listing unavailable") from exc
-        results = []
         for key in keys:
             artifact_id = Path(key).stem
             item = _read_remote_metadata(
                 client, user_id=owner_id, artifact_id=artifact_id,
             )
             if item:
-                results.append({name: value for name, value in item.items() if name != "content"})
-        return sorted(results, key=lambda item: item["created_at"], reverse=True)
+                results.append({
+                    name: value for name, value in item.items()
+                    if name not in {"content", "owner_id", "storage_backend"}
+                })
 
+    # Merge any legacy/local records that pre-date private object storage.
     folder = _owner_dir(owner_id)
-    results: list[dict] = []
     for path in folder.glob("*.json"):
         item = read_artifact(user_id=owner_id, artifact_id=path.stem)
         if item:
             results.append({key: value for key, value in item.items() if key != "content"})
-    return sorted(results, key=lambda item: item["created_at"], reverse=True)
+    # Avoid duplicate IDs if the same record was migrated by an operator.
+    unique = {item["id"]: item for item in results}
+    return sorted(unique.values(), key=lambda item: item["created_at"], reverse=True)
 
 
 def _download_temp_root() -> Path:
@@ -350,7 +367,9 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | 
     if item is None:
         return None
     identity = _validated_uuid(artifact_id)
-    if private_object_storage_configured():
+    if item.get("storage_backend") == "private_object_storage":
+        if not private_object_storage_selected(settings):
+            raise ArtifactStorageError("Private artifact storage is disabled")
         binary_key, _ = _artifact_keys(user_id, identity, item["format"])
         client = _s3_client()
         response_body = None
@@ -411,11 +430,13 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | 
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
     owner_id = _validated_uuid(user_id)
     identity = _validated_uuid(artifact_id)
-    if private_object_storage_configured():
+    item = read_artifact(user_id=owner_id, artifact_id=identity)
+    if item is None:
+        return False
+    if item.get("storage_backend") == "private_object_storage":
+        if not private_object_storage_selected(settings):
+            raise ArtifactStorageError("Private artifact storage is disabled")
         client = _s3_client()
-        item = _read_remote_metadata(client, user_id=owner_id, artifact_id=identity)
-        if item is None:
-            return False
         binary_key, metadata_key = _artifact_keys(owner_id, identity, item["format"])
         try:
             client.delete_object(
