@@ -42,6 +42,13 @@ CHECK_CONTEXTS = frozenset({
     "High-severity Python SAST",
 })
 
+# Release-specific rulesets additionally require the full Postgres matrix and
+# the frontend CSRF/XSS boundary suite; these are separate GitHub check runs.
+RELEASE_CHECK_CONTEXTS = CHECK_CONTEXTS | frozenset({
+    "Python 3.13 / PostgreSQL 18",
+    "Frontend CSRF, XSS and proxy security regression",
+})
+
 def github_api(path: str) -> dict | list:
     """Access only canonical GitHub API resources, never user-supplied URLs."""
     url = "https://api.github.com/repos/" + REPO + path
@@ -61,7 +68,7 @@ def github_api(path: str) -> dict | list:
 
 
 def _verified_ruleset_for_targets(
-    rulesets: list[dict], targets: set[str]
+    rulesets: list[dict], targets: set[str], required_contexts: frozenset[str]
 ) -> bool:
     """Require active review, CI, deletion and non-fast-forward rules for a ref."""
     for ruleset in rulesets:
@@ -92,7 +99,7 @@ def _verified_ruleset_for_targets(
             item.get("context") for item in checks
             if isinstance(item, dict) and isinstance(item.get("context"), str)
         }
-        if CHECK_CONTEXTS.issubset(contexts):
+        if required_contexts.issubset(contexts):
             return True
     return False
 
@@ -100,14 +107,14 @@ def _verified_ruleset_for_targets(
 def verified_main_ruleset(rulesets: list[dict]) -> bool:
     """Require an enforced ruleset for the default main branch."""
     return _verified_ruleset_for_targets(
-        rulesets, {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}
+        rulesets, {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}, CHECK_CONTEXTS
     )
 
 
 def verified_release_ruleset(rulesets: list[dict], branch_name: str) -> bool:
     """Require an enforced ruleset that explicitly covers this release branch."""
     return _verified_ruleset_for_targets(
-        rulesets, {"refs/heads/" + branch_name, "~ALL"}
+        rulesets, {"refs/heads/" + branch_name, "~ALL"}, RELEASE_CHECK_CONTEXTS
     )
 
 def evaluate(
