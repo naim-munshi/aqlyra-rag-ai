@@ -25,7 +25,7 @@ def event_block(workflow: str, event: str) -> str:
 
 
 def covers_release_branch(event_yaml: str) -> bool:
-    return re.search(r"""(?m)^\s*-\s*["']?release/\*\*["']?\s*$""", event_yaml) is not None
+    return re.search(r"""["']?release/\*\*["']?""", event_yaml) is not None
 
 
 class ReleaseSecurityWorkflowCoverageTests(unittest.TestCase):
