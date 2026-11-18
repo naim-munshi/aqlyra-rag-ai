@@ -88,6 +88,11 @@ def _s3_client():
         raise ArtifactStorageError("Private artifact storage unavailable") from exc
 
 
+def _assert_selected_storage_is_configured() -> None:
+    if private_object_storage_selected(settings) and not private_object_storage_configured(settings):
+        raise ArtifactStorageError("Selected private artifact storage is misconfigured")
+
+
 def _is_missing_object(exc: Exception) -> bool:
     response = getattr(exc, "response", {})
     if not isinstance(response, dict):
@@ -162,7 +167,6 @@ def _create_remote_artifact(*, client, metadata: dict, data: bytes, user_id: str
     metadata_bytes = json.dumps(
         metadata, ensure_ascii=False, separators=(",", ":"),
     ).encode("utf-8")
-    binary_written = False
     try:
         client.put_object(
             Bucket=settings.OBJECT_STORAGE_BUCKET,
@@ -171,7 +175,6 @@ def _create_remote_artifact(*, client, metadata: dict, data: bytes, user_id: str
             ContentType=MIMES[metadata["format"]],
             CacheControl="private, no-store",
         )
-        binary_written = True
         client.put_object(
             Bucket=settings.OBJECT_STORAGE_BUCKET,
             Key=metadata_key,
@@ -271,6 +274,7 @@ def create_artifact(
 def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
     owner_id = _validated_uuid(user_id)
     identity = _validated_uuid(artifact_id)
+    _assert_selected_storage_is_configured()
     if private_object_storage_configured():
         item = _read_remote_metadata(
             _s3_client(), user_id=owner_id, artifact_id=identity,
@@ -297,6 +301,7 @@ def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
 
 def list_artifacts(*, user_id: str) -> list[dict]:
     owner_id = _validated_uuid(user_id)
+    _assert_selected_storage_is_configured()
     results: list[dict] = []
     if private_object_storage_configured():
         client = _s3_client()
@@ -430,6 +435,7 @@ def artifact_download(*, user_id: str, artifact_id: str) -> tuple[Path, dict] | 
 def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
     owner_id = _validated_uuid(user_id)
     identity = _validated_uuid(artifact_id)
+    _assert_selected_storage_is_configured()
     item = read_artifact(user_id=owner_id, artifact_id=identity)
     if item is None:
         return False
@@ -439,11 +445,13 @@ def delete_artifact(*, user_id: str, artifact_id: str) -> bool:
         client = _s3_client()
         binary_key, metadata_key = _artifact_keys(owner_id, identity, item["format"])
         try:
-            client.delete_object(
-                Bucket=settings.OBJECT_STORAGE_BUCKET, Key=binary_key,
-            )
+            # Remove metadata first so a partial provider failure cannot leave
+            # an apparently valid artifact whose binary has already vanished.
             client.delete_object(
                 Bucket=settings.OBJECT_STORAGE_BUCKET, Key=metadata_key,
+            )
+            client.delete_object(
+                Bucket=settings.OBJECT_STORAGE_BUCKET, Key=binary_key,
             )
         except Exception as exc:
             raise ArtifactStorageError("Private artifact deletion failed") from exc
