@@ -544,3 +544,30 @@ def test_artifact_routes_report_storage_outage_as_503_not_missing(client, monkey
     monkeypatch.setattr(artifact_api, "delete_artifact", unavailable)
     response = client.delete("/api/v1/artifacts/" + str(uuid4()), headers=owner)
     assert response.status_code == 503
+
+
+
+def test_selected_but_incomplete_private_backend_does_not_fall_back_to_local(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    owner = str(uuid4())
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", True)
+
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="Durable artifact storage"):
+        artifact_storage.create_artifact(
+            user_id=owner, title="Must not fallback", kind="md", content="# No fallback",
+            provider_name="test", source_document_ids=[], citation_count=0,
+        )
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="misconfigured"):
+        artifact_storage.list_artifacts(user_id=owner)
