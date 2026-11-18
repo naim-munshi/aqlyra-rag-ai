@@ -41,6 +41,9 @@ class ReleaseSecurityWorkflowCoverageTests(unittest.TestCase):
         )
         self.assertIn("bandit -r backend/app -q -lll", workflow)
         self.assertIn("frontend-security:", workflow)
+        self.assertIn(
+            "name: Frontend CSRF, XSS and proxy security regression", workflow
+        )
 
     def test_dependency_audit_runs_for_release_pushes_and_pull_requests(self) -> None:
         workflow = (WORKFLOWS / "dependency-audit.yml").read_text(encoding="utf-8")
@@ -75,6 +78,7 @@ class ReleaseSecurityWorkflowCoverageTests(unittest.TestCase):
     def test_backend_ci_discovers_the_standalone_operations_tests(self) -> None:
         workflow = (WORKFLOWS / "backend-tests.yml").read_text(encoding="utf-8")
         self.assertIn("offline-ops-unittest:", workflow)
+        self.assertIn("postgres-version: [16, 18]", workflow)
         self.assertIn("python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v", workflow)
 
 
