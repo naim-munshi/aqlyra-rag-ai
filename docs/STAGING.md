@@ -120,7 +120,7 @@ CI checks, deletion protection and non-fast-forward protection.
    **Active**, and target the exact branch
    `refs/heads/release/core-without-study-abroad-20261027`.
 3. Require a pull request and at least one approving review. Require the
-   release checks recorded in `scripts/ops/release_gate.py` (`CHECK_CONTEXTS`).
+   release checks recorded in `scripts/ops/release_gate.py` (`RELEASE_CHECK_CONTEXTS`), including both PostgreSQL matrix jobs and the frontend CSRF/XSS regression.
 4. Enable **Block force pushes** and **Restrict deletions**. Consider stale
    approval dismissal and conversation resolution as additional safeguards.
 5. Verify GitHub reports the release branch as protected and the active
