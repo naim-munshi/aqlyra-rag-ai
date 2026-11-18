@@ -274,29 +274,31 @@ def create_artifact(
 def read_artifact(*, user_id: str, artifact_id: str) -> dict | None:
     owner_id = _validated_uuid(user_id)
     identity = _validated_uuid(artifact_id)
-    _assert_selected_storage_is_configured()
-    if private_object_storage_configured():
-        item = _read_remote_metadata(
-            _s3_client(), user_id=owner_id, artifact_id=identity,
-        )
-        if item is not None:
-            return item
-        # Backwards compatibility: artifacts created before private S3 support
-        # remain readable from the existing owner-scoped local directory.
+
+    # Check the owner-scoped legacy path first. This preserves access to
+    # local artifacts created before private object storage was enabled,
+    # even when the remote provider is temporarily unavailable.
     folder = _owner_dir(owner_id)
     path = _record_path(folder, identity)
-    if not path.is_file() or path.is_symlink():
-        return None
-    try:
-        with path.open(encoding="utf-8") as handle:
-            metadata = json.load(handle)
-        if metadata.get("id") != identity:
+    if path.is_file() and not path.is_symlink():
+        try:
+            with path.open(encoding="utf-8") as handle:
+                metadata = json.load(handle)
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("id") == identity
+                and metadata.get("format") in MIMES
+            ):
+                return metadata
+        except (OSError, ValueError, TypeError, AttributeError):
             return None
-        if metadata.get("format") not in MIMES:
-            return None
-        return metadata
-    except (OSError, ValueError, TypeError, AttributeError):
-        return None
+
+    _assert_selected_storage_is_configured()
+    if private_object_storage_configured():
+        return _read_remote_metadata(
+            _s3_client(), user_id=owner_id, artifact_id=identity,
+        )
+    return None
 
 
 def list_artifacts(*, user_id: str) -> list[dict]:
@@ -339,7 +341,10 @@ def list_artifacts(*, user_id: str) -> list[dict]:
     for path in folder.glob("*.json"):
         item = read_artifact(user_id=owner_id, artifact_id=path.stem)
         if item:
-            results.append({key: value for key, value in item.items() if key != "content"})
+            results.append({
+                key: value for key, value in item.items()
+                if key not in {"content", "owner_id", "storage_backend"}
+            })
     # Avoid duplicate IDs if the same record was migrated by an operator.
     unique = {item["id"]: item for item in results}
     return sorted(unique.values(), key=lambda item: item["created_at"], reverse=True)
