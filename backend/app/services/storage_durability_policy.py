@@ -11,10 +11,14 @@ def local_writes_permitted(cfg: Settings = settings) -> bool:
     return cfg.APP_ENV != "production" or cfg.LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED
 
 
+def private_object_storage_selected(cfg: Settings = settings) -> bool:
+    return cfg.PRIVATE_OBJECT_STORAGE_ENABLED
+
+
 def private_object_storage_configured(cfg: Settings = settings) -> bool:
-    """Configuration predicate only; does not prove provider write/read durability."""
+    """Configuration predicate only; it does not prove provider durability."""
     return bool(
-        cfg.PRIVATE_OBJECT_STORAGE_ENABLED
+        private_object_storage_selected(cfg)
         and cfg.AWS_ENDPOINT_URL_S3
         and cfg.AWS_ACCESS_KEY_ID
         and cfg.AWS_SECRET_ACCESS_KEY
@@ -24,14 +28,12 @@ def private_object_storage_configured(cfg: Settings = settings) -> bool:
 
 
 def artifact_writes_permitted(cfg: Settings = settings) -> bool:
-    # Prefer the durable private object store in production. The explicit
-    # ephemeral switch remains a disposable test fallback only when private
-    # object storage is not configured. It never enables document uploads.
-    return (
-        private_object_storage_configured(cfg)
-        or local_writes_permitted(cfg)
-        or (
-            cfg.APP_ENV == "production"
-            and cfg.EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED
-        )
+    # An explicitly selected but incomplete private backend fails closed.
+    # It must never silently fall back to the disposable local filesystem.
+    if private_object_storage_selected(cfg):
+        return private_object_storage_configured(cfg)
+    # Development can use local files. Production can opt into local writes
+    # only after the mount is verified durable or disposable test mode is on.
+    return local_writes_permitted(cfg) or (
+        cfg.APP_ENV == "production" and cfg.EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED
     )
