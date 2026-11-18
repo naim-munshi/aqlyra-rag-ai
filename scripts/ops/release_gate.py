@@ -60,8 +60,10 @@ def github_api(path: str) -> dict | list:
     return result
 
 
-def verified_main_ruleset(rulesets: list[dict]) -> bool:
-    """Require enforced default-branch reviews, status checks and ref safety."""
+def _verified_ruleset_for_targets(
+    rulesets: list[dict], targets: set[str]
+) -> bool:
+    """Require active review, CI, deletion and non-fast-forward rules for a ref."""
     for ruleset in rulesets:
         if not isinstance(ruleset, dict):
             continue
@@ -70,7 +72,6 @@ def verified_main_ruleset(rulesets: list[dict]) -> bool:
         refs = (ruleset.get("conditions") or {}).get("ref_name") or {}
         includes = set(refs.get("include") or [])
         excludes = set(refs.get("exclude") or [])
-        targets = {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}
         if not includes.intersection(targets) or excludes.intersection(targets):
             continue
         rules = {
@@ -96,8 +97,22 @@ def verified_main_ruleset(rulesets: list[dict]) -> bool:
     return False
 
 
+def verified_main_ruleset(rulesets: list[dict]) -> bool:
+    """Require an enforced ruleset for the default main branch."""
+    return _verified_ruleset_for_targets(
+        rulesets, {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}
+    )
+
+
+def verified_release_ruleset(rulesets: list[dict], branch_name: str) -> bool:
+    """Require an enforced ruleset that explicitly covers this release branch."""
+    return _verified_ruleset_for_targets(
+        rulesets, {"refs/heads/" + branch_name, "~ALL"}
+    )
+
 def evaluate(
-    main: dict, release: dict, runs: dict, rulesets: list[dict] | None = None
+    main: dict, release: dict, runs: dict, rulesets: list[dict] | None = None,
+    release_branch: str = RELEASE_BRANCH,
 ) -> tuple[bool, list[str], str]:
     errors: list[str] = []
     sha = release.get("commit", {}).get("sha", "")
@@ -109,6 +124,13 @@ def evaluate(
     if not verified_main_ruleset(rulesets or []):
         errors.append(
             "No verified active main ruleset enforcing reviews, all required "
+            "job checks, deletion and force-push restrictions"
+        )
+    if release.get("protected") is not True:
+        errors.append("Release branch is NOT branch protected: enforce required reviews and checks")
+    if not verified_release_ruleset(rulesets or [], release_branch):
+        errors.append(
+            "No verified active release ruleset enforcing reviews, all required "
             "job checks, deletion and force-push restrictions"
         )
     if main.get("commit", {}).get("sha") == sha:
@@ -177,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Invalid ruleset details")
         if not isinstance(main_data, dict) or not isinstance(release_data, dict) or not isinstance(run_data, dict):
             raise ValueError("Invalid GitHub metadata")
-        ok, errors, sha = evaluate(main_data, release_data, run_data, rulesets)
+        ok, errors, sha = evaluate(
+            main_data, release_data, run_data, rulesets, args.release_branch
+        )
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, KeyError) as exc:
         ok, errors, sha = False, ["GitHub verification unavailable: " + type(exc).__name__], ""
     report = {
