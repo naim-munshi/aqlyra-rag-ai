@@ -39,6 +39,16 @@ command -v lk >/dev/null 2>&1 || {
 state_dir="${HOME}/.config/aqlyra"
 state_file="${state_dir}/livekit-voice.toml"
 
+# Never follow a user-controlled symlink for saved deployment state.
+if [[ -L "$state_dir" || -L "$state_file" ]]; then
+  echo "Refusing symlinked LiveKit state path." >&2
+  exit 1
+fi
+if [[ -e "$state_file" && ! -f "$state_file" ]]; then
+  echo "LiveKit state path must be a regular file." >&2
+  exit 1
+fi
+
 if [[ "$action" == status ]]; then
   [[ -f "$state_file" ]] || {
     echo "No saved agent configuration at $state_file." >&2
@@ -57,11 +67,22 @@ if [[ "$action" == deploy && ! -f "$state_file" ]]; then
 fi
 
 secret_file="${AQLYRA_VOICE_SECRETS_FILE:-}"
-if [[ -z "$secret_file" || ! -f "$secret_file" ]]; then
-  echo "Set AQLYRA_VOICE_SECRETS_FILE to an existing private .env path." >&2
+if [[ -z "$secret_file" || ! -f "$secret_file" || -L "$secret_file" ]]; then
+  echo "Set AQLYRA_VOICE_SECRETS_FILE to an existing regular private .env file (not a symlink)." >&2
   exit 1
 fi
 secret_file="$(cd "$(dirname "$secret_file")" && pwd -P)/$(basename "$secret_file")"
+
+secret_mode="$(stat -c '%a' "$secret_file" 2>/dev/null || stat -f '%Lp' "$secret_file" 2>/dev/null || true)"
+if [[ ! "$secret_mode" =~ ^[0-7]{3,4}$ ]]; then
+  echo "Could not verify private voice.env file permissions; set mode 600." >&2
+  exit 1
+fi
+secret_mode_value=$((8#$secret_mode))
+if (( (secret_mode_value & 077) != 0 )); then
+  echo "voice.env is readable by group or other users; run chmod 600 on it." >&2
+  exit 1
+fi
 
 # LiveKit injects these credentials for the selected cloud project.
 # Prevent accidentally attaching secrets from a different LiveKit project.
@@ -79,6 +100,14 @@ done
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "${script_dir}/../.." && pwd -P)"
 backend_dir="${repo_root}/backend"
+
+case "$secret_file" in
+  "$repo_root"/*)
+    echo "Keep voice.env outside the Git repository; it is sent to the LiveKit secrets store." >&2
+    exit 1
+    ;;
+esac
+
 for required_file in Dockerfile.voice requirements.txt requirements-voice.txt .dockerignore; do
   [[ -f "${backend_dir}/${required_file}" ]] || {
     echo "Missing backend file: ${required_file}" >&2
@@ -100,6 +129,10 @@ cp "${backend_dir}/.dockerignore" "$context/.dockerignore"
 cp -R "${backend_dir}/app" "$context/app"
 
 mkdir -p "$state_dir"
+if [[ -L "$state_dir" || ! -d "$state_dir" ]]; then
+  echo "LiveKit state directory must be a real directory, not a symlink." >&2
+  exit 1
+fi
 chmod 700 "$state_dir"
 if [[ "$action" == deploy ]]; then
   cp "$state_file" "$context/livekit.toml"
@@ -118,8 +151,10 @@ if [[ "$action" == create ]]; then
     echo "LiveKit created no agent config. Check CLI output and agent list." >&2
     exit 1
   fi
-  cp "$context/livekit.toml" "$state_file"
-  chmod 600 "$state_file"
+  state_tmp="${state_file}.tmp.$"
+  cp "$context/livekit.toml" "$state_tmp"
+  chmod 600 "$state_tmp"
+  mv "$state_tmp" "$state_file"
 else
   (
     cd "$context"
