@@ -1,3 +1,4 @@
+import pytest
 """End-to-end artifacts authorization, real bytes, and formula safety."""
 from io import BytesIO
 from types import SimpleNamespace
@@ -381,7 +382,6 @@ def test_private_object_artifact_quota_and_provider_failure_fail_closed(monkeypa
     monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
     monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
     monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
-    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path if "tmp_path" in globals() else settings.UPLOAD_DIR)
     monkeypatch.setattr(artifact_storage, "MAX_ARTIFACTS_PER_USER", 1)
     monkeypatch.setattr(artifact_storage, "_s3_client", lambda: fake)
 
