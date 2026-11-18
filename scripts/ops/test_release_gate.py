@@ -203,6 +203,14 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("No verified active release ruleset" in x for x in errors))
 
+    def test_release_exclusion_glob_cannot_exclude_candidate(self):
+        self.rulesets[1]["conditions"]["ref_name"]["exclude"] = [
+            "refs/heads/release/*"
+        ]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
     def test_release_ruleset_must_cover_the_exact_candidate_branch(self):
         self.rulesets[1]["conditions"]["ref_name"]["include"] = [
             "refs/heads/release-other-branch"
