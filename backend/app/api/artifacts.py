@@ -64,11 +64,15 @@ def _persist(
 ) -> dict:
     _require_durable_artifact_storage()
     try:
-        return create_artifact(
+        item = create_artifact(
             user_id=user_id, title=title.strip(), kind=format,
             content=content.strip(), provider_name=provider,
             source_document_ids=sources, citation_count=citations,
         )
+        return {
+            key: value for key, value in item.items()
+            if key not in {"owner_id", "storage_backend"}
+        }
     except ArtifactQuotaError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ArtifactStorageError as exc:
