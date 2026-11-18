@@ -16,7 +16,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 def event_block(workflow: str, event: str) -> str:
     """Return one top-level GitHub Actions event block from YAML text."""
     match = re.search(
-        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:|\Z)",
+        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  (?:push|pull_request|workflow_dispatch|schedule):|\Z)",
         workflow,
     )
     if match is None:
