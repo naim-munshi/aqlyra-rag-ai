@@ -462,6 +462,16 @@ def test_private_storage_mode_keeps_preexisting_local_artifacts_visible(tmp_path
         content="# Earlier local report",
         provider_name="old-release", source_document_ids=[], citation_count=0,
     )
+    # Simulate metadata written by the pre-object-storage release.
+    local_record = (
+        tmp_path / "artifact-workspace" / owner / (local["id"] + ".json")
+    )
+    legacy_metadata = json.loads(local_record.read_text(encoding="utf-8"))
+    legacy_metadata.pop("owner_id", None)
+    legacy_metadata.pop("storage_backend", None)
+    local_record.write_text(
+        json.dumps(legacy_metadata), encoding="utf-8",
+    )
 
     fake = FakeS3()
     monkeypatch.setattr(settings, "APP_ENV", "production")
