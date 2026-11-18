@@ -56,6 +56,22 @@ class ReleaseSecurityWorkflowCoverageTests(unittest.TestCase):
         self.assertIn("pip-audit --no-deps --disable-pip -r backend/requirements.txt", workflow)
         self.assertIn("pip-audit --no-deps --disable-pip -r backend/requirements-voice.txt", workflow)
 
+    def test_all_release_preflight_checks_run_for_release_pushes_and_prs(self) -> None:
+        release_workflows = (
+            "frontend-deployment.yml",
+            "arm64-predeploy.yml",
+            "documentation.yml",
+            "merge-gate.yml",
+        )
+        for filename in release_workflows:
+            workflow = (WORKFLOWS / filename).read_text(encoding="utf-8")
+            for event in ("push", "pull_request"):
+                with self.subTest(workflow=filename, event=event):
+                    self.assertTrue(
+                        covers_release_branch(event_block(workflow, event)),
+                        f"{filename} must trigger on {event} for release/**",
+                    )
+
     def test_backend_ci_discovers_the_standalone_operations_tests(self) -> None:
         workflow = (WORKFLOWS / "backend-tests.yml").read_text(encoding="utf-8")
         self.assertIn("offline-ops-unittest:", workflow)
