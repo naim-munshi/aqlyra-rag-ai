@@ -8,6 +8,7 @@ outside this script: do not interpret success as permission to deploy.
 from __future__ import annotations
 
 import argparse
+from fnmatch import fnmatchcase
 import json
 import os
 import sys
@@ -67,6 +68,18 @@ def github_api(path: str) -> dict | list:
     return result
 
 
+def _pattern_matches_targets(pattern: str, targets: set[str]) -> bool:
+    """Evaluate a GitHub ref pattern against the exact target ref(s)."""
+    if pattern == "~ALL":
+        return True
+    if pattern == "~DEFAULT_BRANCH":
+        return "refs/heads/main" in targets
+    return any(
+        target.startswith("refs/heads/") and fnmatchcase(target, pattern)
+        for target in targets
+    )
+
+
 def _verified_ruleset_for_targets(
     rulesets: list[dict], targets: set[str], required_contexts: frozenset[str]
 ) -> bool:
@@ -79,7 +92,9 @@ def _verified_ruleset_for_targets(
         refs = (ruleset.get("conditions") or {}).get("ref_name") or {}
         includes = set(refs.get("include") or [])
         excludes = set(refs.get("exclude") or [])
-        if not includes.intersection(targets) or excludes.intersection(targets):
+        if not any(_pattern_matches_targets(item, targets) for item in includes):
+            continue
+        if any(_pattern_matches_targets(item, targets) for item in excludes):
             continue
         rules = {
             rule.get("type"): rule for rule in (ruleset.get("rules") or [])
