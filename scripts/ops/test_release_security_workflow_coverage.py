@@ -16,7 +16,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 def event_block(workflow: str, event: str) -> str:
     """Return one top-level GitHub Actions event block from YAML text."""
     match = re.search(
-        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:|\\Z)",
+        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:|\Z)",
         workflow,
     )
     if match is None:
@@ -56,7 +56,7 @@ class ReleaseSecurityWorkflowCoverageTests(unittest.TestCase):
         self.assertIn("pip-audit --no-deps --disable-pip -r backend/requirements.txt", workflow)
         self.assertIn("pip-audit --no-deps --disable-pip -r backend/requirements-voice.txt", workflow)
 
-    def test_ci_gate_does_not_claim_to_replace_repository_branch_protection(self) -> None:
+    def test_backend_ci_discovers_the_standalone_operations_tests(self) -> None:
         workflow = (WORKFLOWS / "backend-tests.yml").read_text(encoding="utf-8")
         self.assertIn("offline-ops-unittest:", workflow)
         self.assertIn("python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v", workflow)
