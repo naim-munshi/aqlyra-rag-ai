@@ -41,6 +41,9 @@ class ReleaseGateTests(unittest.TestCase):
         release_ruleset["conditions"]["ref_name"]["include"] = [
             "refs/heads/" + gate.RELEASE_BRANCH
         ]
+        release_ruleset["rules"][3]["parameters"]["required_status_checks"] = [
+            {"context": context} for context in gate.RELEASE_CHECK_CONTEXTS
+        ]
         self.rulesets.append(release_ruleset)
         self.runs = {
             "workflow_runs": [
@@ -189,6 +192,13 @@ class ReleaseGateTests(unittest.TestCase):
 
     def test_main_ruleset_alone_does_not_protect_release_candidate(self):
         self.rulesets = [self.rulesets[0]]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
+    def test_release_ruleset_must_require_postgres_matrix_and_frontend_security(self):
+        required = self.rulesets[1]["rules"][3]["parameters"]["required_status_checks"]
+        required.pop()
         ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
         self.assertFalse(ok)
         self.assertTrue(any("No verified active release ruleset" in x for x in errors))
