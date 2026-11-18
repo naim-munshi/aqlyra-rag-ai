@@ -5,6 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,7 @@ from app.services.artifact_storage import (
     ArtifactStorageError,
     artifact_download,
     create_artifact,
+    cleanup_artifact_download,
     delete_artifact,
     list_artifacts,
     read_artifact,
@@ -251,6 +253,7 @@ def download(
         path, media_type=MIMES[item["format"]], filename=item["filename"],
         content_disposition_type="attachment",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        background=BackgroundTask(cleanup_artifact_download, path),
     )
 
 
