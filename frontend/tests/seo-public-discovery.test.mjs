@@ -10,7 +10,6 @@ const production = "https://aqlyra-ai.vercel.app";
 test("only non-account pages are discoverable in sitemap", () => {
   const sitemap = source("src/app/sitemap.ts");
   assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/rag-evaluation", "\/help"\]/);
-  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/rag-evaluation", "\/demo", "\/help"\]/);
   for (const privatePath of ["/api", "/study-abroad", "/admin", "/guest", "/login",
     "/register", "/artifacts", "/web", "/agent"]) {
     assert.ok(!sitemap.includes('"' + privatePath + '"'),
