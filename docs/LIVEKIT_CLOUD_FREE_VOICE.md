@@ -19,8 +19,9 @@ Sources (always re-check before deployment):
 The existing LiveKit Cloud project must be authenticated by its owner. No LiveKit Cloud account/CLI login has been authorized in this assistant session, so no live agent has been created. **Never paste tokens, API secrets, SSH keys, or database URLs into ChatGPT or a GitHub issue.** Only the account owner should select a project and set up secrets.
 
 1. Sign in to [LiveKit Cloud](https://cloud.livekit.io/) and verify the project uses **Build / $0**.
-2. Install the official [LiveKit CLI](https://docs.livekit.io/reference/developer-tools/livekit-cli/) on your local machine and run `lk cloud auth`.
-3. Run `lk project list` and `lk project set-default "<the EXISTING Aqlyra LiveKit project>"`. Reuse the same project that your production backend's `LIVEKIT_URL` points to. If you choose a new project, first update production backend LiveKit configuration in a controlled separate operation.
+2. Install the official [LiveKit CLI](https://docs.livekit.io/reference/developer-tools/livekit-cli/). On macOS with Homebrew, run `brew install livekit-cli`; then verify that the binary is on PATH with `command -v lk` and `lk --help`. The earlier `zsh: command not found: lk` error means the CLI is not installed or is not on PATH.
+3. Run `lk cloud auth`; this opens a browser so the owner can authorize the LiveKit Cloud project.
+4. Run `lk project list` and `lk project set-default "<the EXISTING Aqlyra LiveKit project>"`. Reuse the same project that your production backend's `LIVEKIT_URL` points to. If you choose a new project, first update production backend LiveKit configuration in a controlled separate operation.
 
 ## Prepare private runtime settings (never commit)
 
