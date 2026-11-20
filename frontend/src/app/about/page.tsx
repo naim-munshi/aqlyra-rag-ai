@@ -76,7 +76,6 @@ export default function AboutPage() {
             Aqlyra AI
           </Link>
           <div className="flex flex-wrap items-center gap-5 text-sm">
-            <Link href="/demo" className="text-[var(--aq-blue)] hover:underline">Explore demo</Link>
             <Link href="/how-it-works" className="hover:underline">How it works</Link>
             <Link href="/help" className="hover:underline">Help</Link>
             <Link href="/login" className="hover:underline">Sign in</Link>
@@ -104,17 +103,10 @@ export default function AboutPage() {
             workspace described here.
           </p>
           <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold">
-            <Link href="/demo" className="rounded-xl bg-[var(--aq-blue)] px-5 py-3 text-white hover:opacity-90">
-              Explore the scripted demo
-            </Link>
             <Link href="/register" className="rounded-xl border border-[var(--aq-border)] px-5 py-3 hover:border-[var(--aq-blue)]">
               Create an account
             </Link>
           </div>
-          <p className="mt-3 text-xs leading-6 text-[var(--aq-muted)]">
-            The demo contains scripted examples, not live AI answers. Some
-            features require an account and an available model provider.
-          </p>
         </header>
 
         <section aria-labelledby="what-aqlyra-does" className="mt-16">

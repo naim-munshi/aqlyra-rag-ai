@@ -72,7 +72,6 @@ export function PublicHomePage() {
           <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-4 text-sm sm:gap-6">
             <Link href="/about" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">About</Link>
             <Link href="/how-it-works" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">How it works</Link>
-            <Link href="/demo" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">Demo</Link>
             <Link href="/help" className="text-[var(--aq-muted)] transition hover:text-[var(--aq-text)]">Help</Link>
             <Link href="/login" className="rounded-xl border border-[var(--aq-border)] px-4 py-2 font-semibold hover:border-[var(--aq-blue)]">
               Sign in
@@ -101,13 +100,10 @@ export function PublicHomePage() {
               <Link href="/register" className="rounded-xl border border-[var(--aq-border)] bg-[var(--aq-panel)] px-6 py-3.5 text-sm font-semibold hover:border-[var(--aq-blue)]">
                 Create an account
               </Link>
-              <Link href="/demo" className="px-3 py-3.5 text-sm font-semibold text-[var(--aq-blue)] hover:underline">
-                Explore public demo
-              </Link>
             </div>
             <p className="mt-4 text-xs leading-6 text-[var(--aq-muted)]">
-              The public demo contains scripted examples, not live AI responses.
               Features requiring external providers depend on service availability.
+              Protected workspace features require an account.
             </p>
           </div>
         </section>
@@ -165,11 +161,10 @@ export function PublicHomePage() {
         <section className="my-10 rounded-3xl border border-[var(--aq-border)] bg-[var(--aq-panel)] px-6 py-12 sm:px-10" aria-labelledby="start-heading">
           <h2 id="start-heading" className="text-2xl font-bold">Ready to explore Aqlyra?</h2>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--aq-muted)]">
-            Get started with the real workspace or browse the clearly labeled scripted walkthrough without an account.
+            Sign in to your workspace or create an account to get started.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href="/login" className="rounded-xl bg-[var(--aq-blue)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90">Sign in to chat</Link>
-            <Link href="/demo" className="rounded-xl border border-[var(--aq-border)] px-5 py-3 text-sm font-semibold hover:border-[var(--aq-blue)]">View demo</Link>
           </div>
         </section>
 
