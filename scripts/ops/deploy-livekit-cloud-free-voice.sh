@@ -75,14 +75,16 @@ secret_file="$(cd "$(dirname "$secret_file")" && pwd -P)/$(basename "$secret_fil
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "${script_dir}/../.." && pwd -P)"
-backend_dir="${repo_root}/backend"
 
+# Reject repository-local secret files before reading or validating their contents.
 case "$secret_file" in
   "$repo_root"/*)
     echo "Keep voice.env outside the Git repository; it is sent to the LiveKit secrets store." >&2
     exit 1
     ;;
 esac
+
+backend_dir="${repo_root}/backend"
 
 
 
