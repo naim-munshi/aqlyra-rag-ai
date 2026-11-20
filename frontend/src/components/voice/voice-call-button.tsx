@@ -949,18 +949,11 @@ export function VoiceCallButton({
       <>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || availability === null}
           aria-label="Start voice conversation"
-          title="Start voice conversation"
+          title={availability === null ? "Checking voice availability…" : "Start real-time voice conversation"}
           onClick={() => {
-            // A single microphone is the voice entry point. Prefer
-            // server-free browser voice, with existing RTC retained for
-            // browsers that do not implement speech recognition.
-            if (browserSpeechIsSupported()) {
-              startFreeBrowserCall();
-            } else {
-              void startCall();
-            }
+            void startCall();
           }}
           className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -978,6 +971,16 @@ export function VoiceCallButton({
             className="absolute bottom-[calc(100%+8px)] right-0 z-40 w-[min(300px,calc(100vw-24px))] rounded-xl border border-red-500/30 bg-[var(--aq-panel)] p-3 text-xs leading-5 text-[var(--aq-text)] shadow-xl"
           >
             {error}
+            {browserSpeechIsSupported() && !availability?.requiresAuth && (
+              <button
+                type="button"
+                onClick={startFreeBrowserCall}
+                className="ml-2 font-semibold text-[var(--aq-cyan)] underline"
+                title="Turn-based browser speech; not a full-duplex voice call"
+              >
+                Use browser voice instead
+              </button>
+            )}
             {availability?.available === false && (
               <button
                 type="button"

@@ -7,39 +7,36 @@ const voice = readFileSync(
   "utf8",
 );
 
-test("a single microphone starts browser voice first and retains RTC fallback", () => {
+test("the primary microphone starts full-duplex LiveKit and waits for availability", () => {
   assert.match(voice, /response\.status === 401/);
   assert.match(voice, /requiresAuth: true/);
   assert.match(voice, /Sign in to use voice calls/);
   assert.match(voice, /if \(!availability\?\.available\)/);
+  assert.match(voice, /disabled=\{disabled \|\| availability === null\}/);
+  assert.match(voice, /onClick=\{\(\) => \{\s*void startCall\(\);\s*\}\}/);
+  assert.doesNotMatch(
+    voice,
+    /if \(browserSpeechIsSupported\(\)\) \{\s*startFreeBrowserCall\(\);\s*\} else \{/,
+  );
+  assert.match(voice, /async function startCall\(\)/);
+  assert.match(voice, /await createLocalAudioTrack\(\{/);
+  assert.match(voice, /await room\.localParticipant\.publishTrack\(microphoneTrack/);
+  assert.match(voice, /waitForAgent\(room\)/);
+  assert.match(voice, /room\.startAudio\(\)/);
+});
+
+test("turn-based browser speech is a clearly labeled, user-selected fallback only", () => {
   assert.match(voice, /function startFreeBrowserCall\(\)/);
-  assert.match(voice, /aria-label="Start voice conversation"/);
-  assert.match(voice, /if \(browserSpeechIsSupported\(\)\) \{\s*startFreeBrowserCall\(\);\s*\} else \{\s*void startCall\(\);/);
   assert.match(voice, /browserSpeechIsSupported\(\)/);
   assert.match(voice, /startBrowserVoiceMode\(\{/);
   assert.match(voice, /Browser speech is opt-in, not a silent downgrade/);
+  assert.match(voice, /Use browser voice instead/);
+  assert.match(voice, /Turn-based browser speech; not a full-duplex voice call/);
   assert.match(voice, /availability\?\.requiresAuth/);
-  assert.match(voice, /title="Start voice conversation"/);
-  assert.doesNotMatch(voice, /aria-label="Start LiveKit real-time voice"/);
-  assert.doesNotMatch(voice, />\s*LiveKit\s*<\/button>/);
-  assert.equal((voice.match(/aria-label="Start voice conversation"/g) || []).length, 1);
-  assert.match(voice, /async function startCall\(\)/);
+  assert.match(voice, /onClick=\{startFreeBrowserCall\}/);
   assert.match(voice, /Stop reply/);
   assert.match(voice, /browserControllerRef\.current\?\.stop\(\)/);
   assert.match(voice, /browserControllerRef\.current\?\.setMuted\(nextMuted\)/);
-  assert.match(voice, /refreshVoiceAvailability\(\)/);
-});
-
-test("LiveKit voice-only user experience supports natural hands-free interruptions", () => {
-  assert.match(voice, /await createLocalAudioTrack\(\{/);
-  assert.match(voice, /await room\.localParticipant\.publishTrack\(microphoneTrack/);
-  assert.match(voice, /const timeoutId = setTimeout\(\(\) => requestController\.abort\(\), 15000\)/);
-  assert.match(voice, /room\.startAudio\(\)/);
-  assert.match(voice, /waitForAgent\(room\)/);
-  assert.match(voice, /Aqlyra Voice/);
-  assert.match(voice, /aria-label="Voice conversation"/);
-  assert.match(voice, /aria-live="polite"/);
-  assert.match(voice, /aria-label="End voice conversation"/);
 });
 
 test("worker join timeout is visible and releases microphone, never fakes a live call", () => {

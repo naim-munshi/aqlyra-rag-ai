@@ -27,13 +27,18 @@ test("mobile send control stays compact and accessible while retaining desktop l
   assert.match(source, /\!question\.trim\(\) &&\s*\!attachedDocument/);
 });
 
-test("single microphone starts Free Browser Voice and keeps RTC fallback", () => {
+test("single microphone starts full-duplex LiveKit while keeping browser speech opt-in", () => {
   const source = read("components/voice/voice-call-button.tsx");
   assert.match(source, /aria-label="Start voice conversation"/);
-  assert.match(source, /if \(browserSpeechIsSupported\(\)\)/);
-  assert.match(source, /startFreeBrowserCall\(\)/);
-  assert.match(source, /void startCall\(\)/);
+  assert.match(source, /disabled=\{disabled \|\| availability === null\}/);
+  assert.match(source, /onClick=\{\(\) => \{\s*void startCall\(\);\s*\}\}/);
+  assert.doesNotMatch(source, /if \(browserSpeechIsSupported\(\)\) \{\s*startFreeBrowserCall\(\);\s*\} else \{/);
   assert.match(source, /async function startCall\(\)/);
+  assert.match(source, /await room\.localParticipant\.publishTrack\(microphoneTrack/);
+  assert.match(source, /waitForAgent\(room\)/);
+  assert.match(source, /function startFreeBrowserCall\(\)/);
+  assert.match(source, /Use browser voice instead/);
+  assert.match(source, /Turn-based browser speech; not a full-duplex voice call/);
   assert.doesNotMatch(source, />\s*LiveKit\s*<\/button>/);
 });
 
