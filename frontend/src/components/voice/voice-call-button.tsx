@@ -952,7 +952,6 @@ export function VoiceCallButton({
           disabled={disabled || availability === null}
           aria-label="Start voice conversation"
           title={availability === null ? "Checking voice availability…" : "Start real-time voice conversation"}
-          // Main microphone uses full-duplex LiveKit; browser speech remains an explicit fallback.
           onClick={() => {
             void startCall();
           }}
