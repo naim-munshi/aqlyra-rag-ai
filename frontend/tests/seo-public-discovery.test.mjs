@@ -9,8 +9,7 @@ const production = "https://aqlyra-ai.vercel.app";
 
 test("only non-account pages are discoverable in sitemap", () => {
   const sitemap = source("src/app/sitemap.ts");
-  assert.match(sitemap, /MetadataRoute\.Sitemap/);
-  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/rag-evaluation", "\/demo", "\/help"\]/);
+  assert.match(sitemap, /\["\/", "\/about", "\/how-it-works", "\/rag-evaluation", "\/help"\]/);
   for (const privatePath of ["/api", "/study-abroad", "/admin", "/guest", "/login",
     "/register", "/artifacts", "/web", "/agent"]) {
     assert.ok(!sitemap.includes('"' + privatePath + '"'),
@@ -33,7 +32,7 @@ test("private workspaces default to noindex while only public pages opt in", () 
   const layout = source("src/app/layout.tsx");
   assert.ok(layout.includes('metadataBase: new URL("' + production + '")'));
   assert.match(layout, /robots: \{ index: false, follow: false \}/);
-  for (const page of ["about", "how-it-works", "demo", "help"]) {
+  for (const page of ["about", "how-it-works", "help"]) {
     const body = source("src/app/" + page + "/page.tsx");
     assert.match(body, /robots: \{ index: true, follow: true \}/);
     assert.match(body, /alternates: \{ canonical/);
@@ -54,7 +53,7 @@ test("Aqlyra public product page is real indexable content, no login or fake out
   assert.match(about, /WebApplication/);
   assert.match(about, /BusinessApplication/);
   assert.ok(about.includes("JSON.stringify(structuredData).replace"));
-  assert.ok(about.includes('href="/demo"'));
+  assert.ok(!about.includes('href="/demo"'));
   assert.ok(about.includes('href="/register"'));
   assert.ok(about.includes("not admission or visa decisions"));
   const login = source("src/app/login/page.tsx");
@@ -92,11 +91,11 @@ test("public home has indexable metadata while private workspace remains noindex
   assert.match(home, /alternates: \{ canonical: "https:\/\/aqlyra-ai\.vercel\.app\/" \}/);
   assert.match(home, /return <PublicHomePage \/>/);
   assert.match(home, /return <ResponsiveWorkspaceShell user=\{user\} \/>/);
-  assert.match(home, /redirect\("\/demo"\)/);
+  assert.doesNotMatch(home, /redirect\("\/demo"\)/);
   assert.match(marketing, /<h1/);
   assert.match(marketing, /<h2/);
   assert.match(marketing, /application\/ld\+json/);
-  for (const path of ["/login", "/register", "/about", "/how-it-works", "/demo", "/help"]) {
+  for (const path of ["/login", "/register", "/about", "/how-it-works", "/help"]) {
     assert.ok(marketing.includes('href="' + path + '"'), path);
   }
   assert.ok(!marketing.includes("fetch("), "Public page must not fetch private user content");

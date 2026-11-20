@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 import { PublicHomePage } from "@/components/marketing/public-home";
 import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
@@ -61,7 +60,7 @@ async function getCurrentUser(): Promise<UserResponse | null> {
 }
 
 const PUBLIC_DESCRIPTION =
-  "Aqlyra AI is a multilingual knowledge workspace for private document RAG, source citations, AI conversation and supported web research. Explore the public demo.";
+  "Aqlyra AI is a multilingual knowledge workspace for private document RAG, source citations, AI conversation and supported web research.";
 
 export async function generateMetadata(): Promise<Metadata> {
   // A session can display private workspace content at this same route.
@@ -74,7 +73,7 @@ export async function generateMetadata(): Promise<Metadata> {
     // session to crawlers or turn an outage into a redirect.
     return { robots: { index: false, follow: false } };
   }
-  if (hasSession || process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true") {
+  if (hasSession) {
     return { robots: { index: false, follow: false } };
   }
 
@@ -107,11 +106,8 @@ export default async function Home() {
   }
 
   if (!user) {
-    // Keep existing portfolio/demo behavior. Real production exposes only
-    // public marketing text to crawlers; private chat still requires login.
-    if (process.env.NEXT_PUBLIC_AQLYRA_DEMO_ONLY === "true") {
-      redirect("/demo");
-    }
+    // Anonymous visitors see the real product landing page.
+    // Private workspace content still requires a verified session.
     return <PublicHomePage />;
   }
 

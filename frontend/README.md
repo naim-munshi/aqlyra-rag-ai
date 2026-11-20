@@ -1,9 +1,9 @@
 # Aqlyra frontend
 
-The **actual production-beta Next.js application** for the Aqlyra AI platform, plus a deliberately *scripted* portfolio walkthrough.
+The **actual production-beta Next.js application** for the Aqlyra AI platform. The former scripted public portfolio walkthrough is retired.
 
 - **Real software:** https://aqlyra-ai.vercel.app (authenticated Converse, Knowledge, Web Research and supported voice fallback)
-- **Public product walkthrough:** https://aqlyra-ai.vercel.app/demo (scripted scenarios and architecture, **no LLM inference, document upload or model calls on this page**)
+- **Retired preview:** `/demo` redirects to `/login`; scripted sample assets remain in the repository but are not exposed by the application.
 - **Backend:** FastAPI on Render; sessions, data ownership, database and AI providers remain on the server side
 - **Git deployment branch:** `release/unified-core-frontend-rag-20261031` (not the Core backend branch). Always compare its HEAD with the deployed Vercel commit before claiming a change is live.
 
@@ -16,7 +16,7 @@ The **actual production-beta Next.js application** for the Aqlyra AI platform, p
 | Web | Tavily production provider; own keyless SearXNG is a limited independent canary |
 | Voice | LiveKit when a real agent is configured; optional browser STT/TTS fallback depends on browser permissions and vendor support |
 | Browser Agent | Safety-gated and **disabled** in production pending isolated sandbox |
-| `/demo` | Public **SIMULATED CONTENT** only, safe for portfolio review, no account or private backend call |
+| `/demo` | Disabled; redirects to the real sign-in page |
 
 ## Local setup
 
@@ -40,12 +40,12 @@ node --experimental-strip-types --test tests/*.test.mjs
 npm run build
 ~~~
 
-Check `/demo` anonymously, verify its labels are scripted, and confirm `/login` still works as the separate real application entry. Cross-browser tests, actual authenticated voice and two-user file isolation require explicit manual acceptance; CI does not replace them.
+Verify that an anonymous request to `/demo` redirects to `/login`, that the public landing page contains no demo links, and that `/login` still works with the configured backend. Cross-browser tests, actual authenticated voice and two-user file isolation require explicit manual acceptance; CI does not replace them.
 
 ## Production deployment
 
 The real frontend is a Vercel Next.js project called `aqlyra`. It is not the separate `aqlyrax` project and not the backend Render service. Release only reviewed commits into `release/unified-core-frontend-rag-20261031`, verify exact-head CI and inspect the deployed commit/alias before saying the new UI is live.
 
-Production `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` should be `false` or unset so the root route remains the actual app/login. The explicit `/demo` route stays accessible as a scripted showcase regardless of that flag. In an isolated portfolio-only build, set it to `true` to redirect anonymous root traffic to the demo.
+The legacy `NEXT_PUBLIC_AQLYRA_DEMO_ONLY` variable is ignored by the active application. Anonymous visitors see the product landing page; the old `/demo` path redirects to `/login`.
 
 See [Production status](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCTION_STATUS_2026-10-31.md), [Demo and acceptance](https://github.com/naim-munshi/aqlyra-rag-ai/blob/release/core-without-study-abroad-20261027/docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) and [Release acceptance](../docs/RELEASE_ACCEPTANCE.md).
