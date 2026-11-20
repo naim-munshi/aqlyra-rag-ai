@@ -73,6 +73,19 @@ if [[ -z "$secret_file" || ! -f "$secret_file" || -L "$secret_file" ]]; then
 fi
 secret_file="$(cd "$(dirname "$secret_file")" && pwd -P)/$(basename "$secret_file")"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd "${script_dir}/../.." && pwd -P)"
+backend_dir="${repo_root}/backend"
+
+case "$secret_file" in
+  "$repo_root"/*)
+    echo "Keep voice.env outside the Git repository; it is sent to the LiveKit secrets store." >&2
+    exit 1
+    ;;
+esac
+
+
+
 secret_mode="$(stat -c '%a' "$secret_file" 2>/dev/null || stat -f '%Lp' "$secret_file" 2>/dev/null || true)"
 if [[ ! "$secret_mode" =~ ^[0-7]{3,4}$ ]]; then
   echo "Could not verify private voice.env file permissions; set mode 600." >&2
@@ -97,16 +110,7 @@ for required in DATABASE_URL GROQ_API_KEY SECRET_KEY; do
   fi
 done
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-repo_root="$(cd "${script_dir}/../.." && pwd -P)"
-backend_dir="${repo_root}/backend"
 
-case "$secret_file" in
-  "$repo_root"/*)
-    echo "Keep voice.env outside the Git repository; it is sent to the LiveKit secrets store." >&2
-    exit 1
-    ;;
-esac
 
 for required_file in Dockerfile.voice requirements.txt requirements-voice.txt .dockerignore; do
   [[ -f "${backend_dir}/${required_file}" ]] || {
