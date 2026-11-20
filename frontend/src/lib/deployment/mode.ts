@@ -3,7 +3,8 @@
  * Legacy demo-only environment values are intentionally ignored.
  */
 export function unauthenticatedLanding(
-  _demoOnly: string | undefined,
+  demoOnly: string | undefined,
 ): "/login" {
+  void demoOnly;
   return "/login";
 }
