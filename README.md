@@ -6,7 +6,7 @@ A multilingual, document-grounded AI knowledge application: **Next.js/Vercel** f
 
 **Verified engineering result:** 1,035/1,035 eligible production Knowledge chunks have matching, real 384D semantic vectors (as of 10 November); 7 quarantined answer-key chunks are excluded. This is **index coverage, not measured answer accuracy**. A separate IBM Granite 97M R2 offline dense-only run on 20 English synthetic labeled queries and 30 chunks measured **Hit Rate@1 90%, Hit Rate@3 100%, MRR@5 0.933**. [Measured CI evidence](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012).
 
-**Experience:** [Deployed app](https://aqlyra-ai.vercel.app) · [Clearly labeled scripted demo](https://aqlyra-ai.vercel.app/demo) (no live inference) · [Backend release source](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027).
+**Experience:** [Deployed app](https://aqlyra-ai.vercel.app) · [Backend release source](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027). The former public scripted demo has been retired; `/demo` redirects to sign-in.
 
 **Correct deployment refs:** Vercel frontend: `fix/center-empty-chat-composer-20261102`; Render backend: `release/core-without-study-abroad-20261027`. Protected `main` is a historical ancestor. The frontend branch's embedded backend source is **not** automatically the deployed backend.
 
@@ -18,7 +18,7 @@ A multilingual, document-grounded AI knowledge application: **Next.js/Vercel** f
 
 Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
 
-**Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
+**Demo status:** The public scripted preview has been retired. The historical sample implementation remains in the repository for engineering reference, but the deployed `/demo` route redirects to `/login`; the authenticated workspace remains the primary application. Historical preview setup notes are marked archived in [the Vercel preview guide](docs/VERCEL_PORTFOLIO_DEMO.md).
 
 **Historical baseline note:** The former pre-production status described the original local/CI release snapshot, not today's deployed Vercel/Render beta. Independent provider-backed E2E, off-host recovery and operations acceptance are still required.
 
@@ -402,7 +402,7 @@ For the full setup, see [docs/SETUP.md](docs/SETUP.md).
 - [Setup](docs/SETUP.md)
 - [Staging and Release Gate](docs/STAGING.md)
 - [Oracle Always Free Deployment](docs/ORACLE_ALWAYS_FREE.md)
-- [Free Vercel Portfolio Demo](docs/VERCEL_PORTFOLIO_DEMO.md)
+- [Archived Vercel Portfolio Preview Notes](docs/VERCEL_PORTFOLIO_DEMO.md)
 - [Staging Performance Baseline](docs/PERFORMANCE_BASELINE.md)
 - [Retrieval Baseline](backend/evaluation/BASELINE.md)
 - [Frontend Development](frontend/README.md)
