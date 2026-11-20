@@ -266,14 +266,14 @@ test("Stop reply immediately cancels browser TTS without ending the call", async
   controller.stop();
 });
 
-test("language selector applies to recognition and TTS picks same-language native voices", async () => {
+test("Bangla transcript adapts next input locale and selects Bangla TTS with no picker", async () => {
   const h = harness();
   const controller = await h.api.startBrowserVoiceMode(h.options);
   await tick();
-  controller.setSpeechLocale("bn-BD");
-  assert.equal(h.recognitions[0].lang, "bn-BD");
-  // The locale switch can restart the microphone asynchronously.
+  assert.equal(h.recognitions[0].lang, "en-US", "first turn follows device language");
+  assert.equal(controller.setSpeechLocale, undefined, "manual language API must not exist");
   h.recognitions[0].emitFinal("বাংলায় কথা বলো");
+  assert.equal(h.recognitions[0].lang, "bn-BD", "next turn follows recognized script");
   await tick();
   h.settle("আমি বাংলায় উত্তর দিচ্ছি।");
   await tick();
@@ -281,6 +281,33 @@ test("language selector applies to recognition and TTS picks same-language nativ
   assert.equal(h.spoken[0].lang, "bn-BD");
   assert.equal(h.spoken[0].voice?.lang, "bn-BD");
   assert.ok(h.spoken[0].rate < 1);
+  controller.stop();
+});
+
+test("Japanese transcript and reply automatically use Japanese locale", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("こんにちは、日本語で説明してください");
+  assert.equal(h.recognitions[0].lang, "ja-JP");
+  await tick();
+  h.settle("はい、日本語でお答えします。");
+  await tick();
+  assert.equal(h.spoken[0].lang, "ja-JP");
+  assert.equal(h.spoken[0].voice?.lang, "ja-JP");
+  controller.stop();
+});
+
+test("Hindi transcript adapts STT and TTS automatically", async () => {
+  const h = harness();
+  const controller = await h.api.startBrowserVoiceMode(h.options);
+  await tick();
+  h.recognitions[0].emitFinal("हिन्दी में जवाब दीजिए");
+  assert.equal(h.recognitions[0].lang, "hi-IN");
+  await tick();
+  h.settle("नमस्ते, मैं आपकी सहायता करूंगा।");
+  await tick();
+  assert.equal(h.spoken[0].lang, "hi-IN");
   controller.stop();
 });
 

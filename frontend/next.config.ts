@@ -19,6 +19,11 @@ const nextConfig: NextConfig = {
         { key: "X-Frame-Options", value: "DENY" },
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        // Preview/staging deployments must not compete with canonical production
+        // URLs in search results. Production stays indexable on public pages.
+        ...(process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production"
+          ? [{ key: "X-Robots-Tag", value: "noindex, nofollow" }]
+          : []),
         // Browser-side defense in depth; keep camera/mic available for
         // consent-driven uploads and LiveKit voice on this origin.
         { key: "Permissions-Policy", value: "geolocation=(), payment=(), usb=(), serial=(), browsing-topics=()" },

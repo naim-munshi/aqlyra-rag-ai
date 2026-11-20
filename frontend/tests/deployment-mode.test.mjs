@@ -4,32 +4,32 @@ import { readFileSync } from "node:fs";
 
 import { unauthenticatedLanding } from "../src/lib/deployment/mode.ts";
 
-test("an explicit demo-only build shows portfolio preview", () => {
-  assert.equal(unauthenticatedLanding("true"), "/demo");
-});
+const source = (path) =>
+  readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("real-software mode routes to login", () => {
-  for (const option of [undefined, "", "false", "TRUE", "1"]) {
+test("legacy demo-only configuration never re-enables the retired public preview", () => {
+  for (const option of [undefined, "", "false", "TRUE", "1", "true", "true "]) {
     assert.equal(unauthenticatedLanding(option), "/login");
   }
 });
 
-test("unexpected values do not accidentally enable demo-only mode", () => {
-  assert.equal(unauthenticatedLanding("true "), "/login");
+test("the old /demo URL redirects to the real sign-in page without loading sample UI", () => {
+  const demoPage = source("../src/app/demo/page.tsx");
+  assert.match(demoPage, /redirect\(["']\/login["']\)/);
+  assert.doesNotMatch(demoPage, /DemoExperience/);
 });
 
+test("login and public marketing pages do not advertise the retired demo", () => {
+  for (const path of [
+    "../src/app/login/page.tsx",
+    "../src/components/marketing/public-home.tsx",
+    "../src/app/about/page.tsx",
+  ]) {
+    assert.doesNotMatch(source(path), /href=["']\/demo["']/);
+  }
+});
 
-test("explicit public /demo is scripted while real root still requires sign-in", () => {
-  const source = readFileSync(
-    new URL("../src/app/demo/page.tsx", import.meta.url),
-    "utf8",
-  );
-  const experience = readFileSync(
-    new URL("../src/app/demo/demo-experience.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(source, /return <DemoExperience \/>/);
-  assert.doesNotMatch(source, /redirect\("\/login"\)/);
-  assert.match(experience, /SIMULATED CONTENT/);
-  assert.equal(unauthenticatedLanding("false"), "/login");
+test("the public sitemap and root landing flow do not expose the demo", () => {
+  assert.doesNotMatch(source("../src/app/sitemap.ts"), /["']\/demo["']/);
+  assert.doesNotMatch(source("../src/app/page.tsx"), /redirect\(["']\/demo["']\)/);
 });

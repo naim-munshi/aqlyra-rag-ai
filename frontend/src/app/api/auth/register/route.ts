@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import { trustedProxyClientIp } from "@/lib/security/client-ip";
@@ -15,6 +16,13 @@ import type {
 } from "@/types/auth";
 
 export async function POST(request: Request) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   let body: RegisterInput;
 
   try {

@@ -38,14 +38,12 @@ export type BrowserVoiceController = {
   // Explicit user stop works even where browser speech recognition
   // cannot listen while Web Speech is synthesizing audio (iOS Safari).
   interruptSpeech: () => boolean;
-  setSpeechLocale: (locale: string) => void;
 };
 
 export type BrowserVoiceOptions = {
   mode: ConversationMode;
   conversationId: string | null;
   documentIds: string[];
-  speechLocale?: string;
   onConversationStarted?: (id: string) => void;
   onUserTranscript?: (text: string, isFinal: boolean) => void;
   onAgentTranscript?: (text: string, isFinal: boolean) => void;
@@ -66,11 +64,19 @@ export function browserSpeechIsSupported() {
   );
 }
 
+/** Best-effort script-based language inference from an existing transcript.
+ * This does NOT identify untranscribed audio or romanized languages.
+ * Native browser STT accepts one locale at a time (SpeechRecognition.lang).
+ */
 function speechLanguage(text: string): string {
-  if (/[\u0980-\u09ff]/.test(text)) return "bn-BD";
-  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(text)) return "ja-JP";
-  if (/[\u0900-\u097f]/.test(text)) return "hi-IN";
-  return "en-US";
+  const bangla = (text.match(/[\u0980-\u09ff]/g) ?? []).length;
+  const japanese = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) ?? []).length;
+  const hindi = (text.match(/[\u0900-\u097f]/g) ?? []).length;
+  const largest = Math.max(bangla, japanese, hindi);
+  if (largest === 0) return "en-US";
+  if (bangla === largest) return "bn-BD";
+  if (japanese === largest) return "ja-JP";
+  return "hi-IN";
 }
 
 // Browser TTS uses an installed OS voice; setting just utterance.lang
@@ -159,8 +165,9 @@ export async function startBrowserVoiceMode(
   // the first microphone activation must remain in the actual user tap.
   // Conversation creation may finish while speech is being recognized.
   const recognition = new SpeechRecognition();
-  recognition.lang = options.speechLocale && options.speechLocale !== "auto"
-    ? options.speechLocale : (navigator.language || "en-US");
+  // The browser's own locale is the only safe first-turn signal without
+  // a dedicated multilingual audio-transcription model.
+  recognition.lang = navigator.language || "en-US";
   recognition.continuous = false;
   recognition.interimResults = true;
   let stopped = false;
@@ -329,9 +336,14 @@ export async function startBrowserVoiceMode(
         // The phone's speaker occasionally feeds its tail back into STT.
         continue;
       }
+      // After an actual transcript exists, adapt STT for the next spoken
+      // turn. TTS already follows the language of each AI reply. This is
+      // best-effort and does not claim audio-first language detection.
       busy = true;
       processing = true;
       try { recognition.stop(); } catch { /* already ended */ }
+      // Switch only after stopping the previous recognition session.
+      recognition.lang = speechLanguage(text);
       options.onState("thinking");
       void (async () => {
         try {
@@ -394,16 +406,6 @@ export async function startBrowserVoiceMode(
       listen();
     }
     return true;
-  }, setSpeechLocale(locale: string) {
-    if (stopped) return;
-    const allowed = ["auto", "en-US", "bn-BD", "ja-JP", "hi-IN"];
-    if (!allowed.includes(locale)) return;
-    recognition.lang = locale === "auto"
-      ? (navigator.language || "en-US") : locale;
-    if (!busy && !muted) {
-      try { recognition.abort(); } catch { /* idle microphone */ }
-      listen();
-    }
   }, retryAudio() {
     // This method runs synchronously in the click handler, before any await.
     if (stopped || muted || processing || !lastReply.trim()) return false;

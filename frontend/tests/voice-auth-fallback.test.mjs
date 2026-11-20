@@ -7,14 +7,26 @@ const voice = readFileSync(
   "utf8",
 );
 
-test("signed-out and unavailable calls cannot silently switch to browser speech", () => {
+test("a single microphone starts browser voice first and retains RTC fallback", () => {
   assert.match(voice, /response\.status === 401/);
   assert.match(voice, /requiresAuth: true/);
   assert.match(voice, /Sign in to use voice calls/);
   assert.match(voice, /if \(!availability\?\.available\)/);
-  assert.doesNotMatch(voice, /startBrowserVoiceMode|startBrowserSpeech|browserSpeechIsSupported/);
-  assert.doesNotMatch(voice, /Aqlyra Browser Voice|Device \/ Auto/);
-  assert.doesNotMatch(voice, /Recognition language|Stop reply/);
+  assert.match(voice, /function startFreeBrowserCall\(\)/);
+  assert.match(voice, /aria-label="Start voice conversation"/);
+  assert.match(voice, /if \(browserSpeechIsSupported\(\)\) \{\s*startFreeBrowserCall\(\);\s*\} else \{\s*void startCall\(\);/);
+  assert.match(voice, /browserSpeechIsSupported\(\)/);
+  assert.match(voice, /startBrowserVoiceMode\(\{/);
+  assert.match(voice, /Browser speech is opt-in, not a silent downgrade/);
+  assert.match(voice, /availability\?\.requiresAuth/);
+  assert.match(voice, /title="Start voice conversation"/);
+  assert.doesNotMatch(voice, /aria-label="Start LiveKit real-time voice"/);
+  assert.doesNotMatch(voice, />\s*LiveKit\s*<\/button>/);
+  assert.equal((voice.match(/aria-label="Start voice conversation"/g) || []).length, 1);
+  assert.match(voice, /async function startCall\(\)/);
+  assert.match(voice, /Stop reply/);
+  assert.match(voice, /browserControllerRef\.current\?\.stop\(\)/);
+  assert.match(voice, /browserControllerRef\.current\?\.setMuted\(nextMuted\)/);
   assert.match(voice, /refreshVoiceAvailability\(\)/);
 });
 
@@ -25,7 +37,9 @@ test("LiveKit voice-only user experience supports natural hands-free interruptio
   assert.match(voice, /room\.startAudio\(\)/);
   assert.match(voice, /waitForAgent\(room\)/);
   assert.match(voice, /Aqlyra Voice/);
-  assert.match(voice, /Speak naturally/);
+  assert.match(voice, /aria-label="Voice conversation"/);
+  assert.match(voice, /aria-live="polite"/);
+  assert.match(voice, /aria-label="End voice conversation"/);
 });
 
 test("worker join timeout is visible and releases microphone, never fakes a live call", () => {

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
@@ -43,7 +43,7 @@ export async function POST(
   // An authenticated voice-room token cannot be minted from a cross-site
   // POST using the user's session cookie.
   if (!hasTrustedRequestOrigin(request)) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Untrusted request origin" },
       { status: 403, headers: { "Cache-Control": "private, no-store" } },
     );
@@ -53,7 +53,7 @@ export async function POST(
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Not authenticated",
@@ -72,9 +72,9 @@ export async function POST(
         VoiceSessionRequest;
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
-      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+      return privateJsonResponse({ detail: "Request body too large" }, { status: 413 });
     }
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Invalid request body",
@@ -89,7 +89,7 @@ export async function POST(
     body.mode !== "normal" &&
     body.mode !== "knowledge"
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Valid voice mode is required",
@@ -161,7 +161,7 @@ export async function POST(
         ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid voice response",
@@ -182,7 +182,7 @@ export async function POST(
       throw error;
     }
 
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to connect to voice service",

@@ -7,6 +7,8 @@ on:
     branches: [main, "release/**", "fix/**"]
     paths:
       - "backend/app/**"
+      - "frontend/src/**"
+      - "frontend/tests/**"
       - ".github/workflows/security-static.yml"
   workflow_dispatch:
 
@@ -33,3 +35,29 @@ jobs:
         run: python -m pip install bandit==1.9.4
       - name: Fail on high-severity issues in application source
         run: bandit -r backend/app -q -lll
+
+
+  frontend-security:
+    name: Frontend security regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies with lifecycle scripts disabled
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run CSP, XSS, CSRF, private cache and SSRF relay regression suite
+        working-directory: frontend
+        run: |
+          node --test tests/security-*.test.mjs \
+            tests/origin.test.mjs \
+            tests/semantic-relay-security.test.mjs \
+            tests/study-private-proxy-hardening.test.mjs \
+            tests/voice-session-origin.test.mjs

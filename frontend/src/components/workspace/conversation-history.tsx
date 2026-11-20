@@ -88,6 +88,11 @@ export function ConversationHistory() {
     () => new Set<string>(),
   );
 
+  const [
+    creatingProjectForConversationId,
+    setCreatingProjectForConversationId,
+  ] = useState<string | null>(null);
+
   const loadConversations =
     useCallback(async () => {
       try {
@@ -348,6 +353,86 @@ export function ConversationHistory() {
       { project_id: projectId },
     );
   }
+  async function createProjectFromConversation(
+    conversation: ConversationResponse,
+  ) {
+    if (creatingProjectForConversationId !== null) {
+      return;
+    }
+
+    const requestedName = window.prompt(
+      "New project name",
+    );
+    if (requestedName === null) {
+      return;
+    }
+
+    const name = requestedName.trim();
+    if (!name) {
+      window.alert("Enter a project name.");
+      return;
+    }
+
+    setCreatingProjectForConversationId(conversation.id);
+    try {
+      // Reuse the authenticated project API. The mode of the existing
+      // conversation determines its project mode, never the selected tab.
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          mode: conversation.mode,
+        }),
+      });
+      const data = (await response.json()) as
+        | ProjectResponse
+        | ApiError;
+
+      if (!response.ok || !isProject(data)) {
+        window.alert(
+          "Unable to create project. This conversation was not moved.",
+        );
+        return;
+      }
+
+      // The backend independently verifies both resources are owned by
+      // the authenticated user and that their modes match.
+      const moved = await patchConversation(
+        conversation.id,
+        { project_id: data.id },
+      );
+      await loadProjects();
+
+      if (!moved) {
+        // Keep the successfully created project; do not delete user data
+        // when the second request fails. The user can retry the move.
+        window.alert(
+          `Project "${name}" was created, but this conversation was not moved. Try Add to project again.`,
+        );
+        return;
+      }
+
+      setCollapsedProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(data.id);
+        return next;
+      });
+      setMenuConversationId(null);
+      window.dispatchEvent(
+        new Event("aqlyra:projects-changed"),
+      );
+    } catch {
+      window.alert(
+        "Unable to complete the operation. Your chat history was not deleted.",
+      );
+    } finally {
+      setCreatingProjectForConversationId(null);
+    }
+  }
+
 
   async function copyConversation(
     conversation: ConversationResponse,
@@ -773,9 +858,24 @@ export function ConversationHistory() {
                 </select>
               ) : (
                 <p className="py-1 text-[9px] text-[var(--aq-muted)]">
-                  Create a project first
+                  No projects yet
                 </p>
               )}
+
+              <button
+                type="button"
+                aria-label={`Create project and add ${conversation.title}`}
+                disabled={creatingProjectForConversationId !== null}
+                onClick={() => {
+                  void createProjectFromConversation(conversation);
+                }}
+                className="mt-1 flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2 text-left text-[10px] font-medium text-[var(--aq-blue)] transition hover:bg-[var(--aq-control)] disabled:cursor-wait disabled:opacity-50"
+              >
+                <FolderPlus size={12} />
+                {creatingProjectForConversationId === conversation.id
+                  ? "Creating project..."
+                  : "Create new project & add"}
+              </button>
             </div>
 
             <div className="my-1 border-t border-[var(--aq-border)]" />

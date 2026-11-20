@@ -6,20 +6,19 @@ const page = readFileSync(new URL("../src/app/demo/page.tsx", import.meta.url), 
 const experience = readFileSync(new URL("../src/app/demo/demo-experience.tsx", import.meta.url), "utf8");
 const scenarios = readFileSync(new URL("../src/lib/demo/scenarios.ts", import.meta.url), "utf8");
 
-test("explicit /demo is public without making scripted demo the root login route", () => {
-  assert.match(page, /return <DemoExperience \/>/);
-  assert.doesNotMatch(page, /redirect\(["']\/login/);
-  assert.match(experience, /<Link href="\/login"/);
+test("retired /demo route redirects to sign-in and does not render the scripted preview", () => {
+  assert.match(page, /redirect\(["']\/login["']\)/);
+  assert.doesNotMatch(page, /DemoExperience/);
 });
 
-test("sample responses remain clearly marked as simulated, not inferred live", () => {
+test("archived sample responses remain clearly marked as simulated, not inferred live", () => {
   assert.match(experience, /SIMULATED CONTENT/);
   assert.match(experience, /scripted samples only/i);
   assert.match(scenarios, /NOT responses/);
   assert.doesNotMatch(experience, /fetch\(/);
 });
 
-test("public feature showcase reports incomplete modes rather than fabricating availability", () => {
+test("archived preview source continues to disclose incomplete modes rather than fabricating availability", () => {
   for (const status of ["LIVE BETA", "BROWSER DEPENDENT", "SAFETY-GATED", "LIMITED CANARY"]) {
     assert.ok(experience.includes(status), status);
   }
