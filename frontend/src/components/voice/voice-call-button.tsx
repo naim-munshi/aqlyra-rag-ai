@@ -952,9 +952,8 @@ export function VoiceCallButton({
           disabled={disabled || availability === null}
           aria-label="Start voice conversation"
           title={availability === null ? "Checking voice availability…" : "Start real-time voice conversation"}
+          // Main microphone uses full-duplex LiveKit; browser speech remains an explicit fallback.
           onClick={() => {
-            // The primary microphone always starts the full-duplex LiveKit
-            // agent. Browser speech remains an explicit turn-based fallback.
             void startCall();
           }}
           className="group relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-card)] text-[var(--aq-muted)] transition hover:border-[var(--aq-cyan)]/60 hover:text-[var(--aq-cyan)] disabled:cursor-not-allowed disabled:opacity-50"
