@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ from app.services.artifact_storage import (
     ArtifactStorageError,
     artifact_download,
     create_artifact,
+    cleanup_artifact_download,
     delete_artifact,
     list_artifacts,
     read_artifact,
@@ -31,6 +34,14 @@ from app.services.rag_answer_service import answer_question
 
 router = APIRouter(prefix="/artifacts", tags=["AI Artifacts"])
 ArtifactFormat = Literal["docx", "xlsx", "pptx", "pdf", "md"]
+
+def _canonical_artifact_id(value: str) -> str:
+    """Validate artifact identifiers before consulting storage backends."""
+    try:
+        return str(UUID(str(value)))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(status_code=404, detail="Artifact not found") from exc
+
 
 
 class GenerateArtifactRequest(BaseModel):
@@ -62,15 +73,24 @@ def _persist(
 ) -> dict:
     _require_durable_artifact_storage()
     try:
-        return create_artifact(
+        item = create_artifact(
             user_id=user_id, title=title.strip(), kind=format,
             content=content.strip(), provider_name=provider,
             source_document_ids=sources, citation_count=citations,
         )
+        return {
+            key: value for key, value in item.items()
+            if key not in {"owner_id", "storage_backend"}
+        }
     except ArtifactQuotaError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (ArtifactStorageError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ArtifactStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact storage is temporarily unavailable.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Artifact content is invalid.") from exc
 
 
 @router.post("/generate", status_code=status.HTTP_201_CREATED,
@@ -219,7 +239,13 @@ def render(
 
 @router.get("")
 def list_generated(current_user: User = Depends(get_current_user)) -> dict:
-    items = list_artifacts(user_id=str(current_user.id))
+    try:
+        items = list_artifacts(user_id=str(current_user.id))
+    except ArtifactStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact storage is temporarily unavailable.",
+        ) from exc
     return {"items": items, "total": len(items)}
 
 
@@ -227,23 +253,34 @@ def list_generated(current_user: User = Depends(get_current_user)) -> dict:
 def get_generated(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> dict:
+    identity = _canonical_artifact_id(artifact_id)
     try:
-        item = read_artifact(user_id=str(current_user.id), artifact_id=artifact_id)
-    except ArtifactStorageError:
-        item = None
+        item = read_artifact(user_id=str(current_user.id), artifact_id=identity)
+    except ArtifactStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact storage is temporarily unavailable.",
+        ) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
-    return item
+    return {
+        key: value for key, value in item.items()
+        if key not in {"owner_id", "storage_backend"}
+    }
 
 
 @router.get("/{artifact_id}/download", response_class=FileResponse)
 def download(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> FileResponse:
+    identity = _canonical_artifact_id(artifact_id)
     try:
-        result = artifact_download(user_id=str(current_user.id), artifact_id=artifact_id)
-    except ArtifactStorageError:
-        result = None
+        result = artifact_download(user_id=str(current_user.id), artifact_id=identity)
+    except ArtifactStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact storage is temporarily unavailable.",
+        ) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
     path, item = result
@@ -251,6 +288,7 @@ def download(
         path, media_type=MIMES[item["format"]], filename=item["filename"],
         content_disposition_type="attachment",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        background=BackgroundTask(cleanup_artifact_download, path),
     )
 
 
@@ -258,12 +296,16 @@ def download(
 def remove(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> Response:
+    identity = _canonical_artifact_id(artifact_id)
     try:
         deleted = delete_artifact(
-            user_id=str(current_user.id), artifact_id=artifact_id,
+            user_id=str(current_user.id), artifact_id=identity,
         )
-    except ArtifactStorageError:
-        deleted = False
+    except ArtifactStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Artifact storage is temporarily unavailable.",
+        ) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return Response(status_code=204)

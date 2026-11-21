@@ -8,6 +8,7 @@ on:
     paths:
       - "backend/**"
       - "docker-compose.yml"
+      - "scripts/ops/**"
       - ".github/workflows/backend-tests.yml"
 
   pull_request:

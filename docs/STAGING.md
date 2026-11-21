@@ -104,34 +104,40 @@ Use test accounts only. Verify:
 The automated smoke test cannot prove these authenticated or provider-backed
 flows work. All must pass before public launch.
 
-## GitHub main branch protection (owner-only setting)
+## GitHub branch protection (main active; release branch owner action)
 
-The [Always-on Merge Gate](../.github/workflows/merge-gate.yml) runs on
-**every** pull request to `main`, including documentation-only changes.
-It checks offline security tests, operational scripts, Markdown links,
-and the production Compose network/storage contract. This makes it a
-safe **required status check**: path-filtered CI jobs cannot be
-required for all PRs because some changes do not trigger them.
+**Verified on 2026-11-18:** `main` is protected by the active
+`aqlyra-main-production-gate` ruleset. The deployed backend branch
+`release/core-without-study-abroad-20261027` is **not protected**.
+The release gate now fails closed unless both `main` and the exact
+release-candidate branch have an active ruleset with required reviews,
+CI checks, deletion protection and non-fast-forward protection.
 
 **Repository owner action (cannot be completed by this connector):**
 
 1. Open **Settings → Rules → Rulesets → New branch ruleset** in GitHub.
-2. Give it the name `Protect Aqlyra main`, set enforcement **Active**,
-   and target the `main` branch.
-3. Enable **Require a pull request before merging**, **Require status
-   checks to pass**, **Block force pushes** and **Restrict deletions**.
-4. Choose exactly `Always-on Merge Gate` as the required job after
-   it has run successfully. Optionally require conversation resolution.
-5. As a solo developer, do not require one external approval unless a
-   separate reviewer is available. Review the rule before saving so
-   the repository owner does not lock out their own merge workflow.
-6. Confirm `main` is protected; no rule is considered active until
-   GitHub reports it as such.
+2. Name it `Protect Aqlyra production release`, set enforcement to
+   **Active**, and target the exact branch
+   `refs/heads/release/core-without-study-abroad-20261027`.
+3. Require a pull request and at least one approving review. Require the
+   release checks recorded in `scripts/ops/release_gate.py` (`RELEASE_CHECK_CONTEXTS`), including both PostgreSQL matrix jobs and the frontend CSRF/XSS regression.
+4. Enable **Block force pushes** and **Restrict deletions**. Consider stale
+   approval dismissal and conversation resolution as additional safeguards.
+5. Verify GitHub reports the release branch as protected and the active
+   ruleset includes the exact branch.
 
-For changes to code, inspect the additional backend, frontend,
-dependency-audit and native ARM64 checks before merging. Some of these
-workflows use path filters and therefore are **not** guaranteed to
-appear on documentation-only pull requests.
+Run the read-only candidate check before an intended release:
+
+```bash
+python3 scripts/ops/release_gate.py
+```
+
+It checks the exact release SHA, CI outcomes, active `main` ruleset and
+active release-branch ruleset. It always reports
+`production_approved=false`; HTTPS staging, real-provider,
+tenant-isolation, storage and recovery acceptance still require separate
+evidence and owner approval.
+
 
 ## Release and rollback
 
@@ -140,9 +146,10 @@ and the timestamp/location of the latest verified off-host backup. Before
 deploying a migration, rehearse its forward and recovery behavior on staging.
 
 Deploy by pinned, reviewed commits, not by force-pushing `main`.
-GitHub `main` branch protection was not enabled as of this audit; configure
-the required CI status checks and merge policy before an unrestricted
-production release. On a release
+The `main` branch has an active protection ruleset. The deployed
+production release branch must also be protected as described above;
+run the read-only release gate and complete all manual staging checks
+before an owner-approved production release. On a release
 failure, stop accepting new writes, inspect service health, and restore a
 **verified** snapshot when schema or data rollback is necessary. Restoring the
 database and upload archive replaces current data and can lose writes since
