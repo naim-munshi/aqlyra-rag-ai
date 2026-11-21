@@ -85,6 +85,7 @@ test("public home has indexable metadata while private workspace remains noindex
   const marketing = source("src/components/marketing/public-home.tsx");
   assert.match(home, /export async function generateMetadata/);
   assert.match(home, /getAccessToken\(\{ allowRefresh: false \}\)/);
+  assert.match(home, /hasSession = Boolean\(accessToken\) \|\| await hasRefreshToken\(\)/);
   assert.match(home, /hasSession/);
   assert.match(home, /robots: \{ index: false, follow: false \}/);
   assert.match(home, /robots: \{ index: true, follow: true \}/);

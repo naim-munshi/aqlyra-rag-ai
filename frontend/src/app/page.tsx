@@ -4,7 +4,7 @@ import { PublicHomePage } from "@/components/marketing/public-home";
 import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
 import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl, readJson } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 import { isValidUserIdentity } from "@/lib/auth/user-response";
 
 import type {
@@ -16,6 +16,11 @@ async function getCurrentUser(): Promise<UserResponse | null> {
   const token = await getAccessToken({ allowRefresh: false });
 
   if (!token) {
+    // Do not render the public landing page for a still-authenticated user
+    // whose short-lived access token needs renewal.
+    if (await hasRefreshToken()) {
+      throw new Error("Session renewal required");
+    }
     return null;
   }
 
@@ -67,7 +72,8 @@ export async function generateMetadata(): Promise<Metadata> {
   // Never advertise the signed-in view to web crawlers.
   let hasSession: boolean;
   try {
-    hasSession = Boolean(await getAccessToken({ allowRefresh: false }));
+    const accessToken = await getAccessToken({ allowRefresh: false });
+    hasSession = Boolean(accessToken) || await hasRefreshToken();
   } catch {
     // An expired JWT plus a sleeping provider must not expose a private
     // session to crawlers or turn an outage into a redirect.
