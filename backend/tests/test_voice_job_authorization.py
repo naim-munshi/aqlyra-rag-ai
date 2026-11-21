@@ -61,7 +61,7 @@ def test_authorized_active_verified_user_and_owned_ready_scope(monkeypatch):
 @pytest.mark.parametrize("account", [
     None,
     SimpleNamespace(is_active=False, email_verified_at=datetime(2026, 1, 1)),
-    SimpleNamespace(is_active=True, email_verified_at=None),
+    SimpleNamespace(is_active=True, email_verified_at=None, auth_epoch=0),
 ])
 def test_deleted_disabled_or_unverified_account_denied(monkeypatch, account):
     job = make_job()
