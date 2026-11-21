@@ -73,7 +73,6 @@ from app.services.user_service import (
     discard_new_registration_after_email_failure,
     get_or_create_google_user,
     get_user_by_email,
-    get_user_by_id,
 )
 
 router = APIRouter(
