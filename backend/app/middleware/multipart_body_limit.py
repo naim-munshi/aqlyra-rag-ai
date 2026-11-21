@@ -7,8 +7,6 @@ chunked requests with a missing or dishonest Content-Length header.
 from __future__ import annotations
 
 import json
-from typing import Any
-
 
 class _MultipartBodyTooLarge(Exception):
     """Internal signal raised before an oversized body reaches the parser."""

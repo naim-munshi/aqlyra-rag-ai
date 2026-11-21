@@ -64,7 +64,7 @@ def test_declared_oversized_multipart_body_rejected_before_parser():
 def test_chunked_multipart_body_without_content_length_is_bounded():
     responses = _run_request(
         headers=[(b"content-type", b"multipart/form-data; boundary=test")],
-        chunks=[b"12345", b"67890"],
+        chunks=[b"12345", b"678901"],
     )
     assert _status(responses) == 413
     body = next(item["body"] for item in responses if item["type"] == "http.response.body")
