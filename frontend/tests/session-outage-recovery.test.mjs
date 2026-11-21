@@ -9,7 +9,7 @@ test("home does not turn expired-session provider downtime into a 500 or public 
   assert.match(code, /signal: AbortSignal\.timeout\(12_000\)/);
   assert.match(code, /throw new Error\("Aqlyra is temporarily unavailable/);
   assert.match(code, /catch \{\s*return <SessionServiceUnavailable \/>;\s*\}/);
-  assert.match(code, /getAccessToken\(\)/);
+  assert.match(code, /getAccessToken\(\{ allowRefresh: false \}\)/);
   assert.match(code, /catch \{[\s\S]*?return \{ robots: \{ index: false, follow: false \} \};/);
 });
 
