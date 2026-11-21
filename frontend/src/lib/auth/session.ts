@@ -73,13 +73,25 @@ export async function clearRefreshToken() {
   cookieStore.delete(REFRESH_TOKEN_COOKIE);
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(
+  options: { allowRefresh?: boolean } = {},
+): Promise<string | null> {
   const cookieStore = await cookies();
+  const allowRefresh = options.allowRefresh !== false;
   const accessToken = cookieStore.get(ACCESS_TOKEN_COOKIE)?.value ?? null;
   const remaining = accessToken ? tokenRemainingSeconds(accessToken) : null;
 
   if (accessToken && remaining !== null && remaining > REFRESH_AHEAD_SECONDS) {
     return accessToken;
+  }
+
+  if (!allowRefresh) {
+    // Server Components are read-only and cannot persist a rotated refresh
+    // cookie. Only Route Handlers perform rotation; pages use a still-valid
+    // access JWT for this render and defer renewal to the next API request.
+    return accessToken && remaining !== null && remaining > 0
+      ? accessToken
+      : null;
   }
 
   const refreshTicket = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
@@ -129,21 +141,37 @@ export async function getAccessToken(): Promise<string | null> {
   } catch {
     throw new Error("Session service returned an invalid response");
   }
-  if (!data || typeof data !== "object" || !("access_token" in data) ||
-      typeof data.access_token !== "string" ||
-      (tokenRemainingSeconds(data.access_token) ?? 0) <= 0) {
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("access_token" in data) ||
+    typeof data.access_token !== "string" ||
+    (tokenRemainingSeconds(data.access_token) ?? 0) <= 0
+  ) {
     throw new Error("Session service returned an invalid response");
   }
 
-  const renewed = data.access_token;
-  try {
-    // Writable API Route Handler: persist the new 30-minute access cookie.
-    // Read-only Server Component: use the renewed JWT for this rendering;
-    // the next API route can persist it without prompting for a password.
-    await setAccessToken(renewed, { remember: true });
-  } catch {
-    // Next.js prohibits cookie mutation from Server Components.
+  const rotatedRefreshToken =
+    "refresh_token" in data ? data.refresh_token : undefined;
+  if (
+    rotatedRefreshToken !== undefined &&
+    rotatedRefreshToken !== null &&
+    (typeof rotatedRefreshToken !== "string" ||
+      (tokenRemainingSeconds(rotatedRefreshToken) ?? 0) <= 0)
+  ) {
+    throw new Error("Session service returned an invalid refresh ticket");
   }
+
+  const renewed = data.access_token;
+  // Only Route Handlers call this helper with allowRefresh enabled, so both
+  // rotated credentials can be persisted atomically in the writable response.
+  await setAccessToken(renewed, { remember: true });
+  if (typeof rotatedRefreshToken === "string") {
+    await setRefreshToken(rotatedRefreshToken);
+  }
+  // During a staggered rollout an older API may not rotate refresh tickets.
+  // In that case retain the existing HttpOnly refresh cookie until backend
+  // rotation is deployed; the new API always returns the successor.
   return renewed;
 }
 

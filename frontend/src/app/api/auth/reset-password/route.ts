@@ -3,6 +3,7 @@ import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 import { trustedProxyClientIp } from "@/lib/security/client-ip";
 import { backendUrl, readJson } from "@/lib/api/backend";
+import { clearAccessToken, clearRefreshToken } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
   if (!hasTrustedRequestOrigin(request)) {
@@ -47,6 +48,12 @@ export async function POST(request: Request) {
     const responseHeaders = new Headers({ "Cache-Control": "no-store" });
     const retryAfter = upstream.headers.get("retry-after");
     if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
+    if (upstream.ok) {
+      // A successful password reset increments auth_epoch server-side.
+      // Clear both local credentials so no stale browser session remains.
+      await clearAccessToken();
+      await clearRefreshToken();
+    }
     return NextResponse.json(
       data ?? { detail: "Backend returned an invalid response" },
       { status: upstream.status, headers: responseHeaders }

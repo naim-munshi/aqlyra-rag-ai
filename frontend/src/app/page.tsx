@@ -13,7 +13,7 @@ import type {
 } from "@/types/auth";
 
 async function getCurrentUser(): Promise<UserResponse | null> {
-  const token = await getAccessToken();
+  const token = await getAccessToken({ allowRefresh: false });
 
   if (!token) {
     return null;
@@ -67,7 +67,7 @@ export async function generateMetadata(): Promise<Metadata> {
   // Never advertise the signed-in view to web crawlers.
   let hasSession: boolean;
   try {
-    hasSession = Boolean(await getAccessToken());
+    hasSession = Boolean(await getAccessToken({ allowRefresh: false }));
   } catch {
     // An expired JWT plus a sleeping provider must not expose a private
     // session to crawlers or turn an outage into a redirect.
