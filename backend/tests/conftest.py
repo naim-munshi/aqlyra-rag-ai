@@ -48,6 +48,7 @@ from app.models import (
     MemoryEmbedding,
     Message,
     PasswordResetCode,
+    RefreshSession,
     User,
     StudyCase,
     StudyCaseDocument,
@@ -67,6 +68,7 @@ _REGISTERED_MODELS = (
     EmailVerificationCode,
     Memory,
     MemoryEmbedding,
+    RefreshSession,
 )
 
 test_engine = create_engine(
