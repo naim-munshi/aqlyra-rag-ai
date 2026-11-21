@@ -27,6 +27,7 @@ class RefreshTokenReplayError(InvalidRefreshSessionError):
 class RotatedRefreshSession:
     user: User
     session: RefreshSession
+    token_version: int
 
 
 def _new_session_row(*, user, session_id, generation, issued_at, expires_at):
@@ -41,10 +42,10 @@ def _new_session_row(*, user, session_id, generation, issued_at, expires_at):
     )
 
 
-def _token_for(user: User, session: RefreshSession) -> str:
+def _token_for(user: User, session: RefreshSession, *, token_version: int) -> str:
     return create_refresh_token(
         subject=str(user.id),
-        token_version=user.auth_epoch,
+        token_version=token_version,
         session_id=session.session_id,
         generation=session.generation,
         issued_at=session.issued_at,
@@ -52,7 +53,10 @@ def _token_for(user: User, session: RefreshSession) -> str:
     )
 
 
-def create_refresh_session(db: Session, user: User) -> str:
+def create_refresh_session(
+    db: Session, user: User, *, token_version: int,
+) -> str:
+    """Persist a refresh family bound to the auth epoch seen at login."""
     now = utc_now_naive()
     expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     session_id = str(uuid4())
@@ -66,7 +70,7 @@ def create_refresh_session(db: Session, user: User) -> str:
     except Exception:
         db.rollback()
         raise
-    return _token_for(user, record)
+    return _token_for(user, record, token_version=token_version)
 
 
 def rotate_refresh_session(
@@ -89,6 +93,8 @@ def rotate_refresh_session(
     if user is None or not user.is_active or user.auth_epoch != token_version:
         db.rollback()
         raise InvalidRefreshSessionError("Refresh session is no longer valid")
+
+    current_version = int(user.auth_epoch)
 
     record = db.scalar(
         select(RefreshSession)
@@ -128,7 +134,9 @@ def rotate_refresh_session(
             and successor.expires_at > now
         ):
             db.commit()
-            return RotatedRefreshSession(user=user, session=successor)
+            return RotatedRefreshSession(
+                user=user, session=successor, token_version=current_version,
+            )
 
         db.execute(
             update(RefreshSession)
@@ -153,4 +161,6 @@ def rotate_refresh_session(
     except Exception:
         db.rollback()
         raise
-    return RotatedRefreshSession(user=user, session=successor)
+    return RotatedRefreshSession(
+        user=user, session=successor, token_version=current_version,
+    )

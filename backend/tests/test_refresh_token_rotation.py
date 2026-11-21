@@ -27,7 +27,7 @@ def _refresh(client: TestClient, token: str):
     return client.post("/api/v1/auth/refresh", json={"refresh_token": token})
 
 
-def test_refresh_rotation_preserves_expiry_and_grace_retries_are_idempotent(client):
+def test_refresh_rotation_preserves_expiry_and_grace_retries_are_idempotent(client, db_session):
     initial = _login(client, "refreshowner")
     original_refresh = initial["refresh_token"]
     original_access = initial["access_token"]
@@ -42,6 +42,10 @@ def test_refresh_rotation_preserves_expiry_and_grace_retries_are_idempotent(clie
     _, _, next_session_id, next_generation, _ = decode_refresh_token_claims(successor)
     assert next_session_id == session_id
     assert next_generation == 1
+    original_row = db_session.get(RefreshSession, (session_id, generation))
+    successor_row = db_session.get(RefreshSession, (session_id, next_generation))
+    assert original_row is not None and successor_row is not None
+    assert successor_row.expires_at == original_row.expires_at
 
     # Two parallel BFF requests can present the old cookie during the grace window.
     retry = _refresh(client, original_refresh)
@@ -61,7 +65,7 @@ def test_refresh_replay_after_grace_revokes_all_user_sessions(client, db_session
     rotated = _refresh(client, original_refresh)
     assert rotated.status_code == 200
     successor = rotated.json()["refresh_token"]
-    _, _, session_id, generation, token_id = decode_refresh_token_claims(original_refresh)
+    _, _, session_id, generation, _ = decode_refresh_token_claims(original_refresh)
 
     original = db_session.get(RefreshSession, (session_id, generation))
     assert original is not None
@@ -90,7 +94,7 @@ def test_refresh_replay_after_grace_revokes_all_user_sessions(client, db_session
 def test_refresh_token_cannot_be_used_as_access_token(client):
     initial = _login(client, "refreshtypecheck")
     response = client.get("/api/v1/users/me", headers={
-        "Authorization": f"Bearer {initial["refresh_token"]}",
+        "Authorization": f"Bearer {initial['refresh_token']}",
     })
     assert response.status_code == 401
 
@@ -98,7 +102,7 @@ def test_refresh_token_cannot_be_used_as_access_token(client):
 def test_logout_invalidates_refresh_token(client):
     initial = _login(client, "refreshlogout")
     response = client.post("/api/v1/auth/logout", headers={
-        "Authorization": f"Bearer {initial["access_token"]}",
+        "Authorization": f"Bearer {initial['access_token']}",
     })
     assert response.status_code == 200
     assert _refresh(client, initial["refresh_token"]).status_code == 401

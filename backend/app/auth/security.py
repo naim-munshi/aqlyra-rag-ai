@@ -106,7 +106,11 @@ def create_refresh_token(
     expiry = (
         _as_utc_aware(expires_at)
         if expires_at is not None
-        else now + (expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+        else now + (
+            expires_delta
+            if expires_delta is not None
+            else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
     )
     token_id = refresh_token_jti(family_id, generation)
     return jwt.encode(

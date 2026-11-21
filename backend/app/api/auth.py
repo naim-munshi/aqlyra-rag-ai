@@ -83,11 +83,14 @@ router = APIRouter(
 
 def _issued_session(db: Session, user: User) -> TokenResponse:
     """Issue a persisted refresh family and a short-lived access token."""
-    refresh_token = create_refresh_session(db, user)
+    token_version = int(user.auth_epoch)
+    refresh_token = create_refresh_session(
+        db, user, token_version=token_version,
+    )
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
-            token_version=user.auth_epoch,
+            token_version=token_version,
         ),
         refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
@@ -466,11 +469,11 @@ def refresh_session(
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
-            token_version=user.auth_epoch,
+            token_version=rotated.token_version,
         ),
         refresh_token=create_refresh_token(
             subject=str(user.id),
-            token_version=user.auth_epoch,
+            token_version=rotated.token_version,
             session_id=rotated.session.session_id,
             generation=rotated.session.generation,
             issued_at=rotated.session.issued_at,
