@@ -1,8 +1,9 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
+
 import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
-import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
-import { backendUrl } from "@/lib/api/backend";
 import { WebResearchWorkspace } from "@/components/web/web-research-workspace";
+import { backendUrl } from "@/lib/api/backend";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 
 export default async function WebPage() {
   let token: string | null;
@@ -11,10 +12,12 @@ export default async function WebPage() {
   } catch {
     return <SessionServiceUnavailable />;
   }
+
   if (!token) {
     if (await hasRefreshToken()) return <SessionServiceUnavailable />;
     redirect("/login");
   }
+
   let response: Response;
   try {
     response = await fetch(backendUrl("/users/me"), {
@@ -26,10 +29,9 @@ export default async function WebPage() {
   } catch {
     return <SessionServiceUnavailable />;
   }
+
   if (response.status === 401 || response.status === 403) redirect("/login");
   if (!response.ok) return <SessionServiceUnavailable />;
 
-  return <SessionServiceUnavailable />;
-  }
   return <WebResearchWorkspace />;
 }
