@@ -90,7 +90,12 @@ def rotate_refresh_session(
     now = utc_now_naive()
     # Lock user before session so logout and refresh use a consistent lock order.
     user = db.scalar(select(User).where(User.id == user_id).with_for_update())
-    if user is None or not user.is_active or user.auth_epoch != token_version:
+    if (
+        user is None
+        or not user.is_active
+        or user.auth_epoch != token_version
+        or (settings.EMAIL_VERIFICATION_REQUIRED and user.email_verified_at is None)
+    ):
         db.rollback()
         raise InvalidRefreshSessionError("Refresh session is no longer valid")
 
@@ -193,6 +198,7 @@ def rotate_legacy_refresh_session(
         db.rollback()
         raise InvalidRefreshSessionError("Refresh session is no longer valid")
 
+    current_version = int(user.auth_epoch)
     token_hash = refresh_token_jti_hash(token_id)
     legacy_row = db.scalar(
         select(RefreshSession)
@@ -227,7 +233,7 @@ def rotate_legacy_refresh_session(
             db.rollback()
             raise
         return RotatedRefreshSession(
-            user=user, session=successor, token_version=int(user.auth_epoch),
+            user=user, session=successor, token_version=current_version,
         )
 
     if (
@@ -250,7 +256,7 @@ def rotate_legacy_refresh_session(
         db.add(successor)
         db.commit()
         return RotatedRefreshSession(
-            user=user, session=successor, token_version=int(user.auth_epoch),
+            user=user, session=successor, token_version=current_version,
         )
 
     age = (now - legacy_row.consumed_at).total_seconds()
@@ -274,7 +280,7 @@ def rotate_legacy_refresh_session(
     ):
         db.commit()
         return RotatedRefreshSession(
-            user=user, session=successor, token_version=int(user.auth_epoch),
+            user=user, session=successor, token_version=current_version,
         )
 
     db.execute(
