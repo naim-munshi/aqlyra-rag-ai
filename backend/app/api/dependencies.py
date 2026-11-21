@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import InvalidTokenError, decode_access_token_with_version
 from app.config.settings import settings
-from app.database.connection import get_db
+from app.database.connection import bind_authenticated_tenant, get_db
 from app.models.user import User
 from app.services.user_service import get_user_by_id
 
@@ -37,6 +37,10 @@ def get_current_user(
         )
     except InvalidTokenError as exc:
         raise credentials_exception from exc
+
+    # JWT signature/expiry were verified; establish transaction-local tenant
+    # identity before the first user row is read. Database RLS is opt-in.
+    bind_authenticated_tenant(db, user_id)
 
     user = get_user_by_id(
         db=db,

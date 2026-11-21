@@ -138,6 +138,25 @@ def readiness():
             if not core_schema_ready:
                 raise RuntimeError("Aqlyra core schema/pgvector is unavailable")
 
+        if settings.TENANT_RLS_ENABLED:
+            # A feature flag must never silently claim tenant isolation when
+            # the restricted role or per-table policies were not installed.
+            check_stage = "tenant_rls_policy"
+            active = db.execute(text(
+                "SELECT "
+                "EXISTS (SELECT 1 FROM pg_roles "
+                "WHERE rolname = 'aqlyra_tenant_runtime' "
+                "AND NOT rolbypassrls AND NOT rolcanlogin) "
+                "AND (SELECT COUNT(*) FROM pg_policies "
+                "WHERE schemaname = 'public' "
+                "AND policyname = 'aqlyra_tenant_scope') = 17 "
+                "AND (SELECT COUNT(*) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relrowsecurity) >= 17"
+            )).scalar_one()
+            if not active:
+                raise RuntimeError("Tenant RLS prerequisites are not installed")
+
         # A writable ephemeral Render disk is NOT proof of file durability.
         # Do not report private uploads as ready when production refuses them.
         upload_storage_status = "writes_disabled"

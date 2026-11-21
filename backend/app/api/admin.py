@@ -11,7 +11,7 @@ from app.auth.admin_access import is_admin_user
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.core.monitoring import admin_http_snapshot
-from app.database.connection import get_db
+from app.database.connection import get_db, permit_verified_admin_scope
 from app.models.conversation import Conversation
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.document import Document
@@ -28,10 +28,13 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 def get_current_admin(
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> User:
     """Explicit immutable user-ID allowlist; disabled if not configured."""
     if not is_admin_user(user):
         raise HTTPException(status_code=403, detail="Forbidden")
+    # Escalation is only possible AFTER the trusted admin allowlist passes.
+    permit_verified_admin_scope(db)
     return user
 
 

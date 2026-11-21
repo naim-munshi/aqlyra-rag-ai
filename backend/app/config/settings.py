@@ -87,6 +87,9 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    # Staged, opt-in tenant RLS. Keep off until the restricted DB role,
+    # policies, admin scope, and CI acceptance are deployed together.
+    TENANT_RLS_ENABLED: bool = False
     DATABASE_POOL_SIZE: int = Field(default=5, ge=1, le=32)
     DATABASE_MAX_OVERFLOW: int = Field(default=10, ge=0, le=32)
     DATABASE_POOL_TIMEOUT_SECONDS: float = Field(default=30, gt=0, le=60)
