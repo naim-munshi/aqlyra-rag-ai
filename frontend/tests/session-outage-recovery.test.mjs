@@ -26,6 +26,16 @@ test("admin and Study Abroad keep cookies and avoid logout on service errors", (
   assert.match(study, /if \(!response\.ok\) return <SessionServiceUnavailable \/>/);
   assert.doesNotMatch(study, /if \(!active\) redirect\("\/login"\)/);
   assert.match(admin, /response\.status === 403\) notFound\(/);
+
+  // All private server-rendered pages must avoid rotating cookies during render.
+  for (const route of ["agent/browser", "web"]) {
+    const page = source("app/" + route + "/page.tsx");
+    assert.match(page, /getAccessToken\(\{ allowRefresh: false \}\)/);
+    assert.match(page, /hasRefreshToken\(\)/);
+    assert.match(page, /return <SessionServiceUnavailable \/>/);
+    assert.match(page, /response\.status === 401 \|\| response\.status === 403/);
+    assert.doesNotMatch(page, /getAccessToken\(\)/);
+  }
 });
 
 test("session outage is a retryable, non-authenticated view", () => {

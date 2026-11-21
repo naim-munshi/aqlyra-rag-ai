@@ -15,16 +15,20 @@ export default async function BrowserAgentPage() {
     if (await hasRefreshToken()) return <SessionServiceUnavailable />;
     redirect("/login");
   }
+  let response: Response;
   try {
-    const response = await fetch(backendUrl("/users/me"), {
+    response = await fetch(backendUrl("/users/me"), {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
       signal: AbortSignal.timeout(12_000),
     });
-    if (response.status === 401 || response.status === 403) redirect("/login");
-    if (!response.ok) return <SessionServiceUnavailable />;
   } catch {
     return <SessionServiceUnavailable />;
+  }
+  if (response.status === 401 || response.status === 403) redirect("/login");
+  if (!response.ok) return <SessionServiceUnavailable />;
+
+  return <SessionServiceUnavailable />;
   }
   return <BrowserAgentWorkspace />;
 }
