@@ -120,18 +120,19 @@ def rotate_refresh_session(
             select(RefreshSession)
             .where(
                 RefreshSession.session_id == session_id,
-                RefreshSession.generation == generation + 1,
+                RefreshSession.user_id == user_id,
+                RefreshSession.revoked_at.is_(None),
+                RefreshSession.consumed_at.is_(None),
+                RefreshSession.expires_at > now,
             )
+            .order_by(RefreshSession.generation.desc())
+            .limit(1)
             .with_for_update()
         )
         if (
             0 <= age <= REFRESH_REUSE_GRACE_SECONDS
             and successor is not None
-            and successor.user_id == user_id
-            and successor.revoked_at is None
-            and successor.consumed_at is None
             and successor.expires_at == record.expires_at
-            and successor.expires_at > now
         ):
             db.commit()
             return RotatedRefreshSession(

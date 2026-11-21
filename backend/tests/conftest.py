@@ -68,6 +68,7 @@ _REGISTERED_MODELS = (
     EmailVerificationCode,
     Memory,
     MemoryEmbedding,
+    RefreshSession,
 )
 
 test_engine = create_engine(

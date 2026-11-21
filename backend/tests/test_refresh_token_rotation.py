@@ -106,3 +106,23 @@ def test_logout_invalidates_refresh_token(client):
     })
     assert response.status_code == 200
     assert _refresh(client, initial["refresh_token"]).status_code == 401
+
+
+def test_old_concurrent_refresh_retry_returns_latest_active_successor(client):
+    initial = _login(client, "refreshconcurrent")
+    generation_zero = initial["refresh_token"]
+
+    first = _refresh(client, generation_zero)
+    assert first.status_code == 200
+    generation_one = first.json()["refresh_token"]
+
+    second = _refresh(client, generation_one)
+    assert second.status_code == 200
+    generation_two = second.json()["refresh_token"]
+
+    # A request that captured generation zero before the first response may
+    # arrive after generation one has already rotated. Return current active
+    # successor rather than falsely treating this in-flight request as theft.
+    delayed = _refresh(client, generation_zero)
+    assert delayed.status_code == 200
+    assert delayed.json()["refresh_token"] == generation_two
