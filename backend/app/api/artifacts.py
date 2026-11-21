@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
@@ -33,6 +34,14 @@ from app.services.rag_answer_service import answer_question
 
 router = APIRouter(prefix="/artifacts", tags=["AI Artifacts"])
 ArtifactFormat = Literal["docx", "xlsx", "pptx", "pdf", "md"]
+
+def _canonical_artifact_id(value: str) -> str:
+    """Validate artifact identifiers before consulting storage backends."""
+    try:
+        return str(UUID(str(value)))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(status_code=404, detail="Artifact not found") from exc
+
 
 
 class GenerateArtifactRequest(BaseModel):
@@ -244,8 +253,9 @@ def list_generated(current_user: User = Depends(get_current_user)) -> dict:
 def get_generated(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> dict:
+    identity = _canonical_artifact_id(artifact_id)
     try:
-        item = read_artifact(user_id=str(current_user.id), artifact_id=artifact_id)
+        item = read_artifact(user_id=str(current_user.id), artifact_id=identity)
     except ArtifactStorageError as exc:
         raise HTTPException(
             status_code=503,
@@ -263,8 +273,9 @@ def get_generated(
 def download(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> FileResponse:
+    identity = _canonical_artifact_id(artifact_id)
     try:
-        result = artifact_download(user_id=str(current_user.id), artifact_id=artifact_id)
+        result = artifact_download(user_id=str(current_user.id), artifact_id=identity)
     except ArtifactStorageError as exc:
         raise HTTPException(
             status_code=503,
@@ -285,9 +296,10 @@ def download(
 def remove(
     artifact_id: str, current_user: User = Depends(get_current_user),
 ) -> Response:
+    identity = _canonical_artifact_id(artifact_id)
     try:
         deleted = delete_artifact(
-            user_id=str(current_user.id), artifact_id=artifact_id,
+            user_id=str(current_user.id), artifact_id=identity,
         )
     except ArtifactStorageError as exc:
         raise HTTPException(
