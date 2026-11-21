@@ -1,0 +1,57 @@
+name: Real Granite 97M Offline RAG Benchmark
+
+on:
+  pull_request:
+    paths:
+      - "backend/scripts/benchmark_real_granite_offline.py"
+      - "backend/scripts/benchmark_real_granite_cross_language.py"
+      - "backend/evaluation/retrieval_cases_cross_language.json"
+      - "backend/evaluation/corpus/**"
+      - "backend/evaluation/retrieval_cases.json"
+      - ".github/workflows/real-granite-offline-benchmark.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  granite-real-embeddings:
+    name: Real Granite 384D / 60 English-Japanese-Bengali synthetic queries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      PYTHONPATH: backend
+    steps:
+      - name: Checkout benchmark code and labeled corpus
+        uses: actions/checkout@v4
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU-only real embedding runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "sentence-transformers>=5.1,<6" "numpy>=1.26,<3"
+      - name: Evaluate pinned public Granite model on synthetic corpus
+        run: |
+          python backend/scripts/benchmark_real_granite_offline.py \
+            --output backend/evaluation/reports/granite-97m-offline-ci.json
+      - name: Evaluate 60 labeled cross-language synthetic queries
+        run: |
+          python backend/scripts/benchmark_real_granite_cross_language.py \
+            --output backend/evaluation/reports/granite-97m-cross-language-ci.json
+      - name: Publish raw measured JSON (not a production claim)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-granite-97m-offline-benchmark
+          path: |
+            backend/evaluation/reports/granite-97m-offline-ci.json
+            backend/evaluation/reports/granite-97m-cross-language-ci.json
+          if-no-files-found: warn
+          retention-days: 30

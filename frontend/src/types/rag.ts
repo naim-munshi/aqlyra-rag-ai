@@ -32,7 +32,8 @@ export type RAGCitationResponse = {
   start_page: number | null;
   end_page: number | null;
 
-  similarity_score: number;
+  // Null means no dense similarity was measured (lexical-only evidence).
+  similarity_score: number | null;
 
   excerpt: string;
   was_truncated: boolean;

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document
 from app.services.storage_service import PendingUpload
+from app.services.study_document_integrity import reconcile_document_before_delete
 
 
 class DuplicateDocumentError(Exception):
@@ -157,6 +158,8 @@ def delete_document_record(
     document: Document,
 ) -> None:
     try:
+        # Keep case checklists and FK-linked document associations atomic.
+        reconcile_document_before_delete(db=db, document=document)
         db.delete(document)
         db.commit()
 

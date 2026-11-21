@@ -18,6 +18,7 @@ from app.embeddings.types import (
     EmbeddingProviderInfo,
     EmbeddingProviderNotFoundError,
     EmbeddingProviderRequestError,
+    EmbeddingProviderQuotaError,
     EmbeddingValidationError,
 )
 from app.embeddings.validation import (
@@ -34,6 +35,7 @@ __all__ = [
     "EmbeddingProviderInfo",
     "EmbeddingProviderNotFoundError",
     "EmbeddingProviderRequestError",
+    "EmbeddingProviderQuotaError",
     "EmbeddingValidationError",
     "HuggingFaceEmbeddingProvider",
     "OpenAIEmbeddingProvider",

@@ -308,6 +308,8 @@ def detect_product_identity_intent(
         compact.split()
     )
 
+    # Restrict self-description to concise, direct requests. Do not treat
+    # "tell me about your founder" or other subject questions as self-intro.
     self_identity_phrases = {
         "who are you",
         "what are you",
@@ -316,13 +318,29 @@ def detect_product_identity_intent(
         "your name",
         "who is aqlyra",
         "what is aqlyra",
+        "tell me about you",
+        "tell me about yourself",
+        "tell us about yourself",
+        "introduce yourself",
+        "can you introduce yourself",
+        "what do you do",
+        "what can you do",
+        "how can you help me",
         "tumi ke",
         "tomar nam ki",
         "tumar nam ki",
+        "tomar somporke bolo",
+        "tumar somporke bolo",
         "তুমি কে",
         "তোমার নাম কি",
         "তোমার নাম কী",
+        "তোমার সম্পর্কে বলো",
+        "নিজের সম্পর্কে বলো",
+        "তুমি কী করতে পারো",
     }
+
+    if compact.endswith(" please"):
+        compact = compact[:-7].strip()
 
     if compact in self_identity_phrases:
         return ProductIdentityMatch(

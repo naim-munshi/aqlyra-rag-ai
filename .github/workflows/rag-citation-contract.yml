@@ -1,0 +1,46 @@
+name: RAG Citation Contract
+
+on:
+  pull_request:
+    branches:
+      - release/core-without-study-abroad-20261027
+    paths:
+      - "frontend/src/types/rag.ts"
+      - "frontend/src/components/chat/rag-workspace.tsx"
+      - "frontend/src/lib/format-similarity.ts"
+      - "frontend/tests/rag-lexical-similarity.test.mjs"
+      - "backend/app/rag/**"
+      - "backend/app/schemas/rag.py"
+      - "backend/tests/test_lexical_citation_score_provenance.py"
+      - ".github/workflows/rag-citation-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend RAG contract / lint / types / tests / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Run real source formatter and full frontend regression tests
+        run: node --experimental-strip-types --test tests/*.test.mjs
+      - name: Build frontend
+        run: npm run build

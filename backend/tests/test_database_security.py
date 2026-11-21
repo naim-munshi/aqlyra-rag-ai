@@ -42,6 +42,18 @@ def _production_settings(
         "test-only-groq-key",
     )
     monkeypatch.setenv(
+        "EMBEDDING_PROVIDER",
+        "huggingface",
+    )
+    monkeypatch.setenv(
+        "EMBEDDING_MODEL",
+        "ibm-granite/granite-embedding-97m-multilingual-r2",
+    )
+    monkeypatch.setenv(
+        "HF_TOKEN",
+        "test-only-hf-token",
+    )
+    monkeypatch.setenv(
         "RATE_LIMIT_ENABLED",
         "true",
     )

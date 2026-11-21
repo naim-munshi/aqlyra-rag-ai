@@ -21,6 +21,11 @@ import {
   VoiceOrb,
   type VoiceVisualState,
 } from "@/components/voice/voice-orb";
+import {
+  browserSpeechIsSupported,
+  startBrowserVoiceMode,
+  type BrowserVoiceController,
+} from "@/components/voice/browser-voice-mode";
 import type {
   ConversationMode,
 } from "@/types/conversation";
@@ -153,6 +158,11 @@ export function VoiceCallButton({
 }: VoiceCallButtonProps) {
   const roomRef =
     useRef<Room | null>(null);
+  const browserVoiceRef =
+    useRef<BrowserVoiceController | null>(null);
+  const [browserMode, setBrowserMode] = useState(false);
+  const [offerBrowserVoice, setOfferBrowserVoice] = useState(false);
+  const [browserLocale, setBrowserLocale] = useState("auto");
 
   const audioContainerRef =
     useRef<HTMLDivElement | null>(
@@ -206,6 +216,10 @@ export function VoiceCallButton({
 
 
   async function endCall() {
+    browserVoiceRef.current?.stop();
+    browserVoiceRef.current = null;
+    setBrowserMode(false);
+    setOfferBrowserVoice(false);
     const room =
       roomRef.current;
 
@@ -245,6 +259,7 @@ export function VoiceCallButton({
 
     setStarting(true);
     setError("");
+    setOfferBrowserVoice(false);
     setLiveUserText("");
     setLiveAgentText("");
     setAgentState("connecting");
@@ -281,6 +296,18 @@ export function VoiceCallButton({
         (await response.json()) as
           | VoiceSessionResponse
           | VoiceApiError;
+
+      if (
+        response.status === 503 &&
+        browserSpeechIsSupported()
+      ) {
+        // Browser SpeechRecognition may process microphone audio via the
+        // browser vendor. Never activate it without separate user approval.
+        setOfferBrowserVoice(true);
+        setStarting(false);
+        setAgentState("idle");
+        return;
+      }
 
       if (
         !response.ok ||
@@ -504,7 +531,57 @@ export function VoiceCallButton({
   }
 
 
+  async function startBrowserCall() {
+    if (disabled || active || starting || !offerBrowserVoice) return;
+    setStarting(true);
+    setError("");
+    setAgentState("connecting");
+    try {
+      const browserVoice = await startBrowserVoiceMode({
+        mode,
+        conversationId,
+        documentIds,
+        speechLocale: browserLocale,
+        onConversationStarted,
+        onUserTranscript,
+        onAgentTranscript,
+        onState: setAgentState,
+        onError: (message) => {
+          setError(message);
+          onError?.(message);
+        },
+        onStopped: () => {
+          browserVoiceRef.current = null;
+          setBrowserMode(false);
+          setActive(false);
+          setStarting(false);
+          setAgentState("idle");
+        },
+      });
+      browserVoiceRef.current = browserVoice;
+      setBrowserMode(true);
+      setOfferBrowserVoice(false);
+      setActive(true);
+      setStarting(false);
+      setAgentState("listening");
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message : "Browser voice unavailable.";
+      setError(message);
+      setStarting(false);
+      setAgentState("error");
+      onError?.(message);
+    }
+  }
+
+
   async function toggleMute() {
+    if (browserVoiceRef.current) {
+      const nextMuted = !muted;
+      browserVoiceRef.current.setMuted(nextMuted);
+      setMuted(nextMuted);
+      return;
+    }
     const room =
       roomRef.current;
 
@@ -536,6 +613,8 @@ export function VoiceCallButton({
 
   useEffect(() => {
     return () => {
+      browserVoiceRef.current?.stop();
+      browserVoiceRef.current = null;
       const room =
         roomRef.current;
 
@@ -568,6 +647,35 @@ export function VoiceCallButton({
             className="relative z-10"
           />
         </button>
+        {offerBrowserVoice ? (
+          <div className="max-w-[240px] space-y-1 text-xs text-[var(--aq-muted)]">
+            <p>LiveKit voice is unavailable. Browser voice may send microphone audio to your browser provider.</p>
+            <select
+              value={browserLocale}
+              onChange={(event) => setBrowserLocale(event.target.value)}
+              aria-label="Voice recognition language"
+              className="w-full rounded-lg border border-[var(--aq-border)] bg-[var(--aq-card)] p-2 text-[var(--aq-text)]"
+            >
+              <option value="auto">Device language</option>
+              <option value="bn-BD">বাংলা</option>
+              <option value="ja-JP">日本語</option>
+              <option value="en-US">English</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => { void startBrowserCall(); }}
+              disabled={disabled}
+              className="rounded-lg border border-[var(--aq-border)] px-3 py-2 text-[var(--aq-text)]"
+            >
+              Use browser voice
+            </button>
+          </div>
+        ) : null}
+        {error ? (
+          <span role="alert" className="max-w-[180px] text-xs text-red-500">
+            {error}
+          </span>
+        ) : null}
 
         <div
           ref={audioContainerRef}
@@ -593,7 +701,7 @@ export function VoiceCallButton({
 
           <div className="-mt-1 text-center">
             <div className="text-sm font-semibold text-[var(--aq-text)]">
-              Aqlyra Voice
+              {browserMode ? "Aqlyra Browser Voice" : "Aqlyra Voice"}
             </div>
 
             <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-[var(--aq-muted)]">
@@ -650,7 +758,9 @@ export function VoiceCallButton({
             {!liveUserText &&
             !liveAgentText ? (
               <div className="text-center text-[11px] text-[var(--aq-muted)]">
-                Speak naturally. Aqlyra is listening.
+                {browserMode
+                  ? "Browser speech mode: recognition and playback depend on your device."
+                  : "Speak naturally. Aqlyra is listening."}
               </div>
             ) : null}
           </div>

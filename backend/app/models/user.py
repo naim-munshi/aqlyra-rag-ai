@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 import uuid
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.datetime_utils import utc_now_naive
@@ -57,6 +57,10 @@ class User(Base):
         unique=True,
         index=True,
         nullable=True,
+    )
+
+    auth_epoch: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
     )
 
     is_active: Mapped[bool] = mapped_column(

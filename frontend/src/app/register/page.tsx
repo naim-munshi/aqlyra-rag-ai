@@ -73,6 +73,13 @@ export default function RegisterPage() {
 
               <RegisterForm />
 
+              <p className="mt-5 text-center text-xs leading-5 text-[var(--aq-muted)]">
+                Email already has an unverified registration?{" "}
+                <Link href="/claim-pending-email" className="font-semibold text-[var(--aq-blue)] hover:underline">
+                  Secure your email account
+                </Link>
+              </p>
+
               <div className="mt-7 border-t border-[var(--aq-border)] pt-6 text-center text-sm text-[var(--aq-muted)]">
                 Already have an account?{" "}
                 <Link

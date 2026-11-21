@@ -1,9 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from app.api.dependencies import get_current_user
+from app.models.user import User
 from sqlalchemy.orm import Session
 
 from app.auth.security import (
     InvalidVerificationTokenError,
+    InvalidTokenError,
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token_with_version,
     create_email_verification_token,
     decode_email_verification_token,
 )
@@ -12,6 +18,7 @@ from app.core.rate_limit import (
     limit_login_request,
     limit_resend_request,
     limit_register_request,
+    limit_password_reset_request,
     limit_verify_request,
 )
 from app.config.settings import settings
@@ -19,15 +26,21 @@ from app.database.connection import get_db
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationResendRequest,
+    PendingEmailClaimRequest,
     GoogleCredentialRequest,
     RegistrationResponse,
+    PasswordResetRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetMessage,
     TokenResponse,
+    RefreshTokenRequest,
     VerificationDispatchResponse,
 )
 from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.email_service import (
     EmailDeliveryError,
     send_verification_email,
+    send_password_reset_email,
 )
 from app.services.email_verification_service import (
     VerificationCodeError,
@@ -40,18 +53,41 @@ from app.services.google_identity_service import (
     InvalidGoogleCredentialError,
     verify_google_credential,
 )
+from app.services.password_reset_service import (
+    PasswordResetError,
+    issue_password_reset,
+    discard_password_reset,
+    reset_password,
+)
 from app.services.user_service import (
     DuplicateUserError,
     authenticate_user,
     create_user,
+    discard_new_registration_after_email_failure,
     get_or_create_google_user,
     get_user_by_email,
+    get_user_by_id,
 )
 
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+
+def _issued_session(user: User) -> TokenResponse:
+    """One backend read per login; keep refresh tokens server-side in BFF."""
+    return TokenResponse(
+        access_token=create_access_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
+        ),
+        refresh_token=create_refresh_token(
+            subject=str(user.id),
+            token_version=user.auth_epoch,
+        ),
+        user=UserResponse.model_validate(user),
+    )
 
 
 @router.post(
@@ -98,12 +134,24 @@ def register_user(
                         ),
                     )
                 )
-            except EmailDeliveryError:
+            except EmailDeliveryError as exc:
                 discard_verification_code(
                     db,
                     challenge_id=issued_code.challenge_id,
                 )
-                verification_email_sent = False
+                cleaned_up = discard_new_registration_after_email_failure(
+                    db, user_id=str(user.id)
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "Verification email unavailable. Registration was "
+                        "not completed; please try again."
+                        if cleaned_up
+                        else "Verification email unavailable. An unfinished "
+                        "registration may remain; use email recovery."
+                    ),
+                ) from exc
 
         return RegistrationResponse(
             **UserResponse.model_validate(
@@ -121,6 +169,19 @@ def register_user(
         )
 
     except DuplicateUserError as exc:
+        if exc.field == "email" and settings.EMAIL_VERIFICATION_REQUIRED:
+            existing = get_user_by_email(
+                db, str(user_data.email).strip().lower()
+            )
+            if existing is not None and existing.email_verified_at is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This email has an unfinished registration. "
+                        "Use pending email recovery to verify and "
+                        "secure the mailbox before activating an account."
+                    ),
+                ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -173,13 +234,7 @@ def login_user(
             detail="Email verification required",
         )
 
-    access_token = create_access_token(
-        subject=str(user.id),
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-    )
+    return _issued_session(user)
 
 
 @router.post(
@@ -205,6 +260,7 @@ def verify_email(
             user_id=user_id,
             challenge_id=challenge_id,
             code=request_data.code,
+            existing_password=request_data.password,
         )
     except (
         InvalidVerificationTokenError,
@@ -221,11 +277,37 @@ def verify_email(
             detail="User account is inactive",
         )
 
-    return TokenResponse(
-        access_token=create_access_token(
-            subject=str(user.id),
+    return _issued_session(user)
+
+
+@router.post(
+    "/claim-pending-email",
+    response_model=TokenResponse,
+    dependencies=[Depends(limit_verify_request)],
+)
+def claim_pending_email(
+    request_data: PendingEmailClaimRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """The mailbox holder replaces untrusted pending credentials after OTP proof."""
+    try:
+        user_id, challenge_id = decode_email_verification_token(
+            request_data.verification_token
         )
-    )
+        user = verify_email_code(
+            db,
+            user_id=user_id,
+            challenge_id=challenge_id,
+            code=request_data.code,
+            claim_username=request_data.username,
+            claim_password=request_data.new_password,
+        )
+    except (InvalidVerificationTokenError, VerificationCodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return _issued_session(user)
 
 
 @router.post(
@@ -333,8 +415,116 @@ def google_login(
             detail="User account is inactive",
         )
 
+    return _issued_session(user)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh_session(
+    request_data: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """Replace only the short-lived access token, not the 14-day deadline.
+
+    A compromised/stale ticket cannot bypass auth_epoch, disable, or email
+    verification checks. Refresh tokens are not valid normal API bearer JWTs.
+    """
+    try:
+        user_id, version = decode_refresh_token_with_version(
+            request_data.refresh_token,
+        )
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        ) from exc
+
+    user = get_user_by_id(db=db, user_id=user_id)
+    if user is None or user.auth_epoch != version or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        )
+    if settings.EMAIL_VERIFICATION_REQUIRED and user.email_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email verification required.",
+        )
+
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
+            token_version=user.auth_epoch,
+        ),
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def revoke_user_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Server-side revoke all previously issued JWT sessions for this user.
+
+    Uses the existing auth_epoch added by the password-reset migration.
+    Works across API processes, without a Redis availability dependency.
+    """
+    user = db.scalar(
+        select(User).where(User.id == str(current_user.id)).with_for_update()
+    )
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Session is no longer valid")
+    user.auth_epoch += 1
+    db.commit()
+    return {"success": True}
+
+
+@router.post(
+    "/request-password-reset",
+    response_model=PasswordResetMessage,
+    dependencies=[Depends(limit_password_reset_request)],
+)
+def request_password_reset(
+    body: PasswordResetRequest,
+    db: Session = Depends(get_db),
+) -> PasswordResetMessage:
+    # Generic response prevents account enumeration.
+    generic = PasswordResetMessage(
+        message="If this email has an eligible account, a reset code will be sent."
+    )
+    email = str(body.email).strip().lower()
+    issued = issue_password_reset(db, email)
+    if issued is None:
+        return generic
+    try:
+        send_password_reset_email(recipient_email=issued[0], code=issued[1])
+    except EmailDeliveryError:
+        discard_password_reset(db, email)
+    return generic
+
+
+@router.post(
+    "/reset-password",
+    response_model=PasswordResetMessage,
+    dependencies=[Depends(limit_password_reset_request)],
+)
+def confirm_password_reset(
+    body: PasswordResetConfirmRequest,
+    db: Session = Depends(get_db),
+) -> PasswordResetMessage:
+    try:
+        reset_password(
+            db, str(body.email).strip().lower(), body.code, body.new_password
         )
+    except PasswordResetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset code",
+        ) from exc
+    return PasswordResetMessage(
+        message="Password updated. Please sign in with your new password."
     )

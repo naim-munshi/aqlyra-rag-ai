@@ -396,6 +396,60 @@ def test_settings_reject_deterministic_production_llm(
     )
 
 
+def test_production_preflight_rejects_deterministic_embeddings(
+    tmp_path: Path,
+) -> None:
+    values = production_values()
+    values["EMBEDDING_PROVIDER"] = "deterministic"
+    values["EMBEDDING_MODEL"] = "deterministic-sha256-v1"
+    env_file = tmp_path / "production.env"
+
+    write_env(env_file, values)
+    result = run_preflight(env_file)
+
+    assert result.returncode != 0
+    assert (
+        "EMBEDDING_PROVIDER must be huggingface or openai"
+        in result.stdout
+    )
+
+
+def test_settings_reject_deterministic_production_embeddings(
+) -> None:
+    values = production_values()
+    values["EMBEDDING_PROVIDER"] = "deterministic"
+    values["EMBEDDING_MODEL"] = "deterministic-sha256-v1"
+
+    result = run_settings(values)
+
+    assert result.returncode != 0
+    assert "EMBEDDING_PROVIDER" in (result.stdout + result.stderr)
+
+
+def test_preflight_accepts_real_hf_embeddings(
+    tmp_path: Path,
+) -> None:
+    values = production_values()
+    env_file = tmp_path / "production.env"
+    write_env(env_file, values)
+
+    result = run_preflight(env_file)
+
+    assert result.returncode == 0, (result.stdout, result.stderr)
+
+
+def test_development_settings_allow_deterministic_embeddings(
+) -> None:
+    values = production_values()
+    values["APP_ENV"] = "development"
+    values["EMBEDDING_PROVIDER"] = "deterministic"
+    values["EMBEDDING_MODEL"] = "deterministic-sha256-v1"
+
+    result = run_settings(values)
+
+    assert result.returncode == 0, (result.stdout, result.stderr)
+
+
 def test_production_preflight_rejects_disabled_rate_limiting(
     tmp_path: Path,
 ) -> None:

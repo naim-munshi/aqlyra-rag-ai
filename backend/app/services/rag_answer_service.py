@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass, replace
 
 from app.rag.answer_types import INSUFFICIENT_EVIDENCE_SENTINEL
@@ -40,6 +41,13 @@ from app.retrieval import (
     RetrievalHit,
     RetrievalQuery,
 )
+from app.embeddings import (
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError, EmbeddingProviderNotFoundError,
+)
+from app.retrieval import RetrievalProviderError
+from app.services.lexical_retrieval_service import search_lexical_chunks
+from app.services.knowledge_dense_coverage import scope_has_current_dense_vectors
 from app.services.hybrid_retrieval_service import (
     search_hybrid_chunks,
 )
@@ -91,6 +99,44 @@ def _rewrite_retrieval_query(
     )
 
 
+def _lexical_evidence_fallback(*, db: Session, query: RetrievalQuery) -> list[RetrievalHit]:
+    """Return ONLY real matched chunks, never invented semantic scores.
+
+    If caller specifically requires a dense min_similarity, refuse to
+    downgrade rather than bypass its filtering requirement.
+    """
+    if query.min_similarity is not None:
+        return []
+    return [
+        RetrievalHit(
+            chunk_id=hit.chunk_id,
+            document_id=hit.document_id,
+            original_filename=hit.original_filename,
+            parent_chunk_id=hit.parent_chunk_id,
+            chunk_role=hit.chunk_role,
+            chunk_level=hit.chunk_level,
+            chunk_index=hit.chunk_index,
+            source_label=hit.source_label,
+            section_path=hit.section_path,
+            content=hit.content,
+            start_page=hit.start_page,
+            end_page=hit.end_page,
+            # Dense similarity is not available. It is never presented
+            # as an embedding score; metadata states the exact mode.
+            similarity_score=0.0,
+            cosine_distance=1.0,
+            ranking_score=1.0 / (index + 1),
+            metadata={
+                **hit.metadata,
+                "retrieval_mode": "lexical_only",
+                "semantic_similarity_available": False,
+                "lexical_score": hit.lexical_score,
+            },
+        )
+        for index, hit in enumerate(search_lexical_chunks(db=db, query=query))
+    ]
+
+
 def _retrieve_rag_hits(
     *,
     db: Session,
@@ -120,14 +166,56 @@ def _retrieve_rag_hits(
         settings.RERANKER_CANDIDATE_DEPTH
     )
 
-    if (
-        not reranking_enabled
-        or query.top_k > candidate_depth
-    ):
-        return search_hybrid_chunks(
-            db=db,
-            query=retrieval_query,
-        )
+    if settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
+        if settings.EMBEDDING_PROVIDER == "deterministic":
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+        if (
+            settings.KNOWLEDGE_SKIP_DENSE_WHEN_UNINDEXED_ENABLED
+            and settings.EMBEDDING_PROVIDER == "remote_onnx"
+            and not scope_has_current_dense_vectors(
+                db=db, query=retrieval_query,
+            )
+        ):
+            # If no current 384D vector exists for THIS owner's requested
+            # documents/roles, calling a sleeping worker cannot retrieve
+            # any dense evidence. Use existing grounded lexical evidence
+            # immediately. Explicit min_similarity still returns [].
+            logger.info(
+                "knowledge_dense_index_empty fallback=lexical"
+            )
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+        try:
+            return _retrieve_with_optional_reranking(
+                db=db,
+                retrieval_query=retrieval_query,
+                original_query_text=original_query_text,
+                reranker=reranker,
+                reranking_enabled=reranking_enabled,
+                candidate_depth=candidate_depth,
+            )
+        except (
+            EmbeddingProviderRequestError, EmbeddingProviderQuotaError,
+            EmbeddingValidationError, EmbeddingProviderNotFoundError,
+            RetrievalProviderError,
+        ):
+            logger.warning("knowledge_dense_provider_unavailable fallback=lexical")
+            return _lexical_evidence_fallback(db=db, query=retrieval_query)
+    return _retrieve_with_optional_reranking(
+        db=db, retrieval_query=retrieval_query,
+        original_query_text=original_query_text,
+        reranker=reranker,
+        reranking_enabled=reranking_enabled,
+        candidate_depth=candidate_depth,
+    )
+
+
+def _retrieve_with_optional_reranking(
+    *, db: Session, retrieval_query: RetrievalQuery,
+    original_query_text: str, reranker: RerankerProvider | None,
+    reranking_enabled: bool, candidate_depth: int,
+) -> list[RetrievalHit]:
+    if not reranking_enabled or retrieval_query.top_k > candidate_depth:
+        return search_hybrid_chunks(db=db, query=retrieval_query)
 
     try:
         active_reranker = (
@@ -231,6 +319,7 @@ def answer_question(
         or create_configured_llm_provider()
     )
 
+    retrieval_started = time.perf_counter()
     hits = _retrieve_rag_hits(
         db=db,
         query=RetrievalQuery(
@@ -245,6 +334,8 @@ def answer_question(
         query_rewriter=query_rewriter,
     )
 
+    retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
+    context_started = time.perf_counter()
     evidence_context = build_evidence_context(
         hits=hits,
         config=EvidenceContextConfig(
@@ -255,6 +346,7 @@ def answer_question(
                 max_source_tokens
             ),
             max_sources=max_sources,
+            balance_source_budget=True,
             min_similarity=(
                 min_similarity
                 if min_similarity is not None
@@ -264,7 +356,15 @@ def answer_question(
         ),
     )
 
+    context_ms = (time.perf_counter() - context_started) * 1000
+
     if not evidence_context.has_evidence:
+        logger.info(
+            "rag_stage_latency_ms retrieval=%.2f context=%.2f "
+            "generation=0.00 citation=0.00 verifier=0.00 repair=0.00 "
+            "verifier_calls=0 repair_calls=0 refused=true",
+            retrieval_ms, context_ms,
+        )
         return RAGAnswerResult(
             question=cleaned_question,
             answer_text=(
@@ -300,11 +400,19 @@ def answer_question(
             total_tokens=None,
         )
 
+    generation_started = time.perf_counter()
     draft = generate_grounded_answer_draft(
         question=cleaned_question,
         evidence_context=evidence_context,
         provider=active_provider,
     )
+
+    generation_ms = (time.perf_counter() - generation_started) * 1000
+    citation_ms = 0.0
+    verifier_ms = 0.0
+    repair_ms = 0.0
+    verifier_calls = 0
+    repair_calls = 0
 
     active_grounding_verifier = (
         grounding_verifier
@@ -322,20 +430,29 @@ def answer_question(
 
     for validation_attempt in range(3):
         try:
-            validated = (
-                validate_grounded_answer_draft(
-                    draft
+            validation_started = time.perf_counter()
+            try:
+                validated = (
+                    validate_grounded_answer_draft(
+                        draft
+                    )
                 )
-            )
+            finally:
+                citation_ms += (time.perf_counter() - validation_started) * 1000
 
             if (
                 not validated.is_refusal
                 and active_grounding_verifier
                 is not None
             ):
-                active_grounding_verifier.verify(
-                    answer=validated,
-                )
+                verify_started = time.perf_counter()
+                verifier_calls += 1
+                try:
+                    active_grounding_verifier.verify(
+                        answer=validated,
+                    )
+                finally:
+                    verifier_ms += (time.perf_counter() - verify_started) * 1000
 
             break
 
@@ -351,19 +468,27 @@ def answer_question(
                     ),
                 )
 
-                validated = (
-                    validate_grounded_answer_draft(
-                        safe_refusal_draft
+                validation_started = time.perf_counter()
+                try:
+                    validated = (
+                        validate_grounded_answer_draft(
+                            safe_refusal_draft
+                        )
                     )
-                )
-
+                finally:
+                    citation_ms += (time.perf_counter() - validation_started) * 1000
                 break
 
-            draft = repair_grounded_answer_draft(
-                draft=draft,
-                evidence_context=evidence_context,
-                provider=active_provider,
-            )
+            repair_started = time.perf_counter()
+            repair_calls += 1
+            try:
+                draft = repair_grounded_answer_draft(
+                    draft=draft,
+                    evidence_context=evidence_context,
+                    provider=active_provider,
+                )
+            finally:
+                repair_ms += (time.perf_counter() - repair_started) * 1000
 
     if validated.is_refusal:
         answer_text = (
@@ -384,6 +509,17 @@ def answer_question(
             validated.cited_sources
         )
 
+    # Log only numerical costs; never question, evidence, answer, user IDs,
+    # or source names. This is a backend blocking-RAG stage breakdown,
+    # NOT the first-token latency of the independent normal chat SSE path.
+    logger.info(
+        "rag_stage_latency_ms retrieval=%.2f context=%.2f "
+        "generation=%.2f citation=%.2f verifier=%.2f repair=%.2f "
+        "verifier_calls=%d repair_calls=%d refused=%s",
+        retrieval_ms, context_ms, generation_ms, citation_ms,
+        verifier_ms, repair_ms, verifier_calls, repair_calls,
+        str(validated.is_refusal).lower(),
+    )
     return RAGAnswerResult(
         question=cleaned_question,
         answer_text=answer_text,
