@@ -166,6 +166,49 @@ def decode_refresh_token_claims(token: str) -> tuple[str, int, str, int, str]:
     return subject, version, session_id, generation, token_id
 
 
+def decode_legacy_refresh_token_claims(
+    token: str,
+) -> tuple[str, int, str, datetime, datetime]:
+    """Decode pre-session-family refresh tokens during a safe one-time upgrade."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type", "ver", "jti"]},
+        )
+    except JWTError as exc:
+        raise InvalidTokenError("Invalid or expired refresh token") from exc
+
+    subject = payload.get("sub")
+    version = payload.get("ver")
+    token_type = payload.get("type")
+    token_id = payload.get("jti")
+    issued = payload.get("iat")
+    expiry = payload.get("exp")
+    if (
+        "sid" in payload
+        or "gen" in payload
+        or not isinstance(subject, str)
+        or not subject.strip()
+        or type(version) is not int
+        or version < 0
+        or token_type != "refresh"
+        or not isinstance(token_id, str)
+        or len(token_id) < 20
+        or type(issued) not in (int, float)
+        or type(expiry) not in (int, float)
+    ):
+        raise InvalidTokenError("Invalid legacy refresh token")
+    try:
+        issued_at = datetime.fromtimestamp(issued, timezone.utc).replace(tzinfo=None)
+        expires_at = datetime.fromtimestamp(expiry, timezone.utc).replace(tzinfo=None)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise InvalidTokenError("Invalid legacy refresh token") from exc
+    if expires_at <= issued_at:
+        raise InvalidTokenError("Invalid legacy refresh token")
+    return subject, version, token_id, issued_at, expires_at
+
 def decode_refresh_token_with_version(token: str) -> tuple[str, int]:
     subject, version, _, _, _ = decode_refresh_token_claims(token)
     return subject, version

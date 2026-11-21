@@ -10,6 +10,7 @@ from app.auth.security import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token_claims,
+    decode_legacy_refresh_token_claims,
     create_email_verification_token,
     decode_email_verification_token,
 )
@@ -65,6 +66,7 @@ from app.services.refresh_session_service import (
     RefreshTokenReplayError,
     create_refresh_session,
     rotate_refresh_session,
+    rotate_legacy_refresh_session,
 )
 from app.services.user_service import (
     DuplicateUserError,
@@ -437,17 +439,33 @@ def refresh_session(
 ) -> TokenResponse:
     """Rotate a persisted refresh ticket without extending its fixed deadline."""
     try:
-        user_id, version, session_id, generation, token_id = decode_refresh_token_claims(
-            request_data.refresh_token,
-        )
-        rotated = rotate_refresh_session(
-            db,
-            user_id=user_id,
-            token_version=version,
-            session_id=session_id,
-            generation=generation,
-            token_id=token_id,
-        )
+        try:
+            user_id, version, session_id, generation, token_id = decode_refresh_token_claims(
+                request_data.refresh_token,
+            )
+        except InvalidTokenError:
+            # Roll existing 14-day refresh tickets into persisted families
+            # without extending their absolute expiry.
+            user_id, version, token_id, issued_at, expires_at = decode_legacy_refresh_token_claims(
+                request_data.refresh_token,
+            )
+            rotated = rotate_legacy_refresh_session(
+                db,
+                user_id=user_id,
+                token_version=version,
+                token_id=token_id,
+                issued_at=issued_at,
+                expires_at=expires_at,
+            )
+        else:
+            rotated = rotate_refresh_session(
+                db,
+                user_id=user_id,
+                token_version=version,
+                session_id=session_id,
+                generation=generation,
+                token_id=token_id,
+            )
     except RefreshTokenReplayError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

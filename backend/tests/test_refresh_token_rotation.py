@@ -1,10 +1,18 @@
 """Refresh-token family rotation, concurrency grace, and replay revocation."""
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from secrets import token_urlsafe
+
+import jwt
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.auth.security import decode_refresh_token_claims
+from app.auth.security import (
+    decode_refresh_token_claims,
+    decode_legacy_refresh_token_claims,
+    refresh_token_jti_hash,
+)
+from app.config.settings import settings
 from app.core.datetime_utils import utc_now_naive
 from app.models.refresh_session import RefreshSession
 from app.services.refresh_session_service import REFRESH_REUSE_GRACE_SECONDS
@@ -126,3 +134,67 @@ def test_old_concurrent_refresh_retry_returns_latest_active_successor(client):
     delayed = _refresh(client, generation_zero)
     assert delayed.status_code == 200
     assert delayed.json()["refresh_token"] == generation_two
+
+
+def _legacy_refresh_token(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "ver": 0,
+            "type": "refresh",
+            "jti": token_urlsafe(24),
+            "iat": now,
+            "exp": now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def test_legacy_refresh_ticket_upgrades_without_extending_expiry(client, db_session):
+    initial = _login(client, "legacyrefresh")
+    legacy = _legacy_refresh_token(initial["user"]["id"])
+    _, _, old_jti, _, old_expiry = decode_legacy_refresh_token_claims(legacy)
+
+    upgraded = _refresh(client, legacy)
+    assert upgraded.status_code == 200
+    successor = upgraded.json()["refresh_token"]
+    _, _, session_id, generation, _ = decode_refresh_token_claims(successor)
+    assert generation == 1
+
+    legacy_row = db_session.scalar(
+        select(RefreshSession).where(
+            RefreshSession.jti_hash == refresh_token_jti_hash(old_jti)
+        )
+    )
+    next_row = db_session.get(RefreshSession, (session_id, generation))
+    assert legacy_row is not None and next_row is not None
+    assert next_row.expires_at == old_expiry
+
+    # An in-flight request using the old cookie receives the same successor.
+    retry = _refresh(client, legacy)
+    assert retry.status_code == 200
+    assert retry.json()["refresh_token"] == successor
+
+
+def test_legacy_refresh_replay_after_grace_revokes_user_sessions(client, db_session):
+    initial = _login(client, "legacyreplay")
+    legacy = _legacy_refresh_token(initial["user"]["id"])
+    _, _, old_jti, _, _ = decode_legacy_refresh_token_claims(legacy)
+    upgraded = _refresh(client, legacy)
+    assert upgraded.status_code == 200
+
+    legacy_row = db_session.scalar(
+        select(RefreshSession).where(
+            RefreshSession.jti_hash == refresh_token_jti_hash(old_jti)
+        )
+    )
+    assert legacy_row is not None
+    legacy_row.consumed_at = utc_now_naive() - timedelta(
+        seconds=REFRESH_REUSE_GRACE_SECONDS + 2,
+    )
+    db_session.commit()
+
+    replay = _refresh(client, legacy)
+    assert replay.status_code == 401
