@@ -3,19 +3,24 @@ import { redirect } from "next/navigation";
 import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { StudyAbroadWorkspace } from "@/components/study-abroad/study-abroad-workspace";
 import { backendUrl } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function StudyAbroadPage() {
   let token: string | null;
   try {
-    token = await getAccessToken();
+    token = await getAccessToken({ allowRefresh: false });
   } catch {
     // A cold Render instance is not evidence that the user's session expired.
     return <SessionServiceUnavailable />;
   }
-  if (!token) redirect("/login");
+  if (!token) {
+    // A still-present refresh ticket is recovered by the Route Handler,
+    // which can persist the rotated HttpOnly cookies in its response.
+    if (await hasRefreshToken()) return <SessionServiceUnavailable />;
+    redirect("/login");
+  }
 
   let response: Response;
   try {
