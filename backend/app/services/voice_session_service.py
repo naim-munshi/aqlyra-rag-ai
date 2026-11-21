@@ -409,6 +409,7 @@ def create_voice_session(
 
     context = {
         "user_id": str(user.id),
+        "auth_epoch": int(user.auth_epoch),
         "conversation_id": (
             str(conversation.id)
         ),

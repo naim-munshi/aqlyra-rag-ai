@@ -22,6 +22,7 @@ def authorize_voice_job(db: Session, job: VoiceJobData) -> None:
     if (
         user is None
         or not user.is_active
+        or user.auth_epoch != job.auth_epoch
         or (
             settings.EMAIL_VERIFICATION_REQUIRED
             and user.email_verified_at is None
