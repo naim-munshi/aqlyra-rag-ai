@@ -17,8 +17,8 @@ test("admin and Study Abroad keep cookies and avoid logout on service errors", (
   const admin = source("app/admin/page.tsx");
   const study = source("app/study-abroad/page.tsx");
   for (const code of [admin, study]) {
-    assert.match(code, /try \{\s*token = await getAccessToken\(\);\s*\} catch \{[\s\S]*?return <SessionServiceUnavailable \/>;/);
-    assert.match(code, /if \(!token\) redirect\("\/login"\)/);
+    assert.match(code, /try \{\s*token = await getAccessToken\(\{ allowRefresh: false \}\);\s*\} catch \{[\s\S]*?return <SessionServiceUnavailable \/>;/);
+    assert.match(code, /if \(!token\) \{[\s\S]*?hasRefreshToken\(\)[\s\S]*?return <SessionServiceUnavailable \/>;[\s\S]*?redirect\("\/login"\)/);
     assert.doesNotMatch(code, /clearAccessToken\(|clearRefreshToken\(/);
   }
   assert.match(study, /signal: AbortSignal\.timeout\(12_000\)/);

@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { AdminMonitor } from "@/components/admin/admin-monitor";
 import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 import type { AdminOverview } from "@/types/admin";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,16 @@ export const metadata: Metadata = {
 export default async function AdminPage() {
   let token: string | null;
   try {
-    token = await getAccessToken();
+    token = await getAccessToken({ allowRefresh: false });
   } catch {
     return <SessionServiceUnavailable />;
   }
-  if (!token) redirect("/login");
+  if (!token) {
+    // The Server Component cannot rotate cookies. Let the recovery screen
+    // call the writable /api/auth/me handler when a refresh ticket exists.
+    if (await hasRefreshToken()) return <SessionServiceUnavailable />;
+    redirect("/login");
+  }
 
   let response: Response;
   try {

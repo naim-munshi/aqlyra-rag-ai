@@ -73,6 +73,11 @@ export async function clearRefreshToken() {
   cookieStore.delete(REFRESH_TOKEN_COOKIE);
 }
 
+export async function hasRefreshToken(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return Boolean(cookieStore.get(REFRESH_TOKEN_COOKIE)?.value);
+}
+
 export async function getAccessToken(
   options: { allowRefresh?: boolean } = {},
 ): Promise<string | null> {
