@@ -14,6 +14,7 @@ from app.models import (
     MemoryEmbedding,
     Message,
     Project,
+    RefreshSession,
     PasswordResetCode,
     User,
 )
@@ -41,6 +42,7 @@ _ = (
     MemoryEmbedding,
     Message,
     Project,
+    RefreshSession,
     PasswordResetCode,
     User,
 )

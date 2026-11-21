@@ -12,6 +12,7 @@ from app.models.message import Message
 from app.models.message_attachment import MessageAttachment
 from app.models.password_reset_code import PasswordResetCode
 from app.models.project import Project
+from app.models.refresh_session import RefreshSession
 from app.models.study_case import StudyCase, StudyCaseDocument, StudyResearchReport, StudyUniversity
 from app.models.user import User
 
@@ -30,6 +31,7 @@ __all__ = [
     "MessageAttachment",
     "PasswordResetCode",
     "Project",
+    "RefreshSession",
     "StudyCase",
     "StudyCaseDocument",
     "StudyResearchReport",

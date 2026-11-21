@@ -48,6 +48,7 @@ from app.models import (
     MemoryEmbedding,
     Message,
     PasswordResetCode,
+    RefreshSession,
     User,
     StudyCase,
     StudyCaseDocument,
