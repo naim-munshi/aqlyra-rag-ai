@@ -60,9 +60,12 @@ def test_readiness_labels_temporary_artifact_mode_without_claiming_durable_uploa
 def test_readiness_reports_configured_private_artifact_storage_without_claiming_probe(
     client, monkeypatch, tmp_path,
 ):
-    monkeypatch.setattr(settings, "APP_ENV", "production")
+    # Isolate storage capability reporting from the separate production
+    # schema-revision gate; force the same disabled-local-write policy.
+    monkeypatch.setattr(settings, "APP_ENV", "development")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(health_module, "local_writes_permitted", lambda: False)
     monkeypatch.setattr(settings, "LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED", False)
     monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
     monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
