@@ -209,3 +209,13 @@ class LiveKitVoiceDeploymentContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_create_uses_unique_atomic_state_tempfile_and_cleans_it(self) -> None:
+        result = self.run_script("create")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state_file = self.state_dir / "livekit-voice.toml"
+        self.assertTrue(state_file.is_file())
+        leftovers = list(self.state_dir.glob("livekit-voice.toml.tmp.*"))
+        self.assertEqual(leftovers, [])
+        log = self.log_file.read_text(encoding="utf-8")
+        self.assertIn("agent create", log)
