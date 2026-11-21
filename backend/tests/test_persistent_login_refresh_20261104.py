@@ -12,6 +12,7 @@ from app.auth.security import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token_with_version,
+    decode_refresh_token_claims,
 )
 
 
@@ -55,7 +56,18 @@ def test_refresh_replaces_expiring_access_token_but_never_extends_refresh_deadli
     payload = renewed.json()
     assert payload["user"]["id"] == login["user"]["id"]
     assert payload["access_token"]
-    assert payload["refresh_token"] is None
+    renewed_refresh = payload["refresh_token"]
+    assert renewed_refresh and renewed_refresh != refresh
+    old_subject, old_version, old_session, old_generation, _ = (
+        decode_refresh_token_claims(refresh)
+    )
+    new_subject, new_version, new_session, new_generation, _ = (
+        decode_refresh_token_claims(renewed_refresh)
+    )
+    assert new_subject == old_subject
+    assert new_version == old_version
+    assert new_session == old_session
+    assert new_generation == old_generation + 1
     assert client.get(
         "/api/v1/users/me",
         headers={"Authorization": "Bearer " + payload["access_token"]},
