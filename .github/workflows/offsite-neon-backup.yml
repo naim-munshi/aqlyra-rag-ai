@@ -1,0 +1,58 @@
+name: Protected Offsite Neon + Cloud Object Backup (Manual)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: aqlyra-offsite-encrypted-export
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  export-encrypted-offsite:
+    # Protected environment with manual reviewer approval. Manual on purpose:
+    # cron workflows execute ONLY from protected main, not this deployed branch.
+    if: github.ref == 'refs/heads/release/core-without-study-abroad-20261027'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: offsite-backup
+    env:
+      AQ_OFFSITE_BACKUP_ENABLED: ${{ vars.AQ_OFFSITE_BACKUP_ENABLED }}
+      AQ_OFFSITE_BACKUP_CONFIRMED: ${{ vars.AQ_OFFSITE_BACKUP_CONFIRMED }}
+      AQ_NEON_DATABASE_URL: ${{ secrets.AQ_NEON_BACKUP_DATABASE_URL }}
+      AQ_PG18_IMAGE: ${{ vars.AQ_PG18_IMAGE }}
+      AQ_SOURCE_S3_ENDPOINT: ${{ secrets.AQ_NEON_S3_ENDPOINT }}
+      AQ_SOURCE_BUCKET: ${{ secrets.AQ_NEON_S3_BUCKET }}
+      AQ_SOURCE_ACCESS_KEY_ID: ${{ secrets.AQ_NEON_S3_ACCESS_KEY_ID }}
+      AQ_SOURCE_SECRET_ACCESS_KEY: ${{ secrets.AQ_NEON_S3_SECRET_ACCESS_KEY }}
+      AQ_SOURCE_REGION: ${{ vars.AQ_NEON_S3_REGION }}
+      AQ_OFFSITE_BUCKET: ${{ vars.AQ_OFFSITE_BUCKET }}
+      AQ_OFFSITE_ENDPOINT: ${{ vars.AQ_OFFSITE_ENDPOINT }}
+      AQ_AGE_PUBLIC_RECIPIENT: ${{ vars.AQ_AGE_PUBLIC_RECIPIENT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AQ_OFFSITE_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AQ_OFFSITE_AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.AQ_OFFSITE_AWS_REGION }}
+    steps:
+      - name: Checkout approved repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install public-key crypto and database export runner
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+          python -m pip install "psycopg==3.3.4" "psycopg-binary==3.3.4" "boto3==1.43.119"
+          [[ "${AQ_PG18_IMAGE:-}" =~ ^postgres:18@sha256:[0-9a-f]{64}$ ]] || { echo "Immutable PostgreSQL image digest required"; exit 1; }
+          docker pull "$AQ_PG18_IMAGE"
+      - name: Bounded age-encrypted database and cloud object export
+        run: |
+          set -Eeuo pipefail
+          python scripts/ops/offsite_neon_export.py
+      # No GitHub artifacts: only age-encrypted data in independent S3.

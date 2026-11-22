@@ -73,13 +73,21 @@ That metadata can include page, slide, sheet, filename, and document information
 
 ## 3. Embeddings
 
-The production template configures the following semantic embedding
-model (development and test environments use deterministic embeddings
-by default):
+Aqlyra's verified 10 November production release uses its authenticated
+`remote_onnx` semantic worker with the following real pretrained 384D
+embedding model identity (see
+`backend/app/embeddings/remote_semantic_provider.py`):
 
 ```text
-ibm-granite/granite-embedding-97m-multilingual-r2
+bekko-static-multilingual-int8-mrl384-v1
 ```
+
+The separate IBM Granite model,
+`ibm-granite/granite-embedding-97m-multilingual-r2`, was used for an
+**independent offline benchmark**. Those Granite scores are not the measured
+quality of the deployed worker. Local development and isolated tests default
+to deterministic embeddings unless an explicit real provider is configured;
+the defaults are not proof of a production model setting.
 
 Configured vector size:
 
@@ -87,7 +95,14 @@ Configured vector size:
 384
 ```
 
-Embeddings are stored with provider/model metadata so they can be replaced later without reparsing every source document.
+Vectors are stored with provider/model metadata **and current chunk content
+hashes**; stale hashes cannot be reused as fresh evidence. A model change
+requires a versioned, separately evaluated reindex. Never put new model
+vectors under the old model ID or silently overwrite existing user vectors.
+
+For model provenance, separate EN/JA/BN offline retrieval metrics, and limits
+of those synthetic evaluations, see
+[Phase 1 evidence](PORTFOLIO_PHASE1_AUDIT_20261110.md).
 
 ## 4. Dense retrieval
 
@@ -100,7 +115,12 @@ Dense search is useful when the question and the source mean the same thing but 
 ## 5. Lexical retrieval
 
 PostgreSQL full-text search runs alongside dense retrieval and uses the same
-validated document scope.
+validated document scope. Where standard FTS cannot segment a Japanese or
+Bangla query and returns no hits, a bounded Unicode substring fallback uses
+the same user, ready-document, document-ID and chunk-role constraints.
+Fallback results are ranked by the number of matched bounded query n-grams
+instead of arbitrary chunk order; the score is lexical match coverage, not
+fabricated cosine similarity.
 
 Lexical search is useful for exact terms such as:
 
@@ -128,10 +148,28 @@ RAG_RERANKER_ENABLED=false
 ```
 
 They can be tested independently without changing the default retrieval path.
+The query rewriter rejects unsupported changes to identifiers, numbers,
+negation/exclusion intent and exact quoted phrases (including Bangla and
+Japanese negation) instead of quietly retrieving evidence for a reversed
+question. Such rejections fall back to the original query.
 
 ## 8. Evidence building
 
 Retrieved chunks are filtered, deduplicated, and limited before they are given to the model.
+
+For Knowledge answers, the evidence packer also uses a bounded
+**balanced-source budget**. When the context can afford at least 32
+content tokens per planned source, it reserves space for later source
+headers and divides the available text budget across the selected
+ranked chunks. Otherwise it keeps the existing relevance-first greedy
+allocation. This improves multi-document coverage under tight token
+budgets without changing tenant filters, retrieval scores, source order
+or citation IDs. The standalone context builder retains legacy
+allocation unless `balance_source_budget=True` is requested.
+
+This is a token-budget heuristic, not a claim that every additional
+source is relevant or that model accuracy is proven. Compare grounded
+answer quality and citation accuracy before a production rollout.
 
 Each evidence block gets a stable label:
 

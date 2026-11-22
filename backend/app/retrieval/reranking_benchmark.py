@@ -1,5 +1,5 @@
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -48,6 +48,39 @@ class MultiKResult:
 
 
 @dataclass(frozen=True, slots=True)
+class StageLatencySummary:
+    """Measured wall-clock stage latency; one sample per labeled query.
+
+    These are sequential *benchmark* observations, not production TTFT,
+    end-to-end user latency, or a validated model-quality estimate.
+    """
+    count: int
+    p50_ms: float
+    p95_ms: float
+    max_ms: float
+
+
+def _summarize_stage(samples: list[float]) -> StageLatencySummary:
+    if not samples:
+        raise ValueError("At least one measured sample is required")
+    if any(value < 0 for value in samples):
+        raise ValueError("Stage latency must be nonnegative")
+    ordered = sorted(samples)
+
+    def nearest_rank(frac: float) -> float:
+        import math
+        index = max(0, math.ceil(frac * len(ordered)) - 1)
+        return round(ordered[index], 3)
+
+    return StageLatencySummary(
+        count=len(ordered),
+        p50_ms=nearest_rank(0.50),
+        p95_ms=nearest_rank(0.95),
+        max_ms=round(ordered[-1], 3),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class RerankingBenchmarkReport:
     provider_name: str
     model_name: str
@@ -62,6 +95,7 @@ class RerankingBenchmarkReport:
     retrieval_depth: int
     case_count: int
     results: tuple[MultiKResult, ...]
+    stage_latency_ms: dict[str, StageLatencySummary] = field(default_factory=dict)
 
 
 def run_reranking_benchmark_once(
@@ -141,6 +175,16 @@ def run_reranking_benchmark_once(
         tuple[str, ...],
     ] = {}
 
+    # Measure the exact same labeled queries and candidate depth for both
+    # variants. The benchmark runs vector, hybrid and reranking sequentially;
+    # these times are stage costs, not real network-streaming TTFT.
+    latency_samples: dict[str, list[float]] = {
+        "query_rewrite": [],
+        "vector": [],
+        "hybrid": [],
+        "rerank": [],
+        "hybrid_plus_rerank": [],
+    }
     total_cases = len(cases)
 
     for index, case in enumerate(
@@ -155,10 +199,14 @@ def run_reranking_benchmark_once(
         retrieval_text = case.query
 
         if query_rewriter is not None:
+            stage_started = time.perf_counter()
             retrieval_text = (
                 query_rewriter.rewrite(
                     case.query
                 )
+            )
+            latency_samples["query_rewrite"].append(
+                (time.perf_counter() - stage_started) * 1000
             )
 
         query = RetrievalQuery(
@@ -168,23 +216,36 @@ def run_reranking_benchmark_once(
             chunk_roles=chunk_roles,
         )
 
+        stage_started = time.perf_counter()
         vector_hits = search_similar_chunks(
             db=db,
             query=query,
             provider=active_provider,
         )
+        latency_samples["vector"].append(
+            (time.perf_counter() - stage_started) * 1000
+        )
 
+        stage_started = time.perf_counter()
         hybrid_hits = search_hybrid_chunks(
             db=db,
             query=query,
             provider=active_provider,
         )
+        hybrid_ms = (time.perf_counter() - stage_started) * 1000
+        latency_samples["hybrid"].append(hybrid_ms)
 
+        stage_started = time.perf_counter()
         reranked_hits = rerank_hits(
             query_text=case.query,
             hits=hybrid_hits,
             reranker=reranker,
             fallback_on_error=False,
+        )
+        rerank_ms = (time.perf_counter() - stage_started) * 1000
+        latency_samples["rerank"].append(rerank_ms)
+        latency_samples["hybrid_plus_rerank"].append(
+            hybrid_ms + rerank_ms
         )
 
         vector_rankings[
@@ -313,4 +374,9 @@ def run_reranking_benchmark_once(
         retrieval_depth=retrieval_depth,
         case_count=len(cases),
         results=tuple(results),
+        stage_latency_ms={
+            name: _summarize_stage(samples)
+            for name, samples in latency_samples.items()
+            if samples
+        },
     )

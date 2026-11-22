@@ -1,395 +1,151 @@
-# Aqlyra RAG AI
-
-Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
-
-**Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
-
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
-
-It has two main modes:
-
-- **Converse** is the general chat experience. It supports streaming replies, conversation history, memory, file attachments, image understanding, and voice integration.
-- **Knowledge** is the document-grounded mode. It searches the user's selected documents, retrieves relevant evidence, generates an answer with citations, checks whether the citations are valid, and refuses when the evidence is not strong enough.
-
-The project keeps the main AI stages separate so they can be tested and debugged independently: ingestion, retrieval, evidence selection, generation, citation validation, grounding, persistence, and operations.
-
-## Identity and sessions
-
-Aqlyra supports two verified sign-in paths:
-
-- Email/password registration sends a six-digit verification code before the account can receive an authenticated session. Codes expire after 10 minutes, allow at most five failed attempts, and cannot be resent more often than once per minute by default.
-- Google sign-in accepts a Google Identity Services credential only after the backend validates its audience, issuer, stable subject, email address, and Google's `email_verified` claim.
-
-Email verification codes are generated with a cryptographically secure random source. The database stores an HMAC digest rather than the plaintext code, and issuing a new code consumes any older active code for the same user.
-
-After either path succeeds, the backend issues the same application access token. The Next.js server stores that token in an HttpOnly, SameSite cookie and uses it for authenticated backend requests.
-
-## Core capabilities
-
-- Next.js 16, React 19, and TypeScript frontend
-- FastAPI backend
-- Verified email/password authentication with expiring six-digit codes
-- Google sign-in with backend ID-token verification
-- HS256 JWT sessions held in HttpOnly browser cookies, with same-origin mutation checks
-- User-scoped documents, conversations, and memory
-- PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
-- OCR for PNG, JPG, JPEG, and WEBP images
-- Hugging Face IBM Granite multilingual embeddings (production config; deterministic test embeddings locally)
-- PostgreSQL with pgvector
-- PostgreSQL full-text search
-- Hybrid dense + lexical retrieval
-- Reciprocal Rank Fusion (RRF)
-- `[S1]`-style source citations
-- Citation validation
-- Semantic grounding checks
-- Answer repair and safe refusal
-- Streaming chat
-- Conversation history
-- Mode-specific projects with automatic first-chat creation and first-turn titles
-- Personal memory
-- Turn-scoped attachments
-- Multimodal image understanding
-- Voice integration
-- Redis-backed rate limiting for authentication, ingestion, retrieval, generation, and voice APIs
-- Structured JSON logs
-- Request IDs
-- Prometheus-compatible metrics
-- Health and readiness checks
-- Internal alerting
-- Backup, verification, and explicit restore tooling
-- Docker Compose deployment with non-root application containers
-- Caddy reverse proxy with HTTPS and request-body limits
-- GitHub Actions for tests, image builds, dependency audit, and startup checks
+# Aqlyra AI
 
-## How the system is structured
+**In 30 seconds:** Full-stack, multilingual Knowledge RAG + general AI chat. Next.js/Vercel frontend, FastAPI/Render backend, Neon PostgreSQL + pgvector, Redis and a separate 384D semantic worker. Private Knowledge combines genuine dense and lexical retrieval, RRF fusion, evidence context and traceable citations.
 
-```mermaid
-flowchart LR
-    U[User] --> C[Caddy]
-    C --> F[Next.js]
-    F --> B[FastAPI]
-
-    B --> PG[(PostgreSQL + pgvector)]
-    B --> R[(Redis)]
-    B --> L[LLM Provider]
-    B --> E[Embedding Provider]
-
-    D[Documents / Images] --> P[Parsing + OCR]
-    P --> CH[Chunking]
-    CH --> E
-    E --> PG
-
-    Q[Knowledge Query] --> DR[Dense Retrieval]
-    Q --> LR[Lexical Retrieval]
-    DR --> RF[RRF]
-    LR --> RF
-    RF --> CTX[Evidence Context]
-    CTX --> L
-    L --> CV[Citation Validation]
-    CV --> GV[Grounding Check]
-    GV --> A[Answer]
-```
-
-## Converse
-
-Converse is the general chat path.
+**Verified result (10 November 2026):** **1,035 / 1,035 eligible ready chunks indexed** with matching current-model semantic vectors (`bekko-static-multilingual-int8-mrl384-v1`); **7 quarantined answer-key chunks excluded**. This measures **index coverage only**, not precision, grounded-answer accuracy, speedup or user-level E2E reliability.
 
-It uses conversation history, saved memory, and any files attached to the current turn to build context for the model.
+**Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
 
-It also supports image input and the voice worker.
+**Multilingual evaluation (new):** Actual deployed-weight Aqlyra static 384D ONNX encoder, **60 synthetic queries** over 30 English-source chunks: **Hit Rate@1 = 70% EN / 35% JA / 60% BN**. [Real 512 MiB model CI](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42775027087). The separate Granite 97M run yielded **85% EN / 70% JA / 45% BN** on 60 synthetic queries. These are **offline dense retrieval**, not end-user answer accuracy; Japanese retrieval is a documented gap. [Full Phase 1 evidence and acceptance report](docs/PORTFOLIO_PHASE1_AUDIT_20261110.md).
 
-Converse is intentionally more flexible than Knowledge mode because it is not limited to document evidence.
+**See it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*no live inference in demo*) · [Backend evaluation protocol](backend/evaluation/REPRODUCIBLE_PROTOCOL.md).
 
-## Knowledge
+**Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, representative live answer-quality evaluation and **cloud** backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
 
-Knowledge is the strict RAG path.
+---
 
-A Knowledge request goes through these steps:
+## Detailed architecture, evidence and historical operational notes
 
-1. Check which documents the user is allowed to search.
-2. Run dense semantic retrieval.
-3. Run lexical full-text retrieval.
-4. Merge both rankings with RRF.
-5. Remove duplicates and build a bounded evidence set.
-6. Send the evidence to the LLM.
-7. Validate the returned citations.
-8. Check whether the cited evidence actually supports the claims.
-9. Repair the answer when possible.
-10. Refuse the answer when the evidence is not sufficient.
-
-The point of keeping these stages separate is simple: if an answer is wrong, it is possible to tell whether the problem came from retrieval, evidence selection, generation, citation handling, or grounding.
-
-## Retrieval and grounding
-
-The current embedding model is:
-
-```text
-ibm-granite/granite-embedding-97m-multilingual-r2
-```
-
-Embedding dimension:
-
-```text
-384
-```
-
-The current configuration keeps query rewriting and the general LLM reranker disabled:
-
-```text
-RAG_QUERY_REWRITE_ENABLED=false
-RAG_RERANKER_ENABLED=false
-```
-
-Both pieces still exist in the architecture, but they are not part of the default path.
-
-## Security and isolation
-
-Aqlyra checks ownership before returning user data.
-
-That applies to:
-
-- documents;
-- document content;
-- conversations;
-- messages;
-- memory;
-- projects;
-- Knowledge document scopes.
-
-Other controls include:
-
-- verified email/password and Google identity paths;
-- expiring, attempt-limited email codes stored only as HMAC digests;
-- HttpOnly, SameSite session and verification cookies;
-- same-origin protection for state-changing frontend API requests;
-- JWT token-type separation for access and verification tickets;
-- upload validation, including Office archive expansion limits;
-- owner-only permissions on new uploaded documents;
-- filename sanitization;
-- production CORS validation;
-- production secret validation;
-- Redis-backed rate limiting;
-- fail-closed behavior when the required rate-limit backend is unavailable;
-- log redaction;
-- generic responses for unhandled errors;
-- disabled OpenAPI/docs in production;
-- localhost-only backend and database bindings in the intended deployment layout;
-- non-root application containers with reduced Linux privileges;
-- production dependency scanning and commit-pinned GitHub Actions.
-
-See [Security and Testing](docs/SECURITY_TESTING.md).
-
-## Observability
-
-Operational endpoints:
-
-```text
-GET /api/v1/health
-GET /api/v1/readiness
-GET /api/v1/metrics
-```
-
-The backend records structured JSON logs with request IDs and timing data.
-
-The metrics endpoint exposes request counts, status codes, latency histograms, unhandled exception counts, rate-limit rejections, and rate-limit backend failures.
-
-The alert worker checks readiness and metrics and can report firing and resolved states for service failures, 5xx spikes, latency spikes, unhandled exceptions, Redis failures, and unusual rate-limit activity.
-
-## Technology stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 16, React 19, TypeScript |
-| Backend | FastAPI, Python |
-| Validation | Pydantic |
-| ORM | SQLAlchemy |
-| Database | PostgreSQL |
-| Vector search | pgvector |
-| Lexical retrieval | PostgreSQL full-text search |
-| Rank fusion | Reciprocal Rank Fusion |
-| Migrations | Alembic |
-| Rate limiting | Redis |
-| Embeddings | IBM Granite multilingual via Hugging Face |
-| LLM adapters | Groq / OpenAI-compatible providers |
-| OCR | Tesseract / pytesseract |
-| Voice | LiveKit architecture |
-| Reverse proxy | Caddy |
-| Containers | Docker Compose |
-| Tests | pytest, FastAPI TestClient |
-| CI | GitHub Actions |
-
-## Repository structure
-
-```text
-aqlyra-rag-ai/
-├── backend/
-│   ├── alembic/
-│   │   └── versions/              # database migrations
-│   ├── app/
-│   │   ├── alerting/              # alert checks and webhook delivery
-│   │   ├── api/                   # FastAPI routes
-│   │   ├── auth/                  # authentication and JWT handling
-│   │   ├── chunking/              # document chunking
-│   │   ├── config/                # application settings
-│   │   ├── core/                  # logging, monitoring, rate limiting
-│   │   ├── database/              # database engine and sessions
-│   │   ├── embeddings/            # embedding providers
-│   │   ├── llms/                  # LLM provider adapters
-│   │   ├── middleware/            # request middleware
-│   │   ├── models/                # ORM models
-│   │   ├── parsers/               # document parsing
-│   │   ├── product_identity/      # product identity settings
-│   │   ├── query_rewriting/       # optional query rewrite layer
-│   │   ├── rag/                   # context, citations, grounding
-│   │   ├── reranking/             # optional reranking layer
-│   │   ├── retrieval/             # retrieval and rank fusion
-│   │   ├── schemas/               # request/response models
-│   │   ├── services/              # application services
-│   │   ├── voice/                 # voice worker
-│   │   └── main.py                # FastAPI entry point
-│   ├── evaluation/                # controlled retrieval benchmark
-│   ├── tests/
-│   ├── Dockerfile
-│   ├── Dockerfile.voice
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── api/
-│   │   │   ├── login/
-│   │   │   ├── register/
-│   │   │   ├── verify-email/
-│   │   │   └── page.tsx
-│   │   └── proxy.ts           # cross-origin API security
-│   ├── Dockerfile
-│   └── package.json
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── RAG_PIPELINE.md
-│   ├── SECURITY_TESTING.md
-│   ├── SETUP.md
-│   └── STAGING.md
-├── scripts/
-│   └── ops/                      # preflight, smoke, backup, restore
-├── .github/workflows/            # CI and dependency audits
-├── Caddyfile
-├── docker-compose.yml
-├── LICENSE
-└── README.md
-```
-
-## Testing
-
-The `backend/evaluation/corpus/` Markdown files contain synthetic retrieval-test data, **not real operational policies**. The benchmark numbers in `backend/evaluation/BASELINE.md` are historical controlled measurements, not production semantic quality results.
-
-The repository currently contains 73 backend `test_*.py` modules. The last verified backend CI run reported **380 passing tests** ([GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)); these are automated test results, not evidence of a live production deployment.
-
-The tests cover:
-
-- password authentication and unverified-login rejection;
-- email verification expiry, attempts, resend controls, and delivery failures;
-- Google credential validation and account linking;
-- cross-user isolation;
-- document ingestion;
-- OCR;
-- chunking;
-- embeddings;
-- dense retrieval;
-- lexical retrieval;
-- hybrid retrieval;
-- RRF;
-- retrieval evaluation;
-- RAG context building;
-- citation validation;
-- semantic grounding edge cases;
-- provider failures;
-- streaming conversations;
-- memory;
-- project CRUD, ownership isolation, and conversation assignment;
-- voice session APIs;
-- production configuration;
-- rate limiting;
-- observability;
-- monitoring;
-- Redis readiness;
-- alerting.
-
-Tests use a separate PostgreSQL test database instead of the normal development database.
-
-## Run the actual software on your Mac
-
-For a one-command, loopback-only Docker deployment with actual
-PostgreSQL/pgvector, FastAPI, Next.js, Redis and a local email-OTP
-inbox, use the [Mac Local Software guide](docs/MAC_LOCAL_SOFTWARE.md):
-
-```bash
-bash scripts/ops/mac_local_up.sh
-```
-
-This tests real application authentication and persistence, but uses
-deterministic AI providers until you configure actual model credentials.
-It is **not** an Internet-ready production configuration.
-
-## Local development
-
-Create a local, untracked development configuration and start the required backend services:
-
-```bash
+**Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
+
+[Current repository review](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) · [Security assessment](docs/SECURITY_AUDIT_2026-11-08.md) · [Live application](https://aqlyra-ai.vercel.app) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Historical 31 October status](docs/PRODUCTION_STATUS_2026-10-31.md)
+
+> **Operational review — 8 November 2026:** The deployed **backend** uses `release/core-without-study-abroad-20261027` (Render) and the official **frontend** uses `fix/center-empty-chat-composer-20261102` (Vercel). The protected `main` branch is **not** the deployed release; do not merge either divergent release or delete branches without checking full review gates. Automatic public Web Research/follow-ups and a bounded 429 fallback have shipped. Knowledge has tenant-scoped lexical fallback for documents without semantic vectors; real 384D embedding recovery increased coverage from **22 to 26 of 1,030 chunks** in the bounded November 8 test. This is **not** full dense RAG coverage. Browser-authenticated two-user acceptance, real LiveKit voice E2E, durable artifact storage, and encrypted off-host backup/restore remain outstanding. Render Free cold starts and provider quotas affect availability. Verify current deployment health and exact-head CI instead of assuming the historical table below is current. See [repo cleanup audit](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) and [security assessment](docs/SECURITY_AUDIT_2026-11-08.md).
+
+> **Production beta — verified 31 October 2026.** Aqlyra has a live Next.js frontend on Vercel, FastAPI backend on Render, Neon PostgreSQL/pgvector, Redis, cloud document storage, Groq-based chat, Tavily-backed Web Search, and a separate authenticated multilingual semantic-embedding worker. Some features remain limited or disabled; see the status matrix. Live availability and provider quotas can change after this verification date. A green CI build is not a replacement for authenticated user acceptance.
+
+## What Aqlyra does
+
+**Converse** provides multi-turn AI chat, user-scoped history and memory, web research when needed, and selected attachment/image handling. Web answers should show source references; general model responses are not automatically verified facts.
+
+**Knowledge** is a private-document RAG workflow. Users upload supported files, the service parses and chunks text, retrieves relevant evidence using dense semantic vectors and lexical search, builds a bounded context, and validates document citations. Documents, conversations, attachments and memory have owner-scoped access controls.
+
+**Web Search** currently uses **Tavily in production**. An independent, token-protected SearXNG gateway is under controlled acceptance; a real 5-result probe has succeeded using a bounded Wikimedia fallback, but that is not equivalent to a complete independent general-purpose web index. Tavily must not be disabled until broad search accuracy, source quality and outage behavior pass live acceptance.
+
+> **2026-11-02 incident update:** The official frontend now exposes real-time LiveKit Voice only; user microphone E2E is BLOCKED by two missing Render LiveKit credential values. Semantic embedding reliability is degraded by repeat 502s. Groq returned intermittent 413/429 errors. Treat the 31 October acceptance baseline below as historical; see [verified recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md).
+
+## Historical capability matrix (31 October–2 November 2026)
+
+| Capability | Historical verification | Important qualification |
+| --- | --- | --- |
+| Email and Google identity; authenticated chat | Production beta | Two-account browser/security E2E not yet certified |
+| General Converse with Groq | Live; reliability work open | 2026-11-01 production logs include successful 200 responses and occasional 413 payload-too-large / 429 rate-limit errors; response quality and recovery need real-user validation |
+| Memory recall | Degraded during semantic-worker outages | Repeated live embedding HTTP 502 caused documented lexical fallback; no claim of semantic recall reliability until real-provider acceptance |
+| PDF Knowledge ingestion and lexical search | Verified | One legacy PDF was recovered into **12 chunks** |
+| Dense semantic RAG | Earlier provider/database canary PASS; ongoing 502 incident | Preserved genuine **384-d** vectors and original multilingual ONNX model; a bounded transient retry/circuit breaker is in PR #93, not evidence that worker health is restored |
+| Tavily Web Research | Provider pipeline verified | Real public canary returned four validated sources; citations do not guarantee factual truth |
+| Self-hosted SearXNG | Limited canary PASS | Wikipedia-backed 5-result probe; wider web coverage/zero-result resilience not yet certified |
+| Browser Voice | No longer offered as silent fallback on official frontend | Browser synthesis cannot reliably support hands-free interruption on iOS. Official Voice UI uses LiveKit-only connection and reports unavailability rather than simulating a call |
+| LiveKit realtime voice | Worker registered; real call BLOCKED | Railway 1/1 replica Online, but Render startup diagnostics show missing **LIVEKIT_API_KEY** and **LIVEKIT_API_SECRET**. Authenticated room/audio, STT, TTS, barge-in and two-account E2E remain unverified |
+| Browser Agent | **Disabled in production** | Signed approvals and Redis replay protection do **not** replace network-isolated browser execution |
+| PDF/DOCX/XLSX/PPTX/other artifact generation | Implemented | Format-specific and cross-user production acceptance outstanding |
+| Backups | Neon recovery branch exists | **Off-host encrypted export + isolated database/object restore remain unverified** |
+
+For the auditable version of this table, run instructions and known limitations, see [Production Status](docs/PRODUCTION_STATUS_2026-10-31.md).
+
+## Try Aqlyra
+
+1. Open **[the live app](https://aqlyra-ai.vercel.app)** and sign in if needed. An explicitly linked [**/demo**](https://aqlyra-ai.vercel.app/demo) is a *scripted, non-inference portfolio walkthrough*; it is not proof of live RAG.
+2. Under **Converse**, ask a standard multi-turn question, then a time-sensitive question with Web Search. Verify source URLs and distinguish page-backed content from uncertain assertions.
+3. Under **Knowledge**, upload a non-sensitive test PDF, select it, then ask one answerable question and one unsupported question. Verify document citations and refusal behavior.
+4. If LiveKit Voice is configured, test a real authenticated microphone session and confirm the agent connects. The official UI does not substitute browser speech as a fake live call; a microphone E2E PASS has not been established by the automated deployment checks.
+5. Do not attempt production Browser Agent execution while its isolated sandbox is disabled.
+
+**Full reproducible demo:** [PRODUCT_DEMO_AND_ACCEPTANCE.md](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) includes an interviewer-friendly five-minute flow, synthetic sample materials, safe test prompts and PASS/FAIL evidence requirements. Never upload actual passports, customer secrets or other sensitive records as demo data.
+
+## Architecture
+
+~~~mermaid
+flowchart TB
+  U[Browser] --> F[Next.js on Vercel]
+  F --> API[FastAPI on Render]
+  API --> GROQ[Groq LLM]
+  API --> SEARCH[Tavily Web Research]
+  API -. limited independent search .-> SX[Token-protected SearXNG / Wikimedia gateway]
+  API --> DB[(Neon PostgreSQL + pgvector)]
+  API --> REDIS[(Redis rate limits)]
+  API --> OBJ[(Private cloud documents)]
+  API --> EMB[Authenticated semantic worker]
+  EMB --> ONNX[Compact multilingual ONNX vectors]
+  OBJ --> PARSE[Parse, OCR, chunk]
+  PARSE --> DB
+  API --> HY[Dense + lexical retrieval / fusion]
+  HY --> DB
+  HY --> CIT[Evidence, answer and citation validation]
+  API -. controlled, disabled .-> BROWSER[Browser Agent execution]
+  F -. browser-dependent .-> SPEECH[Web Speech fallback]
+~~~
+
+The semantic worker is separate from the main API because a larger contextual E5 ONNX model exceeded a **512 MiB** free-service memory limit. The deployed compact *static* multilingual encoder was tested in its own 512 MiB container. It is a real pretrained semantic representation, but it is not equivalent to a large contextual sentence model. The vector schema is 384-dimensional, and lexical retrieval remains available as fallback.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [frontend/](frontend/) | Next.js authenticated workspace, UI, proxy API, public scripted portfolio demo |
+| [backend/app/api/](backend/app/api/) | FastAPI endpoints and ownership enforcement |
+| [backend/app/services/](backend/app/services/) | Converse, web research, file/indexing, RAG, browser and artifact orchestration |
+| [backend/app/embeddings/](backend/app/embeddings/) | Provider registry and isolated semantic-worker HTTPS client |
+| [backend/semantic_worker/](backend/semantic_worker/) | CPU-only, token-protected pretrained multilingual semantic encoder |
+| [backend/app/retrieval/](backend/app/retrieval/) | Dense + lexical retrieval and rank fusion |
+| [backend/app/rag/](backend/app/rag/) | Context, citations and grounding checks |
+| [ops/searxng/](https://github.com/naim-munshi/aqlyra-rag-ai/tree/feat/hybrid-searxng-web-research-20261031/ops/searxng) | Optional keyless metasearch gateway and bounded fallback |
+| [.github/workflows/](.github/workflows/) | Python/PostgreSQL, Node/Next.js, security, dependency, Docker, ARM64 and model acceptance |
+| [docs/](docs/) | Setup, architecture, production acceptance and handoff |
+
+## Develop and test
+
+Use separate local test credentials and a disposable database. **Never point a test or CI runner at the production Neon database.**
+
+~~~bash
 cp -n backend/.env.example backend/.env
 docker compose --env-file backend/.env up -d --build postgres redis backend
-docker compose --env-file backend/.env ps
-```
-
-Configure SMTP for verified registration; the optional voice worker requires LiveKit credentials and can be started separately. Development defaults use deterministic AI providers and do not indicate production answer quality.
-
-Check the backend:
-
-```bash
-curl -fsS http://127.0.0.1:8000/api/v1/health
-curl -fsS http://127.0.0.1:8000/api/v1/readiness
-```
-
-Run the frontend:
-
-```bash
 cd frontend
 npm ci
 cp -n .env.example .env.local
 npm run dev
-```
+~~~
 
-Email-code verification requires SMTP settings in `backend/.env`.
-Google sign-in requires matching public Web Client IDs in backend and frontend configuration. Local secret
-files are ignored by Git; see the setup guide for the required values.
+Backend verification (from a configured developer environment):
 
-Run backend tests from `backend/`:
+~~~bash
+cd backend
+python -m pytest -q
+~~~
 
-```bash
-TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5433/aqlyra_rag_ai_test' python -m pytest -q
-```
+Frontend verification:
 
-Run frontend checks:
-
-```bash
+~~~bash
 cd frontend
 npm run lint
+npx tsc --noEmit
+node --experimental-strip-types --test tests/*.test.mjs
 npm run build
-```
+~~~
 
-For the full setup, see [docs/SETUP.md](docs/SETUP.md).
+The production stack requires real provider/environment configuration; development defaults and mocked tests are *not* evidence of production answer accuracy. See [SETUP.md](docs/SETUP.md), [Architecture](docs/ARCHITECTURE.md) and [Security](docs/SECURITY_TESTING.md). For voice and Browser Agent safety, review [the production status matrix](docs/PRODUCTION_STATUS_2026-10-31.md) before enabling any flags.
 
-## Documentation
+## Production safety and release process
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [RAG Pipeline](docs/RAG_PIPELINE.md)
-- [Security and Testing](docs/SECURITY_TESTING.md)
-- [Setup](docs/SETUP.md)
-- [Staging and Release Gate](docs/STAGING.md)
-- [Oracle Always Free Deployment](docs/ORACLE_ALWAYS_FREE.md)
-- [Free Vercel Portfolio Demo](docs/VERCEL_PORTFOLIO_DEMO.md)
-- [Staging Performance Baseline](docs/PERFORMANCE_BASELINE.md)
-- [Retrieval Baseline](backend/evaluation/BASELINE.md)
-- [Frontend Development](frontend/README.md)
+- Current backend release: **`release/core-without-study-abroad-20261027`**. Frontend Vercel release: **`release/unified-core-frontend-rag-20261031`**; they are separate release tracks.
+- Keep protected `main` unchanged unless the repository owner explicitly approves a reviewed merge.
+- Use exact-head GitHub CI, limited-scope PRs, non-destructive deployment, post-deploy HTTP checks and sanitized logs.
+- Never log API tokens, original user messages, private uploaded content or browser approval secrets.
+- Browser Agent production execution must remain disabled until separate network/OS isolation, outbound host controls, durable approvals and real E2E are proven.
+- A Neon recovery branch protects a point-in-time database state, but **does not constitute an encrypted off-host backup or verified restore**.
+- Do not claim SMTP, voice, document permissions or cross-account production acceptance without actual end-to-end evidence.
+
+See [RELEASE_ACCEPTANCE.md](docs/RELEASE_ACCEPTANCE.md) and [PRODUCTION_STATUS_2026-10-31.md](docs/PRODUCTION_STATUS_2026-10-31.md) for release gates.
 
 ## License
 

@@ -9,8 +9,11 @@ The test suite also checks a number of failure and adversarial cases.
 ## Authentication and ownership
 
 Email syntax alone is not treated as proof of mailbox ownership.
-New password accounts remain unverified until a one-time code is
-accepted. Verification codes:
+New password accounts remain unverified until both a one-time code and
+the original registration password are accepted on the ordinary verify
+path. This prevents accidental activation of attacker-chosen credentials.
+A mailbox holder who did not register must use claim-pending-email to
+replace the untrusted password. Verification codes:
 
 - contain six digits and expire after ten minutes;
 - are stored as keyed HMAC digests, never as plaintext;
@@ -19,10 +22,19 @@ accepted. Verification codes:
 - are bound to a short-lived signed verification ticket stored in an
   HttpOnly, SameSite cookie by the frontend session layer.
 
-An unverified registration can be safely restarted. This prevents an
-attacker from pre-registering another person's email with an
-attacker-chosen password and later benefiting when the real mailbox
-owner verifies it.
+A second unauthenticated registration for an existing unverified email is
+rejected instead of allowing its password or username to be overwritten.
+The original verification challenge remains bound to the pending account.
+For pending-email squatting, the mailbox owner can request a new code
+(`/auth/resend-verification`) and use
+`/auth/claim-pending-email` with the resulting verification ticket,
+six-digit code, and new username/password. Under a database row lock the
+credentials are replaced and the address is marked verified **in the same
+transaction**. The old unverified password cannot be used afterward;
+stale OTP challenges and replayed tokens are rejected. The browser keeps the
+verification ticket in an HttpOnly cookie. A verified account cannot be
+claimed this way; it must use the password-reset flow.
+This recovery path requires real SMTP acceptance tests before release.
 
 Google credentials are verified on the backend for signature,
 audience, issuer, subject, and verified email before an Aqlyra session
@@ -149,7 +161,7 @@ The production configuration rejects unsafe settings such as:
 - weak application secrets;
 - weak/default database credentials;
 - disabled rate limiting;
-- deterministic production LLM configuration;
+- deterministic production LLM or embedding configuration;
 - disabled grounding verification.
 
 Production API docs/OpenAPI are disabled. Next.js also checks trusted
@@ -187,10 +199,14 @@ The alert worker is tested for:
 
 ## Test suite
 
-The repository contains 73 backend `test_*.py` modules as of this audit.
-The latest verified backend CI run reported **380 passing tests**
-([run details](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/38172207407)).
-These tests do not establish a successful public production deployment.
+The full integration release candidate has **451 passing backend tests
+with one warning** on the reviewed GitHub branch
+(`integration/security-release-candidate-20261026`, verified CI head
+`11597ee9f422a6a72e8dccb1035e1d4fc128dba6` before final UI/help
+fixes). This is automated regression evidence, not live production proof.
+Use the latest GitHub Actions run on the actual release SHA before approval.
+The final application requires real-provider, staging, privacy and recovery
+acceptance in addition to passing tests.
 
 Coverage includes:
 

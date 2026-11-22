@@ -22,6 +22,8 @@ from app.parsers.types import (
 
 MAX_SPREADSHEET_ROWS = 50_000
 MAX_SPREADSHEET_COLUMNS = 200
+MAX_SPREADSHEET_EXTRACTED_CHARS = 120_000
+MAX_SPREADSHEET_CELL_CHARS = 2_000
 
 
 def _table_rows_to_text(
@@ -164,6 +166,29 @@ class DOCXParser:
         if current_blocks or not sections:
             flush_section()
 
+        # Word headers/footers are important for identifiers and context.
+        # Include each unique block once even when multiple sections share it.
+        for region_name in ("header", "footer"):
+            seen_blocks: set[str] = set()
+            for section_number, section in enumerate(document.sections, start=1):
+                region = getattr(section, region_name)
+                region_text = normalize_text("\n".join(
+                    paragraph.text for paragraph in region.paragraphs
+                ))
+                if not region_text or region_text in seen_blocks:
+                    continue
+                seen_blocks.add(region_text)
+                sections.append(create_parsed_unit(
+                    unit_index=len(sections) + 1,
+                    unit_type="section",
+                    source_label=f"Section {section_number} {region_name.title()}",
+                    content=region_text,
+                    metadata={
+                        "region": region_name,
+                        "word_section": section_number,
+                    },
+                ))
+
         return ParseResult(
             parser_name="python-docx",
             file_extension=".docx",
@@ -262,6 +287,18 @@ class PPTXParser:
                     _extract_pptx_shape_text(shape)
                 )
 
+            # Speaker notes can contain useful research context. They are
+            # readable text, never scripts or slide animation instructions.
+            try:
+                if slide.has_notes_slide:
+                    notes = slide.notes_slide.notes_text_frame
+                    if notes is not None:
+                        note_text = normalize_text(notes.text)
+                        if note_text:
+                            blocks.append("Speaker notes: " + note_text)
+            except (AttributeError, ValueError):
+                pass
+
             units.append(
                 create_parsed_unit(
                     unit_index=slide_number,
@@ -323,15 +360,36 @@ def _spreadsheet_value_to_text(
     )
 
 
+def _excel_column_label(index: int) -> str:
+    """Convert a 1-based Excel column to A, Z, AA, etc."""
+    label = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        label = chr(65 + remainder) + label
+    return label
+
+
 class XLSXParser:
     extensions = frozenset({".xlsx"})
 
     def parse(self, path: Path) -> ParseResult:
+        """Read values and identify cells, falling back to unevaluated formulas.
+
+        Formulas are never executed. Cached values (if supplied by Excel)
+        take precedence over the formula expression. Extraction is bounded
+        by sheet, row, column and character budgets for reliable RAG.
+        """
         try:
             workbook = load_workbook(
                 filename=str(path),
                 read_only=True,
                 data_only=True,
+                keep_links=False,
+            )
+            formulas = load_workbook(
+                filename=str(path),
+                read_only=True,
+                data_only=False,
                 keep_links=False,
             )
         except Exception as exc:
@@ -346,88 +404,90 @@ class XLSXParser:
                 workbook.worksheets,
                 start=1,
             ):
-                extracted_rows: list[list[str]] = []
-                truncated = False
-
+                formula_sheet = formulas.worksheets[sheet_index - 1]
                 declared_max_row = worksheet.max_row or 0
-                declared_max_column = (
-                    worksheet.max_column or 0
+                declared_max_column = worksheet.max_column or 0
+                row_limit = min(max(declared_max_row, 1), MAX_SPREADSHEET_ROWS)
+                col_limit = min(max(declared_max_column, 1), MAX_SPREADSHEET_COLUMNS)
+                rows: list[str] = []
+                char_count = 0
+                extracted_cells = 0
+                truncated = (
+                    declared_max_row > MAX_SPREADSHEET_ROWS
+                    or declared_max_column > MAX_SPREADSHEET_COLUMNS
                 )
 
-                for row_number, row in enumerate(
-                    worksheet.iter_rows(
-                        min_row=1,
-                        max_row=MAX_SPREADSHEET_ROWS,
-                        min_col=1,
-                        max_col=min(
-                            max(declared_max_column, 1),
-                            MAX_SPREADSHEET_COLUMNS,
-                        ),
-                        values_only=True,
-                    ),
+                values_iter = worksheet.iter_rows(
+                    min_row=1,
+                    max_row=row_limit,
+                    min_col=1,
+                    max_col=col_limit,
+                    values_only=True,
+                )
+                formulas_iter = formula_sheet.iter_rows(
+                    min_row=1,
+                    max_row=row_limit,
+                    min_col=1,
+                    max_col=col_limit,
+                    values_only=True,
+                )
+
+                for row_number, (row, formula_row) in enumerate(
+                    zip(values_iter, formulas_iter),
                     start=1,
                 ):
-                    values = [
-                        _spreadsheet_value_to_text(
-                            value
-                        )
-                        for value in row
-                    ]
-
-                    while values and not values[-1]:
-                        values.pop()
-
-                    if any(values):
-                        extracted_rows.append(values)
-
-                    if row_number >= MAX_SPREADSHEET_ROWS:
-                        truncated = (
-                            declared_max_row
-                            > MAX_SPREADSHEET_ROWS
-                        )
+                    cells: list[str] = []
+                    for column_number, (value, formula) in enumerate(
+                        zip(row, formula_row), start=1,
+                    ):
+                        # When Excel did not save a cached formula result,
+                        # preserve the formula rather than dropping that cell.
+                        if value is None and isinstance(formula, str):
+                            if formula.startswith("="):
+                                value = formula
+                        cell_value = _spreadsheet_value_to_text(value)
+                        if not cell_value:
+                            continue
+                        if len(cell_value) > MAX_SPREADSHEET_CELL_CHARS:
+                            cell_value = cell_value[:MAX_SPREADSHEET_CELL_CHARS]
+                            truncated = True
+                        coordinate = f"{_excel_column_label(column_number)}{row_number}"
+                        cells.append(f"{coordinate}: {cell_value}")
+                        extracted_cells += 1
+                    if not cells:
+                        continue
+                    row_text = " | ".join(cells)
+                    if char_count + len(row_text) + 1 > MAX_SPREADSHEET_EXTRACTED_CHARS:
+                        truncated = True
                         break
+                    rows.append(row_text)
+                    char_count += len(row_text) + 1
 
-                if (
-                    declared_max_column
-                    > MAX_SPREADSHEET_COLUMNS
-                ):
-                    truncated = True
-
-                units.append(
-                    create_parsed_unit(
-                        unit_index=sheet_index,
-                        unit_type="sheet",
-                        source_label=worksheet.title,
-                        content=_table_rows_to_text(
-                            extracted_rows
-                        ),
-                        metadata={
-                            "sheet_name": worksheet.title,
-                            "declared_rows": declared_max_row,
-                            "declared_columns": (
-                                declared_max_column
-                            ),
-                            "extracted_rows": len(
-                                extracted_rows
-                            ),
-                            "truncated": truncated,
-                        },
-                    )
-                )
-
+                units.append(create_parsed_unit(
+                    unit_index=sheet_index,
+                    unit_type="sheet",
+                    source_label=worksheet.title,
+                    content="\n".join(rows),
+                    metadata={
+                        "sheet_name": worksheet.title,
+                        "sheet_state": worksheet.sheet_state,
+                        "declared_rows": declared_max_row,
+                        "declared_columns": declared_max_column,
+                        "extracted_rows": len(rows),
+                        "extracted_cells": extracted_cells,
+                        "truncated": truncated,
+                    },
+                ))
         finally:
             workbook.close()
+            formulas.close()
 
         return ParseResult(
             parser_name="openpyxl",
             file_extension=".xlsx",
             units=tuple(units),
             page_count=None,
-            word_count=sum(
-                unit.word_count for unit in units
-            ),
-            quality_score=calculate_quality_score(
-                units
-            ),
+            word_count=sum(unit.word_count for unit in units),
+            quality_score=calculate_quality_score(units),
             requires_ocr=False,
         )

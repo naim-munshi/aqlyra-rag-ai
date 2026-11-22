@@ -24,6 +24,7 @@ from app.services.memory_embedding_service import (
 from app.services.memory_service import (
     normalize_memory_content,
 )
+from app.services.social_turn_policy import is_low_information_social_turn
 
 
 MIN_AUTO_MEMORY_CONFIDENCE = 0.75
@@ -315,6 +316,12 @@ def extract_memories_for_message(
             ),
         )
     )
+
+    # No durable information can be extracted from a standalone social
+    # greeting/thanks. Still check ownership above before short-circuiting.
+    # Skip the extra LLM request; meaningful or mixed turns remain unchanged.
+    if is_low_information_social_turn(source_message.content):
+        return []
 
     active_provider = (
         provider

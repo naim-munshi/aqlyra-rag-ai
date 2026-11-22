@@ -16,6 +16,11 @@ from app.services.chunk_service import (
 from app.services.embedding_service import (
     create_chunk_embeddings,
 )
+from app.embeddings import (
+    EmbeddingProviderQuotaError, EmbeddingProviderRequestError,
+    EmbeddingValidationError, EmbeddingProviderNotFoundError,
+)
+from app.services.embedding_service import EmbeddingDimensionError, EmbeddingBatchError
 
 
 class DocumentProcessingConflictError(Exception):
@@ -80,10 +85,8 @@ def _mark_document_failed(
     if failed_document is None:
         return
 
-    error_message = (
-        f"{type(error).__name__}: "
-        f"{str(error)}"
-    )[:2000]
+    # Avoid leaking provider tokens/URLs into user-visible document status.
+    error_message = type(error).__name__[:120]
 
     failed_document.status = "failed"
     failed_document.error_message = (
@@ -103,19 +106,20 @@ def _mark_document_failed(
 def process_document(
     db: Session,
     document: Document,
+    *,
+    verified_source_path: Path | None = None,
+    claimed_for_worker: bool = False,
 ) -> Document:
     if document.status == "ready":
         raise DocumentProcessingConflictError(
             "Document has already been processed"
         )
 
-    if document.status in {
-        "processing",
-        "queued",
-    }:
+    if document.status in {"processing", "queued"} and not (
+        claimed_for_worker and document.status == "processing"
+    ):
         raise DocumentProcessingConflictError(
-            f"Document is currently "
-            f"{document.status}"
+            f"Document is currently {document.status}"
         )
 
     document_id = document.id
@@ -127,11 +131,20 @@ def process_document(
         db.commit()
         db.refresh(document)
 
-        document_path = (
-            _resolve_stored_document_path(
+        if document.storage_path.startswith("cloud://"):
+            if verified_source_path is None or not verified_source_path.is_file():
+                raise StoredDocumentNotFoundError(
+                    "Verified private cloud document source is required"
+                )
+            document_path = verified_source_path
+        else:
+            if verified_source_path is not None:
+                raise DocumentProcessingConflictError(
+                    "External source must not override a local document"
+                )
+            document_path = _resolve_stored_document_path(
                 document.storage_path
             )
-        )
 
         parse_result = parse_document(
             path=document_path,
@@ -200,10 +213,33 @@ def process_document(
 
         db.flush()
 
-        create_chunk_embeddings(
-            db=db,
-            chunks=chunks,
+        # Deterministic hash embeddings are test vectors, not semantic
+        # search. In production, use real embeddings when available;
+        # retain lexical indexing if the external provider is unavailable.
+        use_lexical_only = (
+            settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED
+            and settings.EMBEDDING_PROVIDER == "deterministic"
         )
+        if not use_lexical_only:
+            try:
+                create_chunk_embeddings(db=db, chunks=chunks)
+            except (
+                EmbeddingProviderRequestError, EmbeddingProviderQuotaError,
+                EmbeddingValidationError, EmbeddingProviderNotFoundError,
+                EmbeddingDimensionError, EmbeddingBatchError,
+            ):
+                if not settings.KNOWLEDGE_LEXICAL_FALLBACK_ENABLED:
+                    raise
+                use_lexical_only = True
+
+        if use_lexical_only:
+            # No fabricated vectors. PostgreSQL FTS can search real parsed
+            # chunks while preserving the actual filename/page citations.
+            for chunk in chunks:
+                chunk.chunk_metadata = {
+                    **(chunk.chunk_metadata or {}),
+                    "retrieval_mode": "lexical_only",
+                }
 
         document.page_count = (
             parse_result.page_count
