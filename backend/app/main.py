@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import urlsplit
 from fastapi import FastAPI
 
@@ -69,6 +70,40 @@ async def root():
 
 @app.on_event("startup")
 def start_knowledge_index_worker() -> None:
+    # One-shot synthetic Neon S3 durability probe. The flag is temporary and
+    # defaults OFF; the probe writes/reads/deletes only a fresh ops/ object.
+    probe_enabled = os.getenv(
+        "PRIVATE_STORAGE_PROBE_ON_STARTUP", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    if probe_enabled:
+        from threading import Thread
+
+        def run_private_storage_probe_once() -> None:
+            if not settings.PRIVATE_OBJECT_STORAGE_ENABLED:
+                logging.getLogger(__name__).warning(
+                    "private_storage_probe status=SKIP reason=feature_disabled"
+                )
+                return
+            try:
+                from app.services.private_storage_probe import (
+                    run_private_storage_probe,
+                )
+                run_private_storage_probe(cfg=settings)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "private_storage_probe status=FAIL error_type=%s",
+                    type(exc).__name__,
+                )
+            else:
+                logging.getLogger(__name__).info(
+                    "private_storage_probe status=PASS scope=synthetic_write_read_delete"
+                )
+
+        Thread(
+            target=run_private_storage_probe_once,
+            name="aqlyra-private-storage-probe",
+            daemon=True,
+        ).start()
     # Existing FastAPI service can process the durable queue without
     # adding a new deployment or requiring a user to hold an HTTP request.
     # Non-secret operator evidence: a configured API key is NOT a live provider PASS.
