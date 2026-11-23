@@ -57,7 +57,7 @@ After either path succeeds, the backend issues the same application access token
 - User-scoped documents, conversations, and memory
 - PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
 - OCR for PNG, JPG, JPEG, and WEBP images
-- Hugging Face IBM Granite multilingual embeddings (production config; deterministic test embeddings locally)
+- Production retrieval: compact static multilingual ONNX 384D encoder; IBM Granite is a separate offline evaluation model
 - PostgreSQL with pgvector
 - PostgreSQL full-text search
 - Hybrid dense + lexical retrieval
@@ -72,14 +72,14 @@ After either path succeeds, the backend issues the same application access token
 - Personal memory
 - Turn-scoped attachments
 - Multimodal image understanding
-- Voice integration
+- LiveKit voice integration code (real room/audio call acceptance pending)
 - Redis-backed rate limiting for authentication, ingestion, retrieval, generation, and voice APIs
 - Structured JSON logs
 - Request IDs
 - Prometheus-compatible metrics
 - Health and readiness checks
 - Internal alerting
-- Backup, verification, and explicit restore tooling
+- Backup/restore tooling (encrypted off-site database/object restore not yet verified)
 - Docker Compose deployment with non-root application containers
 - Caddy reverse proxy with HTTPS and request-body limits
 - GitHub Actions for tests, image builds, dependency audit, and startup checks
