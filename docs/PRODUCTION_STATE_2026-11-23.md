@@ -106,7 +106,7 @@ The backend release PR **#36** remains open and is a large divergent release (51
 | #216 | Multipart ingress cap and atomic document-processing claim | Exact previously inspected head passed 8 checks, but the branch was one commit behind the deployed Core head; revalidate after rebase. |
 | #217 | Revoke voice jobs on auth-epoch change | Requires compatible API and worker revisions deployed together. Exact previously inspected head passed 8 checks; revalidate integration. |
 | #218 + #219 | Refresh-session rotation and BFF HttpOnly cookie persistence | Coordinated backend/frontend release. Apply and verify additive migration on staging first; do not deploy one side alone. Previously inspected heads passed their listed checks. |
-| #220 | Collision-safe LiveKit state tempfile | A test-discovery indentation defect was fixed in commit `ea52f8c3a402c4d3870510d90476392eb53711c0`. At the latest review, 5/7 checks had passed and the PostgreSQL 16/18 jobs were still running. |
+| #220 | Collision-safe LiveKit state tempfile | A test-discovery indentation defect was fixed in commit `ea52f8c3a402c4d3870510d90476392eb53711c0`. At the latest review, 6/7 checks had passed; PostgreSQL 18 had completed successfully and the PostgreSQL 16 job was still running. |
 | #221 | Tenant RLS and durable-storage rollout plan | Documentation only; useful as a rollout checklist, not proof that the listed capabilities are live. |
 
 Green checks on an earlier pull-request head do not prove that a newer integration result is green. Re-run and inspect exact-head checks after updating each branch.
