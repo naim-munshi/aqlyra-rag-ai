@@ -89,9 +89,13 @@ Both result sets are dense-retrieval synthetic metrics, not live user-answer acc
 
 **Important security distinction:** user-scoped authorization in application code is not the same as database-enforced RLS, and neither automatically provides company-level multi-tenancy. Aqlyra should not be marketed as an enterprise shared-company workspace platform until those boundaries are implemented and accepted.
 
+The staged RLS PR #207 contains 17 policies for private parent/child tables, but its executable PostgreSQL acceptance test currently exercises only four representative tables (users, conversations, messages and memories). The remaining protected document, chunk, embedding, project, upload-intent, attachment and Study Abroad paths still need cross-user CRUD/worker/admin acceptance before rollout. The PR's own rollout note also warns that the transaction-local custom GUC `aqlyra.tenant_user_id` is writable by SQL running as the same role; arbitrary SQL or injection could spoof that identity or reset role context. This staged mechanism is defense-in-depth, **not a standalone isolation boundary against arbitrary SQL**. A trusted database identity binding and restricted query surface are prerequisites for commercial multi-tenant use.
+
 ## 4. Security and release governance
 
 The active GitHub ruleset `aqlyra-main-production-gate` targets only `~DEFAULT_BRANCH` (currently `main`). It requires a pull request, one approval, last-push approval, resolved review threads, required checks and non-deletion/non-fast-forward protections. It does **not** target the active Vercel or Render release branches.
+
+The current release workflows are still scoped to `main`; PR #213 proposes enabling CI triggers for `release/**`, but it also contains a substantial artifact-storage refactor. Separate and review the workflow-trigger/branch-gate changes from the storage implementation before requiring release-branch status contexts. Otherwise a ruleset could block all release PRs because its required checks are not emitted for those branches.
 
 The connected GitHub integration could read the ruleset, but it could not read branch-protection details through the branch-protection endpoint or administer rulesets. A repository administrator must add a separate active ruleset for the exact frontend and backend release branch names (or a carefully scoped release pattern). Do not bypass protection.
 
