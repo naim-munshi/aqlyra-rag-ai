@@ -1,10 +1,33 @@
-# Aqlyra RAG AI
+# Aqlyra AI
 
-Aqlyra is a full-stack AI knowledge application for private-document workflows and general conversations.
+**Production status reviewed: 23 November 2026 (JST) · Deployed engineering beta, not enterprise-production certified**
 
-**Try the interface:** [Public portfolio preview](frontend/src/app/demo/page.tsx) (`/demo`) includes interactive, clearly labelled scripted RAG and Converse examples and a dark architecture walkthrough. It works without an account or backend. The actual API-backed functionality is separate and requires full-stack deployment. See [Vercel Hobby demo setup](docs/VERCEL_PORTFOLIO_DEMO.md).
+Aqlyra is a full-stack AI application for general conversations and private-document Knowledge RAG. The public website is a real deployed application; the public scripted portfolio preview has been retired.
 
-**Release status:** Pre-production. Backend tests, frontend builds, production-image builds, non-root container checks, dependency audits, and fresh-stack startup have passed in GitHub Actions. Real HTTPS deployment, provider-backed end-to-end testing, load testing, and backup restoration still require verification before public launch.
+## Current deployment topology
+
+- **Frontend:** Vercel production project `aqlyra`, [aqlyra-ai.vercel.app](https://aqlyra-ai.vercel.app), READY at commit `e2c15a9` from `fix/center-empty-chat-composer-20261102`. The former `/demo` route now requires sign-in.
+- **Core API:** Render service `aqlyra-api-free-launch`, deployment LIVE at `1f8bbc8`, from `release/core-without-study-abroad-20261027`.
+- **Semantic worker:** Render service `aqlyra-semantic-worker`, deployment LIVE at `28542fe`, from the backend release branch. This is the embedding worker, not the LiveKit voice agent.
+- **Release separation:** Vercel and Render use different source branches. The default `main` branch is a historical ancestor, not the branch currently deployed to either provider.
+
+Render's latest reviewed startup logs show the API process starting, a successful root request, a successful API-side LiveKit credential probe, and the semantic worker's `/health` request returning 200. Both Render services currently have no configured health-check path; the earlier intermittent 503 reports have not been conclusively explained. See the [current production-state report](docs/PRODUCTION_STATE_2026-11-23.md).
+
+## Knowledge retrieval: measured limitations
+
+The 10 November indexing audit recorded **1,035/1,035 eligible chunks** with matching 384D vectors; **7 answer-key chunks** were quarantined. This is index coverage, not answer accuracy.
+
+The deployed static multilingual 384D encoder's offline dense-retrieval Hit Rate@1 on 60 synthetic queries over 30 English-source chunks was **70% English / 35% Japanese / 60% Bengali**. Japanese retrieval is a known gap. A separate IBM Granite model run reported different results (85% / 70% / 45%) and is not a directly comparable A/B test. Neither evaluation measures live user-answer correctness.
+
+## Acceptance and security boundaries
+
+Aqlyra is not yet an enterprise-certified service. Independent two-account authentication and RAG E2E, real LiveKit room/audio acceptance, complete durable-storage lifecycle, encrypted off-site database/object restore, and production operations acceptance remain outstanding. Database RLS is staged but **not enabled in production**; company/organization-level multi-tenancy is not implemented. Browser Agent execution remains disabled.
+
+The active GitHub branch ruleset targets only `main`, not the two deployed release branches. The Render services have automatic deployment disabled. Do not merge the divergent release branches wholesale or treat successful CI/deployment as production acceptance.
+
+**Detailed evidence and remediation order:** [Production state — 23 November 2026](docs/PRODUCTION_STATE_2026-11-23.md).
+
+---
 
 It has two main modes:
 
