@@ -207,9 +207,6 @@ class LiveKitVoiceDeploymentContractTests(unittest.TestCase):
         self.assertFalse(self.log_file.exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_create_uses_unique_atomic_state_tempfile_and_cleans_it(self) -> None:
         result = self.run_script("create")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -219,3 +216,7 @@ if __name__ == "__main__":
         self.assertEqual(leftovers, [])
         log = self.log_file.read_text(encoding="utf-8")
         self.assertIn("agent create", log)
+
+
+if __name__ == "__main__":
+    unittest.main()
