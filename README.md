@@ -1,16 +1,16 @@
 # Aqlyra AI
 
-**Full-stack AI Engineering portfolio · Deployed engineering beta (10 November 2026)**
+**Full-stack AI engineering · Deployed engineering beta · Status reviewed 23 November 2026 (JST)**
 
-A multilingual, document-grounded AI knowledge application: **Next.js/Vercel** frontend, **FastAPI/Render** backend, **Neon PostgreSQL + pgvector**, Redis, an isolated 384D semantic worker, private Knowledge retrieval and traceable citations. Designed to keep source ownership and tenant-scoped retrieval in the backend.
+Aqlyra is a multilingual AI application with general conversation and private-document Knowledge RAG. Its production frontend runs on Vercel; its Core API and separate 384D semantic worker run on Render. The frontend and backend deploy from different branches.
 
-**Verified engineering result:** 1,035/1,035 eligible production Knowledge chunks have matching, real 384D semantic vectors (as of 10 November); 7 quarantined answer-key chunks are excluded. This is **index coverage, not measured answer accuracy**. A separate IBM Granite 97M R2 offline dense-only run on 20 English synthetic labeled queries and 30 chunks measured **Hit Rate@1 90%, Hit Rate@3 100%, MRR@5 0.933**. [Measured CI evidence](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012).
+**Current production revisions:** Vercel frontend `e2c15a9` on `fix/center-empty-chat-composer-20261102`; Render Core API `1f8bbc8` and semantic worker `28542fe` on `release/core-without-study-abroad-20261027`. The former public scripted demo has been retired; `/demo` redirects to sign-in.
 
-**Experience:** [Deployed app](https://aqlyra-ai.vercel.app) · [Backend release source](https://github.com/naim-munshi/aqlyra-rag-ai/tree/release/core-without-study-abroad-20261027). The former public scripted demo has been retired; `/demo` redirects to sign-in.
+**Knowledge evidence:** 1,035/1,035 eligible chunks had matching 384D vectors in the 10 November audit; 7 answer-key chunks were excluded. On a separate 60-query synthetic dense-retrieval evaluation, the deployed static multilingual encoder scored Hit Rate@1 **70% English / 35% Japanese / 60% Bengali**. Japanese retrieval is a documented weakness. A separate IBM Granite run (85% / 70% / 45%) used a different model/test run and is not a directly comparable A/B test. These metrics do not establish end-to-end answer accuracy.
 
-**Correct deployment refs:** Vercel frontend: `fix/center-empty-chat-composer-20261102`; Render backend: `release/core-without-study-abroad-20261027`. Protected `main` is a historical ancestor. The frontend branch's embedded backend source is **not** automatically the deployed backend.
+**Acceptance boundary:** Deployed engineering beta, **not enterprise-production certified**. Independent two-account authentication/RAG E2E, real LiveKit room/audio, complete durable storage and encrypted off-site restore remain outstanding. The latest API startup log's LiveKit credential probe passed, but that is not a successful voice call. Database RLS is not enabled in production, company-level multi-tenancy is not complete, and Browser Agent execution remains disabled.
 
-**Acceptance boundary:** Public engineering beta, **not an enterprise-production certification**. End-to-end Google/password sign-in, real multilingual microphone/RTC voice, direct cloud Neon+private-object-storage disaster recovery and independent two-account security acceptance are outstanding. Render Free cold starts, provider quotas and test-only local artifact storage remain limitations.
+**Detailed operational evidence:** [Production state — 23 November 2026](docs/PRODUCTION_STATE_2026-11-23.md).
 
 ---
 
@@ -50,7 +50,7 @@ After either path succeeds, the backend issues the same application access token
 - User-scoped documents, conversations, and memory
 - PDF, DOCX, PPTX, XLSX, TXT, Markdown, and CSV ingestion
 - OCR for PNG, JPG, JPEG, and WEBP images
-- Hugging Face IBM Granite multilingual embeddings (production config; deterministic test embeddings locally)
+- Production retrieval: compact static multilingual ONNX 384D encoder; IBM Granite is a separate offline evaluation model
 - PostgreSQL with pgvector
 - PostgreSQL full-text search
 - Hybrid dense + lexical retrieval
@@ -65,14 +65,14 @@ After either path succeeds, the backend issues the same application access token
 - Personal memory
 - Turn-scoped attachments
 - Multimodal image understanding
-- Voice integration
+- LiveKit voice integration (real room/audio acceptance pending)
 - Redis-backed rate limiting for authentication, ingestion, retrieval, generation, and voice APIs
 - Structured JSON logs
 - Request IDs
 - Prometheus-compatible metrics
 - Health and readiness checks
 - Internal alerting
-- Backup, verification, and explicit restore tooling
+- Backup/restore tooling (encrypted off-site database/object restore not yet verified)
 - Docker Compose deployment with non-root application containers
 - Caddy reverse proxy with HTTPS and request-body limits
 - GitHub Actions for tests, image builds, dependency audit, and startup checks
@@ -225,7 +225,7 @@ The alert worker checks readiness and metrics and can report firing and resolved
 | Rank fusion | Reciprocal Rank Fusion |
 | Migrations | Alembic |
 | Rate limiting | Redis |
-| Embeddings | IBM Granite multilingual via Hugging Face |
+| Embeddings | Production: compact multilingual static ONNX 384D; IBM Granite: separate offline evaluation |
 | LLM adapters | Groq / OpenAI-compatible providers |
 | OCR | Tesseract / pytesseract |
 | Voice | LiveKit architecture |
