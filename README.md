@@ -1,28 +1,18 @@
 # Aqlyra AI
 
-**In 30 seconds:** Full-stack, multilingual Knowledge RAG + general AI chat. Next.js/Vercel frontend, FastAPI/Render backend, Neon PostgreSQL + pgvector, Redis and a separate 384D semantic worker. Private Knowledge combines genuine dense and lexical retrieval, RRF fusion, evidence context and traceable citations.
+**Production status reviewed: 23 November 2026 (JST) · Deployed engineering beta, not enterprise-production certified**
 
-**Verified result (10 November 2026):** **1,035 / 1,035 eligible ready chunks indexed** with matching current-model semantic vectors (`bekko-static-multilingual-int8-mrl384-v1`); **7 quarantined answer-key chunks excluded**. This measures **index coverage only**, not precision, grounded-answer accuracy, speedup or user-level E2E reliability.
+Aqlyra is a full-stack multilingual Knowledge RAG and general AI application. The actual production frontend is on Vercel; the Core FastAPI API and separate semantic embedding worker are on Render.
 
-**Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
+**Current deployment refs:** Vercel frontend `e2c15a9` from `fix/center-empty-chat-composer-20261102`; Render Core API `1f8bbc8` and semantic worker `28542fe` from `release/core-without-study-abroad-20261027`. These are independent deployment lines; `main` is a historical ancestor.
 
-**Multilingual evaluation (new):** Actual deployed-weight Aqlyra static 384D ONNX encoder, **60 synthetic queries** over 30 English-source chunks: **Hit Rate@1 = 70% EN / 35% JA / 60% BN**. [Real 512 MiB model CI](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42775027087). The separate Granite 97M run yielded **85% EN / 70% JA / 45% BN** on 60 synthetic queries. These are **offline dense retrieval**, not end-user answer accuracy; Japanese retrieval is a documented gap. [Full Phase 1 evidence and acceptance report](docs/PORTFOLIO_PHASE1_AUDIT_20261110.md).
+**Current RAG evidence:** 1,035/1,035 eligible chunks had matching deployed-model 384D vectors in the 10 November audit; 7 answer-key chunks were quarantined. The deployed static multilingual encoder's offline Hit Rate@1 was 70% English / 35% Japanese / 60% Bengali on 60 synthetic queries over 30 English-source chunks. Japanese retrieval remains weak. Separate IBM Granite numbers are from a different run/model and are not a comparable A/B test. These dense-only metrics do not establish live answer accuracy.
 
-**See it:** [Live application](https://aqlyra-ai.vercel.app) · [Public scripted demo](https://aqlyra-ai.vercel.app/demo) (*no live inference in demo*) · [Backend evaluation protocol](backend/evaluation/REPRODUCIBLE_PROTOCOL.md).
+**Current limits:** The public scripted demo is retired and `/demo` requires sign-in. The latest API startup log reported `voice_api_startup_ready=true` and `voice_provider_auth_probe result=PASS`; this supersedes the 2 November missing-credentials incident note but does not prove a deployed voice agent or a successful call. Database RLS remains staged and disabled in production; company-level multi-tenancy, complete durable-storage acceptance, off-site encrypted backup/restore, independent two-account E2E and real voice E2E remain outstanding. Browser Agent execution remains disabled.
 
-**Status:** Publicly accessible engineering beta/development deployment, **not enterprise-production certified**. Real Google/password session E2E, multilingual voice E2E, representative live answer-quality evaluation and **cloud** backup/restore acceptance are independent outstanding gates. The protected `main` branch is a historical baseline, not the deployed backend.
+**Detailed operational evidence and remediation order:** [Production state — 23 November 2026](docs/PRODUCTION_STATE_2026-11-23.md).
 
 ---
-
-## Detailed architecture, evidence and historical operational notes
-
-**Source-grounded AI chat, private-document RAG, web research and an auditable full-stack deployment.**
-
-[Current repository review](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) · [Security assessment](docs/SECURITY_AUDIT_2026-11-08.md) · [Live application](https://aqlyra-ai.vercel.app) · [Demo and acceptance guide](docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) · [GitHub Actions](https://github.com/naim-munshi/aqlyra-rag-ai/actions) · [Historical 31 October status](docs/PRODUCTION_STATUS_2026-10-31.md)
-
-> **Operational review — 8 November 2026:** The deployed **backend** uses `release/core-without-study-abroad-20261027` (Render) and the official **frontend** uses `fix/center-empty-chat-composer-20261102` (Vercel). The protected `main` branch is **not** the deployed release; do not merge either divergent release or delete branches without checking full review gates. Automatic public Web Research/follow-ups and a bounded 429 fallback have shipped. Knowledge has tenant-scoped lexical fallback for documents without semantic vectors; real 384D embedding recovery increased coverage from **22 to 26 of 1,030 chunks** in the bounded November 8 test. This is **not** full dense RAG coverage. Browser-authenticated two-user acceptance, real LiveKit voice E2E, durable artifact storage, and encrypted off-host backup/restore remain outstanding. Render Free cold starts and provider quotas affect availability. Verify current deployment health and exact-head CI instead of assuming the historical table below is current. See [repo cleanup audit](docs/REPOSITORY_CLEANUP_REVIEW_2026-11-08.md) and [security assessment](docs/SECURITY_AUDIT_2026-11-08.md).
-
-> **Production beta — verified 31 October 2026.** Aqlyra has a live Next.js frontend on Vercel, FastAPI backend on Render, Neon PostgreSQL/pgvector, Redis, cloud document storage, Groq-based chat, Tavily-backed Web Search, and a separate authenticated multilingual semantic-embedding worker. Some features remain limited or disabled; see the status matrix. Live availability and provider quotas can change after this verification date. A green CI build is not a replacement for authenticated user acceptance.
 
 ## What Aqlyra does
 
@@ -32,7 +22,7 @@
 
 **Web Search** currently uses **Tavily in production**. An independent, token-protected SearXNG gateway is under controlled acceptance; a real 5-result probe has succeeded using a bounded Wikimedia fallback, but that is not equivalent to a complete independent general-purpose web index. Tavily must not be disabled until broad search accuracy, source quality and outage behavior pass live acceptance.
 
-> **2026-11-02 incident update:** The official frontend now exposes real-time LiveKit Voice only; user microphone E2E is BLOCKED by two missing Render LiveKit credential values. Semantic embedding reliability is degraded by repeat 502s. Groq returned intermittent 413/429 errors. Treat the 31 October acceptance baseline below as historical; see [verified recovery directive](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md).
+> **Historical incident note (2 November 2026):** The API previously reported missing LiveKit credentials and the semantic path previously experienced intermittent upstream errors. At the latest reviewed Render API startup (22 November), the API-side LiveKit credential probe passed and the semantic worker started successfully; this does not prove a real voice call or a complete RAG query. Intermittent 503 root cause remains unconfirmed. Historical incident details are retained in [the recovery baseline](docs/AQLYRA_MASTER_ENGINEERING_BASELINE.md).
 
 ## Historical capability matrix (31 October–2 November 2026)
 
@@ -40,13 +30,13 @@
 | --- | --- | --- |
 | Email and Google identity; authenticated chat | Production beta | Two-account browser/security E2E not yet certified |
 | General Converse with Groq | Live; reliability work open | 2026-11-01 production logs include successful 200 responses and occasional 413 payload-too-large / 429 rate-limit errors; response quality and recovery need real-user validation |
-| Memory recall | Degraded during semantic-worker outages | Repeated live embedding HTTP 502 caused documented lexical fallback; no claim of semantic recall reliability until real-provider acceptance |
+| Memory recall | Worker operational; end-to-end recall not accepted | Semantic worker startup and `/health` returned 200 in Render logs on 22 November; a representative authenticated memory/embedding journey still needs real-provider acceptance |
 | PDF Knowledge ingestion and lexical search | Verified | One legacy PDF was recovered into **12 chunks** |
-| Dense semantic RAG | Earlier provider/database canary PASS; ongoing 502 incident | Preserved genuine **384-d** vectors and original multilingual ONNX model; a bounded transient retry/circuit breaker is in PR #93, not evidence that worker health is restored |
+| Dense semantic RAG | Worker deployed; quality acceptance incomplete | The deployed static 384D encoder scored Hit Rate@1 70% EN / 35% JA / 60% BN on a synthetic offline test; Japanese retrieval is a known gap. These are not live answer-accuracy scores |
 | Tavily Web Research | Provider pipeline verified | Real public canary returned four validated sources; citations do not guarantee factual truth |
 | Self-hosted SearXNG | Limited canary PASS | Wikipedia-backed 5-result probe; wider web coverage/zero-result resilience not yet certified |
 | Browser Voice | No longer offered as silent fallback on official frontend | Browser synthesis cannot reliably support hands-free interruption on iOS. Official Voice UI uses LiveKit-only connection and reports unavailability rather than simulating a call |
-| LiveKit realtime voice | Worker registered; real call BLOCKED | Railway 1/1 replica Online, but Render startup diagnostics show missing **LIVEKIT_API_KEY** and **LIVEKIT_API_SECRET**. Authenticated room/audio, STT, TTS, barge-in and two-account E2E remain unverified |
+| LiveKit realtime voice | API credential probe PASS; real call BLOCKED | Latest API startup log reports `voice_api_startup_ready=true` and `voice_provider_auth_probe result=PASS`. A compatible LiveKit agent deployment, correct project/host, authenticated room join, bidirectional audio, STT/TTS, interruption and two-account E2E remain unverified |
 | Browser Agent | **Disabled in production** | Signed approvals and Redis replay protection do **not** replace network-isolated browser execution |
 | PDF/DOCX/XLSX/PPTX/other artifact generation | Implemented | Format-specific and cross-user production acceptance outstanding |
 | Backups | Neon recovery branch exists | **Off-host encrypted export + isolated database/object restore remain unverified** |
@@ -55,7 +45,7 @@ For the auditable version of this table, run instructions and known limitations,
 
 ## Try Aqlyra
 
-1. Open **[the live app](https://aqlyra-ai.vercel.app)** and sign in if needed. An explicitly linked [**/demo**](https://aqlyra-ai.vercel.app/demo) is a *scripted, non-inference portfolio walkthrough*; it is not proof of live RAG.
+1. Open **[the live app](https://aqlyra-ai.vercel.app)** and sign in. The former public scripted preview is retired; `/demo` redirects to sign-in.
 2. Under **Converse**, ask a standard multi-turn question, then a time-sensitive question with Web Search. Verify source URLs and distinguish page-backed content from uncertain assertions.
 3. Under **Knowledge**, upload a non-sensitive test PDF, select it, then ask one answerable question and one unsupported question. Verify document citations and refusal behavior.
 4. If LiveKit Voice is configured, test a real authenticated microphone session and confirm the agent connects. The official UI does not substitute browser speech as a fake live call; a microphone E2E PASS has not been established by the automated deployment checks.
@@ -92,7 +82,7 @@ The semantic worker is separate from the main API because a larger contextual E5
 
 | Path | Purpose |
 | --- | --- |
-| [frontend/](frontend/) | Next.js authenticated workspace, UI, proxy API, public scripted portfolio demo |
+| [frontend/](frontend/) | Next.js authenticated workspace, UI and proxy API; historical scripted-demo code is retained for reference, while production `/demo` redirects to sign-in |
 | [backend/app/api/](backend/app/api/) | FastAPI endpoints and ownership enforcement |
 | [backend/app/services/](backend/app/services/) | Converse, web research, file/indexing, RAG, browser and artifact orchestration |
 | [backend/app/embeddings/](backend/app/embeddings/) | Provider registry and isolated semantic-worker HTTPS client |
