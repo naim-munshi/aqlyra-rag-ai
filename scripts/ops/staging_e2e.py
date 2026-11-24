@@ -56,6 +56,7 @@ class BrowserSession:
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url
         self.cookies: dict[str, str] = {}
+        self.cookie_security: dict[str, dict[str, str | bool]] = {}
         self.opener = build_opener(NoRedirect())
 
     def request(
@@ -126,6 +127,28 @@ class BrowserSession:
                     self.cookies.pop(name, None)
                 else:
                     self.cookies[name] = morsel.value
+                    self.cookie_security[name] = {
+                        "httponly": bool(morsel["httponly"]),
+                        "secure": bool(morsel["secure"]),
+                        "samesite": morsel["samesite"].lower(),
+                        "path": morsel["path"],
+                    }
+
+    def _assert_session_cookie_security(self) -> None:
+        for name in (ACCESS_COOKIE, REFRESH_COOKIE):
+            attributes = self.cookie_security.get(name)
+            if not attributes:
+                raise E2EError(f"Missing cookie security attributes for {name}")
+            if (
+                attributes["httponly"] is not True
+                or attributes["secure"] is not True
+                or attributes["samesite"] != "lax"
+                or attributes["path"] != "/"
+            ):
+                raise E2EError(
+                    f"Unsafe session cookie attributes for {name}: "
+                    f"HttpOnly/Secure/SameSite/Path policy not met"
+                )
 
     def login(self, email: str, password: str) -> str:
         _, data = self.request(
@@ -140,6 +163,7 @@ class BrowserSession:
             raise E2EError("BFF exposed a bearer or refresh token in browser JSON")
         if ACCESS_COOKIE not in self.cookies or REFRESH_COOKIE not in self.cookies:
             raise E2EError("Login did not set both HttpOnly session cookies")
+        self._assert_session_cookie_security()
         return str(data["user"].get("id", ""))
 
     def current_user(self) -> dict:
