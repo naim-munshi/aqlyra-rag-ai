@@ -9,7 +9,9 @@ test("home does not turn expired-session provider downtime into a 500 or public 
   assert.match(code, /signal: AbortSignal\.timeout\(12_000\)/);
   assert.match(code, /throw new Error\("Aqlyra is temporarily unavailable/);
   assert.match(code, /catch \{\s*return <SessionServiceUnavailable \/>;\s*\}/);
-  assert.match(code, /getAccessToken\(\)/);
+  assert.match(code, /getAccessToken\(\{ allowRefresh: false \}\)/);
+  assert.match(code, /if \(await hasRefreshToken\(\)\) \{\s*throw new Error\("Session renewal required"\)/);
+  assert.match(code, /hasSession = Boolean\(accessToken\) \|\| await hasRefreshToken\(\)/);
   assert.match(code, /catch \{[\s\S]*?return \{ robots: \{ index: false, follow: false \} \};/);
 });
 
@@ -17,8 +19,8 @@ test("admin and Study Abroad keep cookies and avoid logout on service errors", (
   const admin = source("app/admin/page.tsx");
   const study = source("app/study-abroad/page.tsx");
   for (const code of [admin, study]) {
-    assert.match(code, /try \{\s*token = await getAccessToken\(\);\s*\} catch \{[\s\S]*?return <SessionServiceUnavailable \/>;/);
-    assert.match(code, /if \(!token\) redirect\("\/login"\)/);
+    assert.match(code, /try \{\s*token = await getAccessToken\(\{ allowRefresh: false \}\);\s*\} catch \{[\s\S]*?return <SessionServiceUnavailable \/>;/);
+    assert.match(code, /if \(!token\) \{[\s\S]*?hasRefreshToken\(\)[\s\S]*?return <SessionServiceUnavailable \/>;[\s\S]*?redirect\("\/login"\)/);
     assert.doesNotMatch(code, /clearAccessToken\(|clearRefreshToken\(/);
   }
   assert.match(study, /signal: AbortSignal\.timeout\(12_000\)/);
@@ -26,6 +28,16 @@ test("admin and Study Abroad keep cookies and avoid logout on service errors", (
   assert.match(study, /if \(!response\.ok\) return <SessionServiceUnavailable \/>/);
   assert.doesNotMatch(study, /if \(!active\) redirect\("\/login"\)/);
   assert.match(admin, /response\.status === 403\) notFound\(/);
+
+  // All private server-rendered pages must avoid rotating cookies during render.
+  for (const route of ["agent/browser", "web"]) {
+    const page = source("app/" + route + "/page.tsx");
+    assert.match(page, /getAccessToken\(\{ allowRefresh: false \}\)/);
+    assert.match(page, /hasRefreshToken\(\)/);
+    assert.match(page, /return <SessionServiceUnavailable \/>/);
+    assert.match(page, /response\.status === 401 \|\| response\.status === 403/);
+    assert.doesNotMatch(page, /getAccessToken\(\)/);
+  }
 });
 
 test("session outage is a retryable, non-authenticated view", () => {

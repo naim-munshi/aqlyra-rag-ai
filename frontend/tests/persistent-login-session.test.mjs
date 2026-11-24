@@ -14,6 +14,8 @@ test("refresh ticket is held only in HttpOnly, secure, same-site cookie", () => 
   assert.match(session, /maxAge: Math\.min\(age, MAX_REFRESH_COOKIE_SECONDS\)/);
   assert.match(session, /method: "POST"/);
   assert.match(session, /backendUrl\("\/auth\/refresh"\)/);
+  assert.match(session, /setRefreshToken\(rotatedRefreshToken\)/);
+  assert.match(session, /allowRefresh !== false/);
   assert.doesNotMatch(session, /localStorage|sessionStorage/);
 });
 
@@ -41,6 +43,16 @@ test("manual logout clears access, refresh and pending verification", () => {
   assert.match(logout, /clearRefreshToken\(\)/);
   assert.match(logout, /clearEmailVerificationToken\(\)/);
   assert.match(logout, /backendUrl\("\/auth\/logout"\)/);
+});
+
+test("server-rendered home never rotates a refresh cookie from a read-only component", () => {
+  const home = source("app/page.tsx");
+  assert.match(home, /getAccessToken\(\{ allowRefresh: false \}\)/);
+});
+
+test("successful password reset clears local access and refresh credentials", () => {
+  const reset = source("app/api/auth/reset-password/route.ts");
+  assert.match(reset, /if \(upstream\.ok\) \{[\s\S]*?clearAccessToken\(\);[\s\S]*?clearRefreshToken\(\);/);
 });
 
 test("temporary backend outage does not become a 401 signed-out response", () => {
