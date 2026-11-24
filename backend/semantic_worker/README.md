@@ -17,6 +17,6 @@ See [`.github/workflows/isolated-semantic-worker.yml`](../../.github/workflows/i
 
 ## Operating notes
 
-Deploy from the reviewed Core release branch using Render's `backend/semantic_worker/Dockerfile`; use an independently generated `SEMANTIC_WORKER_TOKEN` secret. The API's `REMOTE_SEMANTIC_URL` and `REMOTE_SEMANTIC_TOKEN` are server-only. Run a real vector count and retrieval relevance test after changing models, because vectors from different models must not be silently mixed.
+Deploy from the reviewed backend release source using Render's `backend/semantic_worker/Dockerfile`; use an independently generated `SEMANTIC_WORKER_TOKEN` secret. The API's `REMOTE_SEMANTIC_URL` and `REMOTE_SEMANTIC_TOKEN` are server-only. Run a real vector count and retrieval relevance test after changing models, because vectors from different models must not be silently mixed.
 
-[Production status](../../docs/PRODUCTION_STATUS_2026-10-31.md) · [System architecture](../../docs/ARCHITECTURE.md)
+[Production status](../../docs/PRODUCTION_STATE_2026-11-23.md) · [System architecture](../../docs/ARCHITECTURE.md)
