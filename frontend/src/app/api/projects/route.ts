@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import {
   backendUrl,
@@ -32,7 +33,7 @@ export async function GET(
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -48,7 +49,7 @@ export async function GET(
     mode !== "normal" &&
     mode !== "knowledge"
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Invalid project mode" },
       { status: 400 },
     );
@@ -84,7 +85,7 @@ export async function GET(
         ProjectResponse[] | ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid response",
@@ -94,7 +95,7 @@ export async function GET(
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to connect to project service",
@@ -114,7 +115,7 @@ export async function POST(
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -124,10 +125,13 @@ export async function POST(
 
   try {
     body =
-      (await request.json()) as
+      (await readBoundedJson(request, 16384)) as
         ProjectCreateRequest;
-  } catch {
-    return NextResponse.json(
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return privateJsonResponse({ detail: "Request body too large" }, { status: 413 });
+    }
+    return privateJsonResponse(
       { detail: "Invalid request body" },
       { status: 400 },
     );
@@ -145,7 +149,7 @@ export async function POST(
       body.mode !== "knowledge"
     )
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Valid project name and mode are required",
@@ -181,7 +185,7 @@ export async function POST(
         ProjectResponse | ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid response",
@@ -191,7 +195,7 @@ export async function POST(
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to create project",

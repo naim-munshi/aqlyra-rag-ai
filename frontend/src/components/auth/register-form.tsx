@@ -10,6 +10,7 @@ import {
   User,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import type { RegistrationResponse } from "@/types/auth";
@@ -48,6 +49,8 @@ export function RegisterForm() {
     useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [pendingVerificationDelivery, setPendingVerificationDelivery] = useState(false);
+  const [existingPendingRegistration, setExistingPendingRegistration] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(
@@ -56,6 +59,7 @@ export function RegisterForm() {
     event.preventDefault();
 
     setError("");
+    setExistingPendingRegistration(false);
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
@@ -86,7 +90,12 @@ export function RegisterForm() {
           | ApiError;
 
       if (!registerResponse.ok) {
-        setError(getErrorMessage(registerData as ApiError));
+        const detail = getErrorMessage(registerData as ApiError);
+        setError(detail);
+        setExistingPendingRegistration(
+          registerResponse.status === 409 &&
+          detail.toLowerCase().includes("unfinished registration"),
+        );
         return;
       }
 
@@ -98,6 +107,16 @@ export function RegisterForm() {
           "aqlyra_pending_email",
           email.trim().toLowerCase(),
         );
+        // An account can be committed even when the mail provider rejects
+        // the OTP. Do not imply that a code was sent or send users to an
+        // unusable code-entry screen.
+        if (!("verification_email_sent" in registerData) || registerData.verification_email_sent !== true) {
+          setPendingVerificationDelivery(true);
+          setPassword("");
+          setConfirmPassword("");
+          setError("Aqlyra could not send the verification email. Your registration is not verified or usable. Please open email verification and retry sending a code.");
+          return;
+        }
         router.push("/verify-email");
         return;
       }
@@ -287,14 +306,24 @@ export function RegisterForm() {
       </div>
 
       {error && (
-        <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400">
+        <div role="alert" className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400">
           {error}
+          {pendingVerificationDelivery && (
+            <Link href="/verify-email" className="mt-3 block font-semibold underline underline-offset-2">
+              Open email verification and resend a code
+            </Link>
+          )}
+          {existingPendingRegistration && (
+            <Link href="/claim-pending-email" className="mt-3 block font-semibold underline underline-offset-2">
+              Verify your mailbox and finish this registration
+            </Link>
+          )}
         </div>
       )}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || pendingVerificationDelivery}
         className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--aq-blue)] text-sm font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] disabled:opacity-60"
       >
         {loading && (
@@ -305,8 +334,8 @@ export function RegisterForm() {
         )}
 
         {loading
-          ? "Creating account..."
-          : "Create account"}
+          ? "Requesting verification..."
+          : "Continue to email verification"}
       </button>
       </form>
     </>

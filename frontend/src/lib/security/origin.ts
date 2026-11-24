@@ -54,3 +54,28 @@ export function hasTrustedRequestOrigin(request: Request): boolean {
     return false;
   }
 }
+
+
+/**
+ * Allow only the backend's non-browser POST to the fixed semantic relay.
+ * Existing cookie/Origin/Sec-Fetch CSRF checks remain unchanged elsewhere.
+ * This is NOT final authentication: /v1/embed forwards the Bearer credential
+ * to the existing worker, whose constant-time secret check remains required.
+ */
+export function isServerSemanticRelayRequest(request: Request): boolean {
+  if (
+    request.method !== "POST" ||
+    new URL(request.url).pathname !== "/api/internal/semantic/v1/embed"
+  ) {
+    return false;
+  }
+  // Browser requests carry provenance or cookies and still require normal
+  // CSRF verification. Do not accept arbitrary forged Origin/Referer values.
+  for (const name of ["origin", "referer", "sec-fetch-site", "cookie"]) {
+    if (request.headers.has(name)) {
+      return false;
+    }
+  }
+  const authorization = request.headers.get("authorization") || "";
+  return /^Bearer [A-Za-z0-9._~+/=-]{32,1024}$/.test(authorization);
+}

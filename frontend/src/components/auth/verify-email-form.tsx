@@ -13,6 +13,7 @@ export function VerifyEmailForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +50,7 @@ export function VerifyEmailForm() {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           code,
+          password,
         }),
       });
       const data = (await response.json()) as ApiResponse;
@@ -165,6 +167,19 @@ export function VerifyEmailForm() {
         className="mt-2 h-14 w-full rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-center font-mono text-2xl tracking-[0.35em] text-[var(--aq-text)] outline-none focus:border-[var(--aq-blue)]"
       />
 
+      <label htmlFor="verification-password" className="mt-5 block text-xs font-semibold text-[var(--aq-text)]">
+        Registration password
+      </label>
+      <input
+        id="verification-password" type="password" autoComplete="current-password"
+        required minLength={8} maxLength={72} value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        className="mt-2 h-12 w-full rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] px-4 text-sm text-[var(--aq-text)] outline-none focus:border-[var(--aq-blue)]"
+      />
+      <p className="mt-2 text-xs text-[var(--aq-muted)]">
+        Verification needs both your emailed code and original registration password.
+      </p>
+
       {error && (
         <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400">
           {error}
@@ -179,7 +194,7 @@ export function VerifyEmailForm() {
 
       <button
         type="submit"
-        disabled={loading || code.length !== 6}
+        disabled={loading || code.length !== 6 || password.length < 8}
         className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--aq-blue)] text-sm font-semibold text-white transition hover:bg-[var(--aq-blue-hover)] disabled:opacity-60"
       >
         {loading && (
@@ -196,6 +211,9 @@ export function VerifyEmailForm() {
       >
         {resending ? "Sending..." : "Did not receive it? Resend code"}
       </button>
+      <a href="/claim-pending-email" className="mt-4 block text-center text-xs font-semibold text-[var(--aq-blue)] hover:underline">
+        I did not create this registration
+      </a>
     </form>
   );
 }
