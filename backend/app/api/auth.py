@@ -9,11 +9,13 @@ from app.auth.security import (
     InvalidTokenError,
     create_access_token,
     create_refresh_token,
-    decode_refresh_token_with_version,
+    decode_refresh_token_claims,
+    decode_legacy_refresh_token_claims,
     create_email_verification_token,
     decode_email_verification_token,
 )
 from app.core.rate_limit import (
+    limit_refresh_request,
     limit_login_identity,
     limit_login_request,
     limit_resend_request,
@@ -59,6 +61,13 @@ from app.services.password_reset_service import (
     discard_password_reset,
     reset_password,
 )
+from app.services.refresh_session_service import (
+    InvalidRefreshSessionError,
+    RefreshTokenReplayError,
+    create_refresh_session,
+    rotate_refresh_session,
+    rotate_legacy_refresh_session,
+)
 from app.services.user_service import (
     DuplicateUserError,
     authenticate_user,
@@ -66,7 +75,6 @@ from app.services.user_service import (
     discard_new_registration_after_email_failure,
     get_or_create_google_user,
     get_user_by_email,
-    get_user_by_id,
 )
 
 router = APIRouter(
@@ -75,17 +83,18 @@ router = APIRouter(
 )
 
 
-def _issued_session(user: User) -> TokenResponse:
-    """One backend read per login; keep refresh tokens server-side in BFF."""
+def _issued_session(db: Session, user: User) -> TokenResponse:
+    """Issue a persisted refresh family and a short-lived access token."""
+    token_version = int(user.auth_epoch)
+    refresh_token = create_refresh_session(
+        db, user, token_version=token_version,
+    )
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
-            token_version=user.auth_epoch,
+            token_version=token_version,
         ),
-        refresh_token=create_refresh_token(
-            subject=str(user.id),
-            token_version=user.auth_epoch,
-        ),
+        refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
     )
 
@@ -234,7 +243,7 @@ def login_user(
             detail="Email verification required",
         )
 
-    return _issued_session(user)
+    return _issued_session(db, user)
 
 
 @router.post(
@@ -277,7 +286,7 @@ def verify_email(
             detail="User account is inactive",
         )
 
-    return _issued_session(user)
+    return _issued_session(db, user)
 
 
 @router.post(
@@ -307,7 +316,7 @@ def claim_pending_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    return _issued_session(user)
+    return _issued_session(db, user)
 
 
 @router.post(
@@ -415,39 +424,60 @@ def google_login(
             detail="User account is inactive",
         )
 
-    return _issued_session(user)
+    return _issued_session(db, user)
 
 
 @router.post(
     "/refresh",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(limit_refresh_request)],
 )
 def refresh_session(
     request_data: RefreshTokenRequest,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    """Replace only the short-lived access token, not the 14-day deadline.
-
-    A compromised/stale ticket cannot bypass auth_epoch, disable, or email
-    verification checks. Refresh tokens are not valid normal API bearer JWTs.
-    """
+    """Rotate a persisted refresh ticket without extending its fixed deadline."""
     try:
-        user_id, version = decode_refresh_token_with_version(
-            request_data.refresh_token,
-        )
-    except InvalidTokenError as exc:
+        try:
+            user_id, version, session_id, generation, token_id = decode_refresh_token_claims(
+                request_data.refresh_token,
+            )
+        except InvalidTokenError:
+            # Roll existing 14-day refresh tickets into persisted families
+            # without extending their absolute expiry.
+            user_id, version, token_id, issued_at, expires_at = decode_legacy_refresh_token_claims(
+                request_data.refresh_token,
+            )
+            rotated = rotate_legacy_refresh_session(
+                db,
+                user_id=user_id,
+                token_version=version,
+                token_id=token_id,
+                issued_at=issued_at,
+                expires_at=expires_at,
+            )
+        else:
+            rotated = rotate_refresh_session(
+                db,
+                user_id=user_id,
+                token_version=version,
+                session_id=session_id,
+                generation=generation,
+                token_id=token_id,
+            )
+    except RefreshTokenReplayError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        ) from exc
+    except (InvalidTokenError, InvalidRefreshSessionError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session expired. Please sign in again.",
         ) from exc
 
-    user = get_user_by_id(db=db, user_id=user_id)
-    if user is None or user.auth_epoch != version or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired. Please sign in again.",
-        )
+    user = rotated.user
     if settings.EMAIL_VERIFICATION_REQUIRED and user.email_verified_at is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -457,7 +487,15 @@ def refresh_session(
     return TokenResponse(
         access_token=create_access_token(
             subject=str(user.id),
-            token_version=user.auth_epoch,
+            token_version=rotated.token_version,
+        ),
+        refresh_token=create_refresh_token(
+            subject=str(user.id),
+            token_version=rotated.token_version,
+            session_id=rotated.session.session_id,
+            generation=rotated.session.generation,
+            issued_at=rotated.session.issued_at,
+            expires_at=rotated.session.expires_at,
         ),
         user=UserResponse.model_validate(user),
     )
