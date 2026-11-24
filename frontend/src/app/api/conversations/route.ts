@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import {
   backendUrl,
@@ -27,7 +29,7 @@ export async function GET() {
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -59,7 +61,7 @@ export async function GET() {
         >(response);
 
       if (!response.ok) {
-        return NextResponse.json(
+        return privateJsonResponse(
           data ?? {
             detail:
               "Backend returned an invalid response",
@@ -71,7 +73,7 @@ export async function GET() {
       }
 
       if (!Array.isArray(data)) {
-        return NextResponse.json(
+        return privateJsonResponse(
           {
             detail:
               "Backend returned an invalid response",
@@ -91,11 +93,11 @@ export async function GET() {
       offset += pageSize;
     }
 
-    return NextResponse.json(
+    return privateJsonResponse(
       allConversations,
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to connect to conversation service",
@@ -110,11 +112,19 @@ export async function GET() {
 export async function POST(
   request: Request,
 ) {
+  // Browser Voice uses this endpoint: reject cross-site cookie-authenticated writes.
+  if (!hasTrustedRequestOrigin(request)) {
+    return privateJsonResponse(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const accessToken =
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -124,10 +134,13 @@ export async function POST(
 
   try {
     body =
-      (await request.json()) as
+      (await readBoundedJson(request, 16384)) as
         ConversationCreateRequest;
-  } catch {
-    return NextResponse.json(
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return privateJsonResponse({ detail: "Request body too large" }, { status: 413 });
+    }
+    return privateJsonResponse(
       { detail: "Invalid request body" },
       { status: 400 },
     );
@@ -149,7 +162,7 @@ export async function POST(
     body.project_id !== undefined &&
     projectId === undefined
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Invalid project ID" },
       { status: 400 },
     );
@@ -162,7 +175,7 @@ export async function POST(
       body.mode !== "knowledge"
     )
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Valid title and mode are required",
@@ -202,7 +215,7 @@ export async function POST(
         ConversationResponse | ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid response",
@@ -212,7 +225,7 @@ export async function POST(
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to create conversation",

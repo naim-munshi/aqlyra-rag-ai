@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { forwardedBackendHeaders } from "@/lib/api/response-headers";
@@ -19,6 +20,12 @@ export async function POST(
   _request: Request,
   context: RouteContext,
 ) {
+  if (!hasTrustedRequestOrigin(_request)) {
+    return NextResponse.json({ detail: "Cross-origin request denied" }, {
+      status: 403, headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+
   const accessToken = await getAccessToken();
 
   if (!accessToken) {

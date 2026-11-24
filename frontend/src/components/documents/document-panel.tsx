@@ -4,8 +4,12 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  Download,
   LoaderCircle,
   RefreshCw,
+  Eye,
+  FileSpreadsheet,
+  Presentation,
   Upload,
 } from "lucide-react";
 import {
@@ -15,11 +19,17 @@ import {
   useState,
 } from "react";
 
+import { uploadViaPrivateCloud } from "@/lib/api/cloud-upload";
+
 import type {
   DocumentListResponse,
   DocumentResponse,
   DocumentStatus,
 } from "@/types/document";
+import {
+  OfficeDocumentViewer,
+  isOfficeDocument,
+} from "@/components/documents/office-document-viewer";
 
 type ApiError = {
   detail?:
@@ -108,12 +118,22 @@ export function DocumentPanel() {
 
   const [uploading, setUploading] =
     useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+  // Bounded batch: sequential uploads avoid overwhelming the free Render
+  // instance, cloud storage, or the 384D embedding worker.
+  const MAX_BATCH_FILES = 10;
+
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
 
   const [processingId, setProcessingId] =
     useState<string | null>(null);
 
   const [error, setError] =
     useState("");
+
+  const [previewDocument, setPreviewDocument] =
+    useState<DocumentResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +191,24 @@ export function DocumentPanel() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!documents.some((document) =>
+      document.status === "queued" || document.status === "processing"
+    )) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const response = await fetch("/api/documents", { cache: "no-store" });
+        if (!response.ok || !active) return;
+        const payload = (await response.json()) as DocumentListResponse;
+        if (active) setDocuments(payload.items);
+      } catch {
+        // Existing data remains available. The next poll can recover.
+      }
+    }, 4000);
+    return () => { active = false; clearInterval(poll); };
+  }, [documents]);
 
   async function refreshDocuments() {
     setLoading(true);
@@ -244,7 +282,7 @@ export function DocumentPanel() {
         );
 
         await refreshDocuments();
-        return;
+        return false;
       }
 
       const processedDocument =
@@ -257,83 +295,217 @@ export function DocumentPanel() {
             : document,
         ),
       );
+      return true;
     } catch {
       setError(
         "Unable to connect to document processing service.",
       );
+      return false;
     } finally {
       setProcessingId(null);
+    }
+  }
+
+  async function retryIndex(documentId: string) {
+    setProcessingId(documentId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/documents/${encodeURIComponent(documentId)}/retry-index`,
+        { method: "POST", cache: "no-store" },
+      );
+      const payload = (await response.json()) as DocumentResponse | ApiError;
+      if (!response.ok) {
+        setError(getErrorMessage(payload as ApiError, "Unable to retry indexing."));
+        return;
+      }
+      const queued = payload as DocumentResponse;
+      setDocuments((current) => current.map((item) =>
+        item.id === queued.id ? queued : item
+      ));
+    } catch {
+      setError("Indexing service unreachable. Your file is still saved.");
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
+  async function recoverPendingUploads() {
+    if (recovering) return;
+    setRecovering(true);
+    setError("");
+    setRecoveryNotice("");
+    try {
+      const response = await fetch("/api/documents/cloud/recover", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+      });
+      if (!response.ok) {
+        setError("Unable to recover pending uploads. Please retry later.");
+        return;
+      }
+      const result = (await response.json()) as {
+        recovered?: DocumentResponse[];
+        attempted?: number;
+        failed?: number;
+      };
+      const recoveredCount = result.recovered?.length ?? 0;
+      setRecoveryNotice(
+        recoveredCount > 0
+          ? `Recovered ${recoveredCount} private file(s). They are ready to download.`
+          : (result.failed ?? 0) > 0
+            ? "Some pending files could not be verified. They were preserved for another retry."
+            : "No recoverable uploads found."
+      );
+      await refreshDocuments();
+      if ((result.failed ?? 0) > 0) {
+        setError("Some files still need recovery. Existing cloud objects were preserved.");
+      }
+    } catch {
+      setError("Upload recovery temporarily unavailable.");
+    } finally {
+      setRecovering(false);
     }
   }
 
   async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>,
   ) {
-    const file =
-      event.target.files?.[0];
-
+    // Snapshot the FileList before clearing input, otherwise Safari can
+    // clear its selection before our async loop begins.
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
-    if (!file) {
+    if (files.length === 0 || uploading) {
+      return;
+    }
+    if (files.length > MAX_BATCH_FILES) {
+      setError(
+        `Select up to ${MAX_BATCH_FILES} files at a time. No files were uploaded.`,
+      );
       return;
     }
 
     setUploading(true);
     setError("");
+    setRecoveryNotice("");
+    const failures: string[] = [];
+    let saved = 0;
+    let queued = 0;
+    let indexingFailed = 0;
 
     try {
-      const formData = new FormData();
-
-      formData.append(
-        "file",
-        file,
-      );
-
-      const response = await fetch(
-        "/api/documents/upload",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      const data =
-        (await response.json()) as
-          | DocumentResponse
-          | ApiError;
-
-      if (!response.ok) {
-        setError(
-          getErrorMessage(
-            data as ApiError,
-            "Document upload failed.",
-          ),
+      // Process files serially to keep upload and provider pressure bounded.
+      // Each file is independently committed; a failed upload cannot erase
+      // already saved documents or prevent subsequent files being attempted.
+      for (const [index, file] of files.entries()) {
+        setUploadProgress(
+          `Uploading ${index + 1}/${files.length}: ${file.name}`,
         );
 
-        return;
+        try {
+          let uploadedDocument: DocumentResponse;
+
+          if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+            // Keep private file bytes off the Next.js API in cloud mode.
+            uploadedDocument = await uploadViaPrivateCloud(file);
+          } else {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/documents/upload", {
+              method: "POST",
+              body: formData,
+            });
+            const data = (await response.json()) as
+              | DocumentResponse
+              | ApiError;
+            if (!response.ok) {
+              throw new Error(
+                getErrorMessage(
+                  data as ApiError,
+                  "Document upload failed.",
+                ),
+              );
+            }
+            uploadedDocument = data as DocumentResponse;
+          }
+
+          saved += 1;
+          setDocuments((current) => [
+            uploadedDocument,
+            ...current.filter(
+              (document) => document.id !== uploadedDocument.id,
+            ),
+          ]);
+
+          // A durable upload is not equivalent to completed indexing.
+          if (
+            uploadedDocument.status === "queued" ||
+            uploadedDocument.status === "processing"
+          ) {
+            queued += 1;
+            continue;
+          }
+
+          if (
+            process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+            process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true"
+          ) {
+            indexingFailed += 1;
+            continue;
+          }
+
+          setUploadProgress(
+            `Indexing ${index + 1}/${files.length}: ${file.name}`,
+          );
+          const indexed = await processDocument(uploadedDocument.id);
+          if (!indexed) {
+            indexingFailed += 1;
+          }
+        } catch (uploadError) {
+          const reason = uploadError instanceof Error
+            ? uploadError.message
+            : "Upload service unavailable";
+          failures.push(`${file.name}: ${reason}`);
+        }
       }
 
-      const uploadedDocument =
-        data as DocumentResponse;
-
-      setDocuments((current) => [
-        uploadedDocument,
-        ...current.filter(
-          (document) =>
-            document.id !==
-            uploadedDocument.id,
-        ),
-      ]);
-
-      await processDocument(
-        uploadedDocument.id,
+      // Final summary replaces per-document transient notices. Never claim
+      // indexing succeeded merely because private storage succeeded.
+      setRecoveryNotice(
+        `${saved}/${files.length} file(s) saved. ` +
+        (queued > 0
+          ? `${queued} file(s): File securely saved. Knowledge indexing is running in the background. `
+          : "") +
+        (indexingFailed > 0
+          ? `${indexingFailed} saved but need indexing or retry. `
+          : "") +
+        "Open Documents to check each file's status.",
       );
-    } catch {
-      setError(
-        "Unable to connect to document upload service.",
-      );
+      if (failures.length > 0) {
+        setError(
+          `${failures.length} file(s) could not be uploaded: ` +
+          failures.join("; "),
+        );
+      } else if (indexingFailed > 0) {
+        const proxyWithoutAutomaticIndex = (
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" &&
+          process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED !== "true"
+        );
+        setError(
+          proxyWithoutAutomaticIndex
+            ? "File saved privately. Automatic indexing is not available on this upload route."
+            : `${indexingFailed} file(s) were saved but indexing did not complete. ` +
+              "Check their status and use Retry indexing if available.",
+        );
+      } else {
+        setError("");
+      }
     } finally {
+      setUploadProgress("");
       setUploading(false);
+      // Reconcile with durable backend records even after partial failures.
+      // Keep the batch summary visible, as refreshDocuments may update error.
+      await refreshDocuments();
     }
   }
 
@@ -342,6 +514,7 @@ export function DocumentPanel() {
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp"
         className="hidden"
         onChange={handleFileChange}
@@ -362,6 +535,19 @@ export function DocumentPanel() {
         </div>
 
         <div className="flex items-center gap-2">
+          {process.env.NEXT_PUBLIC_CLOUD_UPLOAD_PROXY_ENABLED === "true" && (
+            <button
+              type="button"
+              disabled={recovering || uploading}
+              onClick={() => void recoverPendingUploads()}
+              aria-label="Recover unfinished private file uploads"
+              className="flex h-8 items-center gap-1 rounded-lg border border-[var(--aq-border)] px-2 text-[10px] font-semibold text-[var(--aq-muted)] hover:text-[var(--aq-text)] disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={recovering ? "animate-spin" : ""} />
+              {recovering ? "Recovering..." : "Recover uploads"}
+            </button>
+          )}
+
           <button
             type="button"
             aria-label="Refresh documents"
@@ -400,10 +586,23 @@ export function DocumentPanel() {
 
             {uploading
               ? "Uploading"
-              : "Upload"}
+              : "Upload files"}
           </button>
         </div>
       </div>
+
+      {uploadProgress && (
+        <p role="status" aria-live="polite"
+          className="mt-3 text-xs text-[var(--aq-muted)]">
+          {uploadProgress}
+        </p>
+      )}
+
+      {recoveryNotice && (
+        <p role="status" className="mt-3 text-xs text-[var(--aq-muted)]">
+          {recoveryNotice}
+        </p>
+      )}
 
       {error && (
         <div className="mt-4 flex gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs leading-5 text-red-400">
@@ -457,9 +656,10 @@ export function DocumentPanel() {
               Upload document
             </button>
 
-            <p className="mt-3 text-[9px] text-[var(--aq-muted)]">
-              PDF, DOCX, XLSX, PPTX,
-              TXT, MD, CSV
+            <p className="mt-3 text-center text-[10px] leading-4 text-[var(--aq-muted)]">
+              Word (.docx), Excel (.xlsx), PowerPoint (.pptx),
+              PDF, TXT, Markdown, CSV and images.
+              Older .doc/.xls/.ppt files should be converted to modern Office formats.
             </p>
           </div>
         ) : (
@@ -477,9 +677,11 @@ export function DocumentPanel() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]">
-                        <FileText
-                          size={16}
-                        />
+                        {document.file_extension === ".xlsx"
+                          ? <FileSpreadsheet size={16} />
+                          : document.file_extension === ".pptx"
+                            ? <Presentation size={16} />
+                            : <FileText size={16} />}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -530,6 +732,44 @@ export function DocumentPanel() {
                       </p>
                     )}
 
+                    {["uploaded", "ready", "failed"].includes(document.status) && (
+                      <a
+                        href={`/api/documents/${encodeURIComponent(document.id)}/content`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-[10px] font-semibold hover:border-[var(--aq-blue)]"
+                      >
+                        <Download size={13} aria-hidden="true" />
+                        Download original
+                      </a>
+                    )}
+
+                    {document.status === "ready" &&
+                      isOfficeDocument(document.file_extension) && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDocument(document)}
+                        className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-border)] bg-[var(--aq-control)] px-3 text-[10px] font-semibold hover:border-[var(--aq-blue)]"
+                      >
+                        <Eye size={13} />
+                        Preview extracted content
+                      </button>
+                    )}
+
+                    {/* Image OCR is a supported parser/queue route now. Retry
+                        remains owner-authenticated; the backend rejects
+                        unavailable legacy local originals without mutation. */}
+                    {document.status === "failed" && (
+                      <button
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() => { void retryIndex(document.id); }}
+                        className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
+                      >
+                        <RefreshCw size={12} /> Retry indexing
+                      </button>
+                    )}
+
                     {document.status ===
                       "uploaded" && (
                       <button
@@ -538,10 +778,12 @@ export function DocumentPanel() {
                           isProcessing
                         }
                         onClick={() => {
-                          void processDocument(
-                            document.id,
-                          );
-                        }}
+                           if (process.env.NEXT_PUBLIC_CLOUD_UPLOAD_ENABLED === "true") {
+                             void retryIndex(document.id);
+                           } else {
+                             void processDocument(document.id);
+                           }
+                         }}
                         className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-[var(--aq-blue)] bg-[var(--aq-blue-soft)] px-3 text-[10px] font-semibold disabled:opacity-60"
                       >
                         {isProcessing ? (
@@ -567,6 +809,12 @@ export function DocumentPanel() {
           </div>
         )}
       </div>
+      {previewDocument && (
+        <OfficeDocumentViewer
+          document={previewDocument}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
     </section>
   );
 }

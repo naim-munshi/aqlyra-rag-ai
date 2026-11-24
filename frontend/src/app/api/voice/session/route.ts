@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
 
 import {
   backendUrl,
@@ -38,11 +40,20 @@ type ApiError = {
 export async function POST(
   request: Request,
 ) {
+  // An authenticated voice-room token cannot be minted from a cross-site
+  // POST using the user's session cookie.
+  if (!hasTrustedRequestOrigin(request)) {
+    return privateJsonResponse(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const accessToken =
     await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Not authenticated",
@@ -57,10 +68,13 @@ export async function POST(
 
   try {
     body =
-      (await request.json()) as
+      (await readBoundedJson(request, 16384)) as
         VoiceSessionRequest;
-  } catch {
-    return NextResponse.json(
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return privateJsonResponse({ detail: "Request body too large" }, { status: 413 });
+    }
+    return privateJsonResponse(
       {
         detail:
           "Invalid request body",
@@ -75,7 +89,7 @@ export async function POST(
     body.mode !== "normal" &&
     body.mode !== "knowledge"
   ) {
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Valid voice mode is required",
@@ -147,7 +161,7 @@ export async function POST(
         ApiError
       >(response);
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? {
         detail:
           "Backend returned an invalid voice response",
@@ -168,7 +182,7 @@ export async function POST(
       throw error;
     }
 
-    return NextResponse.json(
+    return privateJsonResponse(
       {
         detail:
           "Unable to connect to voice service",

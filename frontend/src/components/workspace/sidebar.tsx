@@ -4,17 +4,18 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   CircleHelp,
   FileText,
+  GraduationCap,
   FolderPlus,
   LogOut,
   MessageSquareText,
   Plus,
   Settings,
-  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 
 import { AqlyraLogo } from "@/components/brand/aqlyra-logo";
@@ -39,6 +40,7 @@ export function Sidebar({
   user,
 }: SidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const [settingsOpen, setSettingsOpen] =
     useState(false);
@@ -89,6 +91,10 @@ export function Sidebar({
 
   function startNewChat() {
     setProfileMenuOpen(false);
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=new-chat");
+      return;
+    }
 
     window.dispatchEvent(
       new Event("aqlyra:new-chat"),
@@ -206,6 +212,16 @@ export function Sidebar({
         ),
       );
 
+      if (pathname !== "/") {
+        router.push(
+          "/?aqlyraConversationId=" +
+            encodeURIComponent(conversation.id) +
+            "&aqlyraConversationMode=" +
+            encodeURIComponent(conversation.mode),
+        );
+        return;
+      }
+
       window.dispatchEvent(
         new CustomEvent(
           "aqlyra:open-conversation",
@@ -234,12 +250,20 @@ export function Sidebar({
   }
 
   function openDocuments() {
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=documents");
+      return;
+    }
     window.dispatchEvent(
       new Event("aqlyra:open-documents"),
     );
   }
 
   function focusChat() {
+    if (pathname !== "/") {
+      router.push("/?aqlyraIntent=focus");
+      return;
+    }
     window.dispatchEvent(
       new Event("aqlyra:focus-chat"),
     );
@@ -267,7 +291,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="aq-scrollbar flex h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] px-4 py-5">
+      <aside className="aq-scrollbar flex h-full w-full min-w-0 flex-col overflow-y-auto overscroll-contain border-r border-[var(--aq-border)] bg-[var(--aq-bg-deep)] px-4 py-5 md:w-[244px]">
         <div className="px-2">
           <AqlyraLogo size={46} />
         </div>
@@ -313,6 +337,16 @@ export function Sidebar({
         <nav className="mt-6 space-y-1">
           <button
             type="button"
+            onClick={() => router.push("/study-abroad")}
+            className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-[var(--aq-muted)] transition hover:bg-[var(--aq-card)] hover:text-[var(--aq-text)]"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--aq-border)] bg-[var(--aq-panel)]">
+              <GraduationCap size={15} />
+            </span>
+            Study Abroad
+          </button>
+          <button
+            type="button"
             onClick={openDocuments}
             className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-[var(--aq-muted)] transition hover:bg-[var(--aq-card)] hover:text-[var(--aq-text)]"
           >
@@ -337,31 +371,6 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto pt-5">
-          <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-4">
-            <div className="flex items-center gap-2">
-              <Sparkles
-                size={16}
-                className="text-[var(--aq-cyan)]"
-              />
-
-              <p className="text-sm font-bold">
-                Aqlyra Plus
-              </p>
-            </div>
-
-            <p className="mt-3 text-xs leading-5 text-[var(--aq-muted)]">
-              Higher limits and premium workspace
-              features.
-            </p>
-
-            <button
-              type="button"
-              className="mt-4 h-10 w-full rounded-xl bg-[var(--aq-blue)] text-xs font-semibold text-white transition hover:bg-[var(--aq-blue-hover)]"
-            >
-              Upgrade
-            </button>
-          </div>
-
           <div className="relative mt-4">
             {profileMenuOpen && (
               <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 z-40 overflow-hidden rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-panel)] p-2 shadow-2xl">
@@ -388,20 +397,6 @@ export function Sidebar({
                 <div className="py-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setProfileMenuOpen(false)
-                    }
-                    className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
-                  >
-                    <Sparkles
-                      size={15}
-                      className="text-[var(--aq-cyan)]"
-                    />
-                    Upgrade plan
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={openSettings}
                     className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
                   >
@@ -409,11 +404,26 @@ export function Sidebar({
                     Settings
                   </button>
 
+                  {user.is_admin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        router.push("/admin");
+                      }}
+                      className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
+                    >
+                      <ShieldCheck size={15} />
+                      Admin monitoring
+                    </button>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() =>
-                      setProfileMenuOpen(false)
-                    }
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      router.push("/help");
+                    }}
                     className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs transition hover:bg-[var(--aq-control)]"
                   >
                     <CircleHelp size={15} />
