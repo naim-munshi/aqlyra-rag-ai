@@ -106,9 +106,22 @@ jobs:
           CREATE EXTENSION IF NOT EXISTS vector;
           SQL
 
-      - name: Verify Alembic migrations
+      - name: Verify Alembic has exactly one migration head
         working-directory: backend
         run: |
+          set -Eeuo pipefail
+          heads="$(alembic heads)"
+          printf '%s\\n' "$heads"
+          head_count="$(printf '%s\\n' "$heads" | grep -c '(head)' || true)"
+          if [ "$head_count" -ne 1 ]; then
+            echo "FAIL: expected exactly one Alembic head, found $head_count" >&2
+            exit 1
+          fi
+
+      - name: Apply and verify Alembic migrations on disposable PostgreSQL
+        working-directory: backend
+        run: |
+          set -Eeuo pipefail
           alembic upgrade head
           alembic current
 
