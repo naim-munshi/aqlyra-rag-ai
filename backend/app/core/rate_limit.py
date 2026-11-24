@@ -405,6 +405,14 @@ def limit_login_request(
         ),
     )
 
+def limit_refresh_request(request: Request) -> None:
+    _enforce_ip_limit(
+        request=request,
+        bucket="refresh-ip",
+        limit=settings.RATE_LIMIT_REFRESH_IP_LIMIT,
+        window_seconds=settings.RATE_LIMIT_REFRESH_IP_WINDOW_SECONDS,
+    )
+
 
 def limit_verify_request(
     request: Request,
