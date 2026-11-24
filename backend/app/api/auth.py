@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from app.api.dependencies import get_current_user
+from app.auth.admin_access import is_admin_user
 from app.models.user import User
 from sqlalchemy.orm import Session
 
@@ -83,6 +84,13 @@ router = APIRouter(
 )
 
 
+def _user_response(user: User) -> UserResponse:
+    """Return the public profile with the same verified-admin policy as /users/me."""
+    return UserResponse.model_validate(user).model_copy(
+        update={"is_admin": is_admin_user(user)}
+    )
+
+
 def _issued_session(db: Session, user: User) -> TokenResponse:
     """Issue a persisted refresh family and a short-lived access token."""
     token_version = int(user.auth_epoch)
@@ -95,7 +103,7 @@ def _issued_session(db: Session, user: User) -> TokenResponse:
             token_version=token_version,
         ),
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user),
     )
 
 
@@ -497,7 +505,7 @@ def refresh_session(
             issued_at=rotated.session.issued_at,
             expires_at=rotated.session.expires_at,
         ),
-        user=UserResponse.model_validate(user),
+        user=_user_response(user),
     )
 
 

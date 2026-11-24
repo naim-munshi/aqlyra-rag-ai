@@ -507,3 +507,31 @@ def test_google_sign_in_reclaims_unverified_squatted_email(
 
     assert reclaimed.status_code == 200
     assert attacker_login.status_code == 401
+
+def test_login_and_refresh_return_the_verified_admin_profile(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", False)
+    monkeypatch.setattr(settings, "ADMIN_OWNER_EMAIL", USER_DATA["email"])
+
+    registered = register_user(client)
+    assert registered.status_code == 201
+
+    login = login_user(client)
+    assert login.status_code == 200
+    assert login.json()["user"]["is_admin"] is True
+
+    refresh = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": login.json()["refresh_token"]},
+    )
+    assert refresh.status_code == 200
+    assert refresh.json()["user"]["is_admin"] is True
+
+    profile = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {refresh.json()['access_token']}"},
+    )
+    assert profile.status_code == 200
+    assert profile.json()["is_admin"] is True
