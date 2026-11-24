@@ -111,8 +111,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           heads="$(alembic heads)"
-          printf '%s\\n' "$heads"
-          head_count="$(printf '%s\\n' "$heads" | grep -c '(head)' || true)"
+          printf '%s\n' "$heads"
+          head_count="$(printf '%s\n' "$heads" | grep -c '(head)' || true)"
           if [ "$head_count" -ne 1 ]; then
             echo "FAIL: expected exactly one Alembic head, found $head_count" >&2
             exit 1
