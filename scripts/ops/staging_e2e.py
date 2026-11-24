@@ -94,7 +94,7 @@ class BrowserSession:
         with response:
             self._capture_cookies(response.headers.get_all("Set-Cookie", []))
             raw = response.read(MAX_RESPONSE_BYTES + 1)
-            status = response.status
+            status = response.getcode()
 
         if len(raw) > MAX_RESPONSE_BYTES:
             raise E2EError(f"{method} {path}: response exceeded the size limit")
