@@ -11,7 +11,7 @@ import sys
 from http.cookies import SimpleCookie
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 ACCESS_COOKIE = "aqlyra_access_token"
@@ -21,6 +21,11 @@ MAX_RESPONSE_BYTES = 256 * 1024
 
 class E2EError(RuntimeError):
     pass
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, url):
+        return None
 
 
 def _validate_loopback_origin(value: str) -> str:
@@ -51,6 +56,7 @@ class BrowserSession:
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url
         self.cookies: dict[str, str] = {}
+        self.opener = build_opener(NoRedirect())
 
     def request(
         self,
@@ -83,7 +89,7 @@ class BrowserSession:
             method=method,
         )
         try:
-            response = urlopen(request, timeout=15)
+            response = self.opener.open(request, timeout=15)
         except HTTPError as error:
             response = error
         except (URLError, TimeoutError, OSError) as error:
