@@ -90,9 +90,10 @@ def readiness():
                 "b5e4a019dc72",
                 "d4ec2f9b7860",
                 "0bd6703bf8a4",  # reviewed additive Study Program Fit migration
+            "a1f8c6d2e904",  # reviewed refresh-session migration on the full schema
             ):
                 raise RuntimeError("Aqlyra database revision is not current")
-            if version in ("d4ec2f9b7860", "0bd6703bf8a4"):
+            if version in ("d4ec2f9b7860", "0bd6703bf8a4", "a1f8c6d2e904"):
                 check_stage = "schema_full_additive"
                 full_tables_ready = db.execute(
                     text(
@@ -106,7 +107,7 @@ def readiness():
                 if not full_tables_ready:
                     raise RuntimeError("Aqlyra additive schema tables are unavailable")
 
-            if version == "0bd6703bf8a4":
+            if version in ("0bd6703bf8a4", "a1f8c6d2e904"):
                 check_stage = "schema_study_fit"
                 fit_columns_ready = db.execute(
                     text(

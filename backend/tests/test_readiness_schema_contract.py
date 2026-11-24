@@ -192,3 +192,41 @@ def test_bad_render_git_sha_does_not_leak_environment_text(
     assert response.status_code == 200
     assert "deployment_git_sha" not in response.json()
     assert bad_value not in response.text
+
+def test_readiness_accepts_reviewed_refresh_session_head(
+    client, monkeypatch, tmp_path,
+):
+    db = _prepare(
+        monkeypatch, tmp_path, revision="a1f8c6d2e904",
+        schema=True, full_schema=True, fit_columns=True,
+    )
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    assert response.json()["checks"]["database"] == "ready"
+    assert db.closed
+
+
+def test_readiness_rejects_refresh_session_head_with_missing_study_fit_columns(
+    client, monkeypatch, tmp_path,
+):
+    db = _prepare(
+        monkeypatch, tmp_path, revision="a1f8c6d2e904",
+        schema=True, full_schema=True, fit_columns=False,
+    )
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
+    assert db.closed
+
+
+def test_readiness_rejects_refresh_session_head_without_full_schema(
+    client, monkeypatch, tmp_path,
+):
+    db = _prepare(
+        monkeypatch, tmp_path, revision="a1f8c6d2e904",
+        schema=True, full_schema=False, fit_columns=True,
+    )
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
+    assert db.closed
