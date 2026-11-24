@@ -12,7 +12,7 @@ from uuid import UUID
 
 MAX_VOICE_JOB_BYTES = 8192
 MAX_VOICE_DOCUMENTS = 50
-_FIELDS = frozenset({"user_id", "conversation_id", "mode", "document_ids"})
+_FIELDS = frozenset({"user_id", "conversation_id", "mode", "document_ids", "auth_epoch"})
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict:
@@ -42,6 +42,7 @@ class VoiceJobData:
     conversation_id: str
     mode: str
     document_ids: tuple[str, ...]
+    auth_epoch: int
 
     @classmethod
     def from_metadata(cls, metadata: str) -> "VoiceJobData":
@@ -59,6 +60,9 @@ class VoiceJobData:
             raise ValueError("Invalid voice job metadata") from exc
         if not isinstance(payload, dict) or set(payload) != _FIELDS:
             raise ValueError("Invalid voice job metadata")
+        auth_epoch = payload["auth_epoch"]
+        if type(auth_epoch) is not int or auth_epoch < 0:
+            raise ValueError("Invalid voice authorization epoch")
         if payload["mode"] not in ("normal", "knowledge"):
             raise ValueError("Invalid voice job mode")
         raw_ids = payload["document_ids"]
@@ -72,4 +76,5 @@ class VoiceJobData:
             conversation_id=_canonical_uuid(payload["conversation_id"]),
             mode=payload["mode"],
             document_ids=ids,
+            auth_epoch=auth_epoch,
         )

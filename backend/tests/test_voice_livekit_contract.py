@@ -83,7 +83,7 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
     _configure(monkeypatch)
     owner_id = uuid4()
     conversation_id = uuid4()
-    user = SimpleNamespace(id=owner_id, username="voice-owner")
+    user = SimpleNamespace(id=owner_id, username="voice-owner", auth_epoch=7)
     conversation = SimpleNamespace(id=conversation_id, mode="knowledge")
     documents = (str(uuid4()), str(uuid4()))
     observed = {}
@@ -139,12 +139,14 @@ def test_voice_room_token_is_user_scoped_and_dispatches_named_worker(monkeypatch
 
     metadata = {
         "user_id": str(owner_id),
+        "auth_epoch": 7,
         "conversation_id": str(conversation_id),
         "mode": "knowledge",
         "document_ids": list(documents),
     }
     assert metadata == {
         "user_id": str(owner_id),
+        "auth_epoch": 7,
         "conversation_id": str(conversation_id),
         "mode": "knowledge",
         "document_ids": list(documents),

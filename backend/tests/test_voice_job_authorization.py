@@ -10,17 +10,18 @@ from app.voice.job_metadata import VoiceJobData
 from app.voice import job_authorization as auth
 
 
-def make_job(documents=()):
+def make_job(documents=(), *, auth_epoch=0):
     return VoiceJobData(
         user_id=str(uuid4()),
         conversation_id=str(uuid4()),
         mode="knowledge",
         document_ids=tuple(documents),
+        auth_epoch=auth_epoch,
     )
 
 
 def setup_valid(monkeypatch, db, job):
-    db.user = SimpleNamespace(is_active=True, email_verified_at=datetime(2026, 1, 1))
+    db.user = SimpleNamespace(is_active=True, email_verified_at=datetime(2026, 1, 1), auth_epoch=job.auth_epoch)
     monkeypatch.setattr(settings, "EMAIL_VERIFICATION_REQUIRED", True)
     monkeypatch.setattr(
         auth, "get_conversation_for_user",
@@ -60,13 +61,22 @@ def test_authorized_active_verified_user_and_owned_ready_scope(monkeypatch):
 @pytest.mark.parametrize("account", [
     None,
     SimpleNamespace(is_active=False, email_verified_at=datetime(2026, 1, 1)),
-    SimpleNamespace(is_active=True, email_verified_at=None),
+    SimpleNamespace(is_active=True, email_verified_at=None, auth_epoch=0),
 ])
 def test_deleted_disabled_or_unverified_account_denied(monkeypatch, account):
     job = make_job()
     db = FakeDb()
     setup_valid(monkeypatch, db, job)
     db.user = account
+    with pytest.raises(auth.VoiceJobAuthorizationError, match="no longer authorized"):
+        auth.authorize_voice_job(db, job)
+
+
+def test_revoked_auth_epoch_denies_existing_voice_job(monkeypatch):
+    job = make_job(auth_epoch=3)
+    db = FakeDb()
+    setup_valid(monkeypatch, db, job)
+    db.user.auth_epoch = 4
     with pytest.raises(auth.VoiceJobAuthorizationError, match="no longer authorized"):
         auth.authorize_voice_job(db, job)
 

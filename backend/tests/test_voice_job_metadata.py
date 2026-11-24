@@ -17,6 +17,7 @@ def _message(**changes):
         "conversation_id": str(uuid4()),
         "mode": "knowledge",
         "document_ids": [str(uuid4()), str(uuid4())],
+        "auth_epoch": 7,
     }
     payload.update(changes)
     return payload
@@ -29,6 +30,7 @@ def test_canonical_real_backend_dispatch_metadata_round_trip():
     assert parsed.conversation_id == payload["conversation_id"]
     assert parsed.mode == "knowledge"
     assert parsed.document_ids == tuple(payload["document_ids"])
+    assert parsed.auth_epoch == 7
 
 
 @pytest.mark.parametrize("change", [
@@ -39,6 +41,9 @@ def test_canonical_real_backend_dispatch_metadata_round_trip():
     {"conversation_id": None},
     {"mode": "admin"},
     {"mode": 1},
+    {"auth_epoch": -1},
+    {"auth_epoch": True},
+    {"auth_epoch": "7"},
     {"document_ids": ["../../foreign"]},
     {"document_ids": ["a"]},
     {"document_ids": [123]},
