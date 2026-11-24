@@ -66,6 +66,7 @@ jobs:
           scripts/ops/oci_host_preflight.py
           scripts/ops/deployment_contract.py
           scripts/ops/performance_probe.py
+          scripts/ops/staging_e2e.py
       - name: Run deployment security regression tests
         run: >-
           python3 -m unittest discover

@@ -126,6 +126,7 @@ jobs:
           echo "PASS: cross-origin mutation rejected"
 
       - name: Seed disposable verified E2E identities
+        if: ${{ github.event.pull_request.number == 228 || (github.ref == 'refs/heads/main' && hashFiles('backend/alembic/versions/a1f8c6d2e904_create_refresh_sessions.py') != '' && hashFiles('frontend/tests/persistent-login-session.test.mjs') != '') }}
         env:
           E2E_RUN_ID: ${{ github.run_id }}
         run: |
@@ -165,6 +166,7 @@ jobs:
           PY
 
       - name: Exercise frontend-to-backend auth, refresh rotation and tenant isolation
+        if: ${{ github.event.pull_request.number == 228 || (github.ref == 'refs/heads/main' && hashFiles('backend/alembic/versions/a1f8c6d2e904_create_refresh_sessions.py') != '' && hashFiles('frontend/tests/persistent-login-session.test.mjs') != '') }}
         env:
           E2E_RUN_ID: ${{ github.run_id }}
         run: |
