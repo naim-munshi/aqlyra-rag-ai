@@ -72,6 +72,13 @@ dc() {
 echo "Validating local-only Compose networking..."
 dc config --format json | python3 scripts/ops/check_mac_local_compose.py
 
+echo "Checking existing container ownership before touching Docker state..."
+COMPOSE_PROJECT="$(
+  dc config --format json \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
+)"
+python3 scripts/ops/check_mac_local_ownership.py "$COMPOSE_PROJECT"
+
 echo "Starting DB, Redis, local verification inbox, FastAPI and Next.js..."
 dc up --detach --build --wait --wait-timeout 600 \
   postgres redis mailpit backend frontend
