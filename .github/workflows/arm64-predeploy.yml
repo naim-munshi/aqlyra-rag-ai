@@ -141,9 +141,9 @@ jobs:
             --env-file backend/.env.example \
             --profile production \
             exec -T \
-            -e E2E_USER_A -e E2E_USER_B \
-            -e E2E_EMAIL_A -e E2E_EMAIL_B \
-            -e E2E_PASSWORD_A -e E2E_PASSWORD_B \
+            -e "E2E_USER_A=${E2E_USER_A}" -e "E2E_USER_B=${E2E_USER_B}" \
+            -e "E2E_EMAIL_A=${E2E_EMAIL_A}" -e "E2E_EMAIL_B=${E2E_EMAIL_B}" \
+            -e "E2E_PASSWORD_A=${E2E_PASSWORD_A}" -e "E2E_PASSWORD_B=${E2E_PASSWORD_B}" \
             backend python - <<'PY'
           import os
           from app.database.connection import SessionLocal
