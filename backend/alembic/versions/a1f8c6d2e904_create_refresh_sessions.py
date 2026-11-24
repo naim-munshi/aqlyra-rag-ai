@@ -1,7 +1,7 @@
 """create server-side refresh token session families
 
 Revision ID: a1f8c6d2e904
-Revises: f18a3c42e917
+Revises: 0bd6703bf8a4
 """
 from alembic import op
 import sqlalchemy as sa
