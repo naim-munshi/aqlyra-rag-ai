@@ -3,16 +3,8 @@ name: Documentation Consistency
 on:
   push:
     branches: [main]
-    paths:
-      - "**/*.md"
-      - "scripts/ops/check_markdown_docs.py"
-      - ".github/workflows/documentation.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "**/*.md"
-      - "scripts/ops/check_markdown_docs.py"
-      - ".github/workflows/documentation.yml"
   workflow_dispatch:
 
 permissions:
