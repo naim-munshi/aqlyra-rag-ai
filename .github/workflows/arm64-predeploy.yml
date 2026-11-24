@@ -125,6 +125,59 @@ jobs:
           fi
           echo "PASS: cross-origin mutation rejected"
 
+      - name: Seed disposable verified E2E identities
+        if: ${{ github.event.pull_request.number == 228 || (github.ref == 'refs/heads/main' && hashFiles('backend/alembic/versions/a1f8c6d2e904_create_refresh_sessions.py') != '' && hashFiles('frontend/tests/persistent-login-session.test.mjs') != '') }}
+        env:
+          E2E_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          suffix="${E2E_RUN_ID: -8}"
+          export E2E_USER_A="aqe2e${suffix}a"
+          export E2E_USER_B="aqe2e${suffix}b"
+          export E2E_EMAIL_A="${E2E_USER_A}@example.com"
+          export E2E_EMAIL_B="${E2E_USER_B}@example.com"
+          export E2E_PASSWORD_A="Aqlyra-E2E-${E2E_RUN_ID}-a!"
+          export E2E_PASSWORD_B="Aqlyra-E2E-${E2E_RUN_ID}-b!"
+          docker compose \
+            --env-file backend/.env.example \
+            --profile production \
+            exec -T \
+            -e "E2E_USER_A=${E2E_USER_A}" -e "E2E_USER_B=${E2E_USER_B}" \
+            -e "E2E_EMAIL_A=${E2E_EMAIL_A}" -e "E2E_EMAIL_B=${E2E_EMAIL_B}" \
+            -e "E2E_PASSWORD_A=${E2E_PASSWORD_A}" -e "E2E_PASSWORD_B=${E2E_PASSWORD_B}" \
+            backend python - <<'PY'
+          import os
+          from app.database.connection import SessionLocal
+          from app.schemas.user import UserCreate
+          from app.services.user_service import create_user
+
+          with SessionLocal() as db:
+              for suffix in ("A", "B"):
+                  create_user(
+                      db,
+                      UserCreate(
+                          username=os.environ[f"E2E_USER_{suffix}"],
+                          email=os.environ[f"E2E_EMAIL_{suffix}"],
+                          password=os.environ[f"E2E_PASSWORD_{suffix}"],
+                      ),
+                      email_verified=True,
+                  )
+          print("PASS: two disposable, verified E2E identities seeded")
+          PY
+
+      - name: Exercise frontend-to-backend auth, refresh rotation and tenant isolation
+        if: ${{ github.event.pull_request.number == 228 || (github.ref == 'refs/heads/main' && hashFiles('backend/alembic/versions/a1f8c6d2e904_create_refresh_sessions.py') != '' && hashFiles('frontend/tests/persistent-login-session.test.mjs') != '') }}
+        env:
+          E2E_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          suffix="${E2E_RUN_ID: -8}"
+          export AQ_E2E_EMAIL_A="aqe2e${suffix}a@example.com"
+          export AQ_E2E_EMAIL_B="aqe2e${suffix}b@example.com"
+          export AQ_E2E_PASSWORD_A="Aqlyra-E2E-${E2E_RUN_ID}-a!"
+          export AQ_E2E_PASSWORD_B="Aqlyra-E2E-${E2E_RUN_ID}-b!"
+          python3 scripts/ops/staging_e2e.py --base-url http://localhost
+
       - name: Run bounded HTTP performance probe
         run: |
           python3 scripts/ops/performance_probe.py \
