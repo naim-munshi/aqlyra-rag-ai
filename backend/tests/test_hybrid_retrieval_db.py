@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.embeddings import (
@@ -449,3 +449,188 @@ def test_db_hybrid_enriches_lexical_only_hit_and_isolates_user(
         result.document_id
         != other_document_id
     )
+
+
+
+def test_hybrid_keeps_real_lexical_only_document_without_vectors(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """Reproduce production embedding-429 indexing -> lexical-only corpus.
+
+    When worker later comes back online, RRF must keep existing matched
+    chunks instead of dropping evidence because no EmbeddingRecord exists.
+    """
+    owner_id, owner_headers = create_user(
+        client=client,
+        username="hybridfallbackowner",
+        email="hybridfallbackowner@example.com",
+    )
+    outsider_id, _ = create_user(
+        client=client,
+        username="hybridfallbackoutsider",
+        email="hybridfallbackoutsider@example.com",
+    )
+    doc_id = upload_and_process(
+        client=client,
+        headers=owner_headers,
+        filename="real-lexical-only.md",
+        content=(
+            "# Owner's internal knowledge\n\n"
+            "The access-control record contains "
+            f"the exact code {EXACT_TERM} and is private."
+        ),
+    )
+
+    # Simulate indexing while the embedding worker returned HTTP 429:
+    # the parsed document and chunks are durable, but no fake vectors.
+    chunk_ids = tuple(
+        db_session.scalars(
+            select(DocumentChunk.id).where(DocumentChunk.document_id == doc_id)
+        ).all()
+    )
+    assert chunk_ids
+    db_session.execute(
+        delete(EmbeddingRecord).where(EmbeddingRecord.chunk_id.in_(chunk_ids))
+    )
+    db_session.commit()
+
+    query = RetrievalQuery(
+        user_id=owner_id,
+        text=EXACT_TERM,
+        top_k=8,
+        document_ids=(doc_id,),
+    )
+    hits = search_hybrid_chunks(
+        db=db_session,
+        query=query,
+        provider=DeterministicHashEmbeddingProvider(),
+    )
+    assert hits, "Lexical matches must not disappear from live hybrid retrieval"
+    assert all(hit.document_id == doc_id for hit in hits)
+    assert any(EXACT_TERM in hit.content.casefold() for hit in hits)
+    assert all(
+        hit.metadata["retrieval_mode"] == "lexical_only"
+        and hit.metadata["semantic_similarity_available"] is False
+        and hit.metadata["semantic_similarity_score"] is None
+        and hit.metadata["retrieval_sources"] == ["lexical"]
+        for hit in hits
+    )
+    assert all(hit.ranking_score is not None for hit in hits)
+
+    # ACL filters are evaluated inside PostgreSQL before retrieval ranking.
+    assert search_hybrid_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=outsider_id,
+            text=EXACT_TERM,
+            top_k=8,
+            document_ids=(doc_id,),
+        ),
+        provider=DeterministicHashEmbeddingProvider(),
+    ) == []
+
+    # A caller explicitly requesting real cosine evidence cannot be
+    # downgraded to lexical or assigned a fictional 0.0 similarity.
+    assert search_hybrid_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=owner_id,
+            text=EXACT_TERM,
+            top_k=8,
+            document_ids=(doc_id,),
+            min_similarity=0.3,
+        ),
+        provider=DeterministicHashEmbeddingProvider(),
+    ) == []
+
+
+def test_stale_content_hash_vectors_are_not_scored(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """Changed chunk bytes must invalidate stale dense scores, not lexical evidence.
+
+    Simulates an incomplete semantic reindex in isolated PostgreSQL: the
+    already-saved vector still belongs to a previous chunk revision.
+    """
+    owner_id, headers = create_user(
+        client=client,
+        username="stalecoshash",
+        email="stalecoshash@example.com",
+    )
+    document_id = upload_and_process(
+        client=client,
+        headers=headers,
+        filename="stale-cosine.md",
+        content=(
+            "# Internal record\n\n"
+            f"The verified owner code is {EXACT_TERM} "
+            "and must remain available for lexical search."
+        ),
+    )
+    target = get_term_chunk(
+        db_session=db_session,
+        document_id=document_id,
+    )
+    record = db_session.scalar(
+        select(EmbeddingRecord).where(
+            EmbeddingRecord.chunk_id == target.id
+        )
+    )
+    assert record is not None
+    valid_hash = record.content_hash
+    assert valid_hash == target.content_hash
+
+    # Preserve the embedding row while making its provenance stale.
+    record.content_hash = "0" * 64
+    assert record.content_hash != target.content_hash
+    db_session.commit()
+    provider = DeterministicHashEmbeddingProvider()
+    query = RetrievalQuery(
+        user_id=owner_id,
+        text=EXACT_TERM,
+        document_ids=(document_id,),
+        chunk_roles=("content",),
+        top_k=8,
+    )
+    dense = search_similar_chunks(db=db_session, query=query, provider=provider)
+    assert target.id not in {hit.chunk_id for hit in dense}
+    assert score_specific_chunks(
+        db=db_session,
+        query=query,
+        chunk_ids=(target.id,),
+        provider=provider,
+    ) == {}
+
+    # Existing real lexical evidence survives without an invented cosine score.
+    hybrid = search_hybrid_chunks(db=db_session, query=query, provider=provider)
+    matched = next(hit for hit in hybrid if hit.chunk_id == target.id)
+    assert matched.metadata["retrieval_mode"] == "lexical_only"
+    assert matched.metadata["semantic_similarity_available"] is False
+    assert matched.metadata["semantic_similarity_score"] is None
+
+    strict = search_hybrid_chunks(
+        db=db_session,
+        query=RetrievalQuery(
+            user_id=owner_id,
+            text=EXACT_TERM,
+            document_ids=(document_id,),
+            chunk_roles=("content",),
+            top_k=8,
+            min_similarity=0.5,
+        ),
+        provider=provider,
+    )
+    assert target.id not in {hit.chunk_id for hit in strict}
+
+    # A legitimately reindexed current hash is eligible again.
+    record.content_hash = valid_hash
+    db_session.commit()
+    assert target.id in score_specific_chunks(
+        db=db_session,
+        query=query,
+        chunk_ids=(target.id,),
+        provider=provider,
+    )
+

@@ -156,6 +156,13 @@ def test_multik_uses_one_rerank_per_case(
 
     assert reranker.calls == 2
     assert len(report.results) == 2
+    assert set(report.stage_latency_ms) == {
+        "vector", "hybrid", "rerank", "hybrid_plus_rerank",
+    }
+    for measurements in report.stage_latency_ms.values():
+        assert measurements.count == 2
+        assert 0 <= measurements.p50_ms <= measurements.p95_ms
+        assert measurements.p95_ms <= measurements.max_ms
 
     at_one = report.results[0]
 
@@ -170,3 +177,18 @@ def test_multik_uses_one_rerank_per_case(
         at_one.reranked.hit_rate_at_k
         == pytest.approx(1.0)
     )
+
+
+def test_latency_percentiles_use_nearest_rank_and_fail_closed():
+    from app.retrieval.reranking_benchmark import _summarize_stage
+
+    result = _summarize_stage([1, 2, 3, 4, 100])
+    assert result.count == 5
+    assert result.p50_ms == 3
+    assert result.p95_ms == 100
+    assert result.max_ms == 100
+
+    with pytest.raises(ValueError):
+        _summarize_stage([])
+    with pytest.raises(ValueError):
+        _summarize_stage([1.0, -1.0])
