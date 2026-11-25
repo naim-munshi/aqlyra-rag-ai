@@ -9,9 +9,6 @@ from app.models import (
     AgentDailyUsage,
     AgentRun,
     AgentStep,
-    AgentDailyUsage,
-    AgentRun,
-    AgentStep,
     CloudUploadIntent,
     Conversation,
     Document,
@@ -40,6 +37,9 @@ if config.config_file_name is not None:
 
 # Importing the models registers their tables with Base.metadata.
 _ = (
+    AgentDailyUsage,
+    AgentRun,
+    AgentStep,
     CloudUploadIntent,
     Conversation,
     Document,
