@@ -205,7 +205,7 @@ class Settings(BaseSettings):
     AGENT_OUTPUT_PRICE_PER_1M_USD: float | None = Field(default=None, ge=0, le=1000)
     AGENT_MAX_INPUT_TOKENS: int = Field(default=12_000, ge=1_000, le=100_000)
     AGENT_MAX_OUTPUT_TOKENS: int = Field(default=2_000, ge=100, le=20_000)
-    AGENT_MAX_STEPS: int = Field(default=5, ge=2, le=6)
+    AGENT_MAX_STEPS: int = Field(default=7, ge=4, le=7)
     AGENT_MAX_RETRIEVALS: int = Field(default=3, ge=1, le=3)
     # Public research is never allowed to exhaust chat latency through
     # automatic provider retries. Override explicitly only after staging.
