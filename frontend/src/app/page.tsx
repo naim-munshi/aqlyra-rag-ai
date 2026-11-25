@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { ResponsiveWorkspaceShell } from "@/components/workspace/responsive-workspace-shell";
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl, readJson } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 import { unauthenticatedLanding } from "@/lib/deployment/mode";
 import type {
   BackendError,
@@ -10,9 +11,12 @@ import type {
 } from "@/types/auth";
 
 async function getCurrentUser(): Promise<UserResponse | null> {
-  const token = await getAccessToken();
+  const token = await getAccessToken({ allowRefresh: false });
 
   if (!token) {
+    if (await hasRefreshToken()) {
+      throw new Error("Session renewal required");
+    }
     return null;
   }
 
@@ -25,11 +29,15 @@ async function getCurrentUser(): Promise<UserResponse | null> {
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
       },
     );
 
-    if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
       return null;
+    }
+    if (!response.ok) {
+      throw new Error("Aqlyra is temporarily unavailable");
     }
 
     const data =
@@ -46,12 +54,17 @@ async function getCurrentUser(): Promise<UserResponse | null> {
 
     return data;
   } catch {
-    return null;
+    throw new Error("Aqlyra is temporarily unavailable");
   }
 }
 
 export default async function Home() {
-  const user = await getCurrentUser();
+  let user: UserResponse | null;
+  try {
+    user = await getCurrentUser();
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
 
   if (!user) {
     // Portfolio-only builds redirect to the interactive preview, while the
