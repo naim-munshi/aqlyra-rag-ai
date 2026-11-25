@@ -233,7 +233,7 @@ def run_research_agent(
         question_redacted=safe_question, status="running",
         metadata_json={
             "tool_allowlist": ["knowledge.search_documents"],
-            "max_retrieval_steps": settings.AGENT_MAX_RETRIEVALS,
+            "max_retrieval_steps": min(settings.AGENT_MAX_RETRIEVALS, settings.AGENT_MAX_STEPS - 4),
             "cost_scope": "llm_generation_tokens_only; embeddings and verifier internals are not itemized",
         },
         created_at=created,
@@ -253,7 +253,7 @@ def run_research_agent(
         ))
 
         plan_started = time.perf_counter()
-        queries = build_research_plan(safe_question, settings.AGENT_MAX_RETRIEVALS)
+        allowed_retrievals = min(settings.AGENT_MAX_RETRIEVALS, settings.AGENT_MAX_STEPS - 4)\n        queries = build_research_plan(safe_question, allowed_retrievals)
         steps.append(_step(
             run_id=run_id, index=1, step_type="plan",
             input_summary={"goal": safe_question},
@@ -399,20 +399,33 @@ def run_research_agent(
         )
     except Exception as exc:
         db.rollback()
-        failed = db.get(AgentRun, run_id)
-        if failed is not None:
-            failed.status = "failed"
-            failed.guardrail_status = "failed"
-            failed.metadata_json = {
-                **(failed.metadata_json or {}),
-                "error_type": type(exc).__name__,
-            }
-            failed.latency_ms = int((time.perf_counter() - started) * 1000)
-            failed.completed_at = utc_now_naive()
-            try:
-                db.commit()
-            except Exception:
-                db.rollback()
+        try:
+            failed = db.get(AgentRun, run_id)
+            if failed is None:
+                # Preserve a redacted failed trace even when execution failed
+                # before its first commit (for example, during DB flush).
+                run.status = "failed"
+                run.guardrail_status = "failed"
+                run.metadata_json = {
+                    **(run.metadata_json or {}),
+                    "error_type": type(exc).__name__,
+                }
+                run.latency_ms = int((time.perf_counter() - started) * 1000)
+                run.completed_at = utc_now_naive()
+                db.add(run)
+                db.add_all(steps)
+            else:
+                failed.status = "failed"
+                failed.guardrail_status = "failed"
+                failed.metadata_json = {
+                    **(failed.metadata_json or {}),
+                    "error_type": type(exc).__name__,
+                }
+                failed.latency_ms = int((time.perf_counter() - started) * 1000)
+                failed.completed_at = utc_now_naive()
+            db.commit()
+        except Exception:
+            db.rollback()
         if not budget_settled:
             _settle_daily_budget(budget_key, budget_ttl, -reserve)
         raise
