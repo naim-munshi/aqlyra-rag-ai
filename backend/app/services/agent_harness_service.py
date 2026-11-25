@@ -431,6 +431,23 @@ def run_research_agent(
         raise
 
 
+def list_agent_daily_usage(
+    db: Session, *, user_id: str, days: int = 14,
+) -> list[AgentDailyUsage]:
+    """Return only this user's recent UTC-day aggregate usage rows."""
+    bounded_days = max(1, min(days, 31))
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=bounded_days - 1)
+    return list(db.scalars(
+        select(AgentDailyUsage)
+        .where(
+            AgentDailyUsage.user_id == user_id,
+            AgentDailyUsage.usage_date >= cutoff,
+        )
+        .order_by(AgentDailyUsage.usage_date.desc())
+        .limit(bounded_days)
+    ).all())
+
+
 def list_agent_runs(db: Session, *, user_id: str, limit: int = 20) -> list[AgentRun]:
     return list(db.scalars(
         select(AgentRun).where(AgentRun.user_id == user_id)
