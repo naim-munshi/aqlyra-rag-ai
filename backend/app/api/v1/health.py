@@ -82,16 +82,10 @@ def readiness():
             version = db.execute(
                 text("SELECT version_num FROM public.alembic_version")
             ).scalar_one_or_none()
-            # The owner-approved Full schema is an additive successor to
-            # the Core schema. A Core-only process must remain usable
-            # during the protected Full Release cutover window, without
-            # claiming that any Study Abroad routes are deployed.
-            if version not in (
-                "b5e4a019dc72",
-                "d4ec2f9b7860",
-                "0bd6703bf8a4",  # reviewed additive Study Program Fit migration
-            "a1f8c6d2e904",  # reviewed refresh-session migration on the full schema
-            ):
+            # Login, email verification and Google login all persist a refresh
+            # session. Older Core/Study Fit revisions are not ready for this
+            # API even when their other tables and columns are present.
+            if version != "a1f8c6d2e904":
                 raise RuntimeError("Aqlyra database revision is not current")
             if version in ("d4ec2f9b7860", "0bd6703bf8a4", "a1f8c6d2e904"):
                 check_stage = "schema_full_additive"
@@ -124,6 +118,44 @@ def readiness():
                 ).scalar_one()
                 if not fit_columns_ready:
                     raise RuntimeError("Aqlyra study fit schema is unavailable")
+
+            check_stage = "schema_refresh_sessions"
+            refresh_sessions_ready = db.execute(
+                text(
+                    "SELECT "
+                    "to_regclass('public.refresh_sessions') IS NOT NULL "
+                    "AND ("
+                    "  SELECT count(*) = 8 "
+                    "  FROM information_schema.columns "
+                    "  WHERE table_schema = 'public' "
+                    "  AND table_name = 'refresh_sessions' "
+                    "  AND column_name IN ("
+                    "    'session_id', 'generation', 'user_id', 'jti_hash', "
+                    "    'issued_at', 'expires_at', 'consumed_at', 'revoked_at'"
+                    "  )"
+                    ") "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_constraint "
+                    "  WHERE conrelid = to_regclass('public.refresh_sessions') "
+                    "  AND conname = 'uq_refresh_sessions_jti_hash' "
+                    "  AND contype = 'u'"
+                    ") "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_constraint "
+                    "  WHERE conrelid = to_regclass('public.refresh_sessions') "
+                    "  AND contype = 'p'"
+                    ") "
+                    "AND EXISTS ("
+                    "  SELECT 1 FROM pg_constraint "
+                    "  WHERE conrelid = to_regclass('public.refresh_sessions') "
+                    "  AND contype = 'f'"
+                    ") "
+                    "AND to_regclass('public.ix_refresh_sessions_user_id') IS NOT NULL "
+                    "AND to_regclass('public.ix_refresh_sessions_user_expires') IS NOT NULL"
+                )
+            ).scalar_one()
+            if not refresh_sessions_ready:
+                raise RuntimeError("Aqlyra refresh-session schema is unavailable")
 
             check_stage = "schema_core"
             core_schema_ready = db.execute(

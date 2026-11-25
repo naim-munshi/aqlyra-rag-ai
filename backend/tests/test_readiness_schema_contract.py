@@ -6,7 +6,7 @@ from app.config.settings import settings
 from app.api.v1 import health as health_module
 
 
-EXPECTED_HEAD = "b5e4a019dc72"
+EXPECTED_HEAD = "a1f8c6d2e904"
 
 
 class _Scalar:
@@ -21,17 +21,23 @@ class _Scalar:
 
 
 class _Database:
-    def __init__(self, revision, schema, full_schema=True, fit_columns=True):
+    def __init__(
+        self, revision, schema, full_schema=True, fit_columns=True,
+        refresh_sessions_ready=True,
+    ):
         self.revision = revision
         self.schema = schema
         self.full_schema = full_schema
         self.fit_columns = fit_columns
+        self.refresh_sessions_ready = refresh_sessions_ready
         self.closed = False
 
     def execute(self, query):
         sql = str(query)
         if "alembic_version" in sql:
             return _Scalar(self.revision)
+        if "refresh_sessions" in sql:
+            return _Scalar(self.refresh_sessions_ready)
         if "information_schema.columns" in sql:
             return _Scalar(self.fit_columns)
         if "study_cases" in sql:
@@ -46,11 +52,17 @@ class _Database:
         self.closed = True
 
 
-def _prepare(monkeypatch, tmp_path, *, revision, schema, full_schema=True, fit_columns=True):
+def _prepare(
+    monkeypatch, tmp_path, *, revision, schema, full_schema=True,
+    fit_columns=True, refresh_sessions_ready=True,
+):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
-    fake = _Database(revision, schema, full_schema=full_schema, fit_columns=fit_columns)
+    fake = _Database(
+        revision, schema, full_schema=full_schema, fit_columns=fit_columns,
+        refresh_sessions_ready=refresh_sessions_ready,
+    )
     monkeypatch.setattr(health_module, "SessionLocal", lambda: fake)
     return fake
 
@@ -92,7 +104,7 @@ def test_readiness_accepts_migrated_pgvector_schema(
     assert db.closed
 
 
-def test_readiness_accepts_reviewed_additive_full_head_with_all_tables(
+def test_readiness_rejects_pre_refresh_full_head_even_with_all_tables(
     client, monkeypatch, tmp_path,
 ):
     db = _prepare(
@@ -100,16 +112,15 @@ def test_readiness_accepts_reviewed_additive_full_head_with_all_tables(
         schema=True, full_schema=True,
     )
     response = client.get("/api/v1/readiness")
-    assert response.status_code == 200
-    assert response.json()["checks"]["database"] == "ready"
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
     assert db.closed
 
-
-def test_readiness_rejects_full_revision_with_missing_study_table(
+def test_readiness_rejects_refresh_head_with_missing_study_table(
     client, monkeypatch, tmp_path,
 ):
     db = _prepare(
-        monkeypatch, tmp_path, revision="d4ec2f9b7860",
+        monkeypatch, tmp_path, revision=EXPECTED_HEAD,
         schema=True, full_schema=False,
     )
     response = client.get("/api/v1/readiness")
@@ -118,7 +129,7 @@ def test_readiness_rejects_full_revision_with_missing_study_table(
     assert db.closed
 
 
-def test_readiness_accepts_reviewed_study_fit_head_with_columns(
+def test_readiness_rejects_study_fit_head_before_refresh_sessions(
     client, monkeypatch, tmp_path,
 ):
     db = _prepare(
@@ -126,16 +137,15 @@ def test_readiness_accepts_reviewed_study_fit_head_with_columns(
         schema=True, full_schema=True, fit_columns=True,
     )
     response = client.get("/api/v1/readiness")
-    assert response.status_code == 200
-    assert response.json()["checks"]["database"] == "ready"
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
     assert db.closed
-
 
 def test_readiness_rejects_missing_study_fit_columns(
     client, monkeypatch, tmp_path,
 ):
     db = _prepare(
-        monkeypatch, tmp_path, revision="0bd6703bf8a4",
+        monkeypatch, tmp_path, revision=EXPECTED_HEAD,
         schema=True, full_schema=True, fit_columns=False,
     )
     response = client.get("/api/v1/readiness")
@@ -144,11 +154,11 @@ def test_readiness_rejects_missing_study_fit_columns(
     assert db.closed
 
 
-def test_readiness_rejects_study_fit_head_without_study_tables(
+def test_readiness_rejects_refresh_head_without_study_tables(
     client, monkeypatch, tmp_path,
 ):
     db = _prepare(
-        monkeypatch, tmp_path, revision="0bd6703bf8a4",
+        monkeypatch, tmp_path, revision=EXPECTED_HEAD,
         schema=True, full_schema=False, fit_columns=True,
     )
     response = client.get("/api/v1/readiness")
@@ -205,6 +215,19 @@ def test_readiness_accepts_reviewed_refresh_session_head(
     assert response.json()["checks"]["database"] == "ready"
     assert db.closed
 
+
+def test_readiness_rejects_refresh_session_head_with_missing_schema(
+    client, monkeypatch, tmp_path,
+):
+    db = _prepare(
+        monkeypatch, tmp_path, revision=EXPECTED_HEAD,
+        schema=True, full_schema=True, fit_columns=True,
+        refresh_sessions_ready=False,
+    )
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
+    assert db.closed
 
 def test_readiness_rejects_refresh_session_head_with_missing_study_fit_columns(
     client, monkeypatch, tmp_path,
