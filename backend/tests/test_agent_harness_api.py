@@ -1,4 +1,4 @@
-from uuid import uuid4
+from datetime import date\nfrom uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -7,7 +7,7 @@ from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.core.rate_limit import limit_rag_request
 from app.main import app
-from app.models.agent_trace import AgentRun, AgentStep
+from app.models.agent_trace import AgentDailyUsage, AgentRun, AgentStep
 import app.services.agent_harness_service as agent_service
 
 
@@ -90,6 +90,15 @@ def test_agent_trace_endpoints_are_owner_scoped_and_private(
         metadata_json={"tool_allowlist": ["knowledge.search_documents"]},
     )
     db_session.add(run)
+    db_session.add(AgentDailyUsage(
+        id=str(uuid4()),
+        user_id=owner_id,
+        usage_date=date(2026, 11, 26),
+        request_count=1,
+        input_tokens=100,
+        output_tokens=20,
+        cost_usd=0.001,
+    ))
     db_session.add(AgentStep(
         run_id=run_id,
         step_index=0,
@@ -105,6 +114,16 @@ def test_agent_trace_endpoints_are_owner_scoped_and_private(
     assert owner_list.status_code == 200, owner_list.text
     assert owner_list.headers["cache-control"].startswith("private, no-store")
     assert [item["id"] for item in owner_list.json()] == [run_id]
+
+    owner_usage = client.get("/api/v1/agent-harness/usage", headers=owner_headers)
+    assert owner_usage.status_code == 200, owner_usage.text
+    assert owner_usage.headers["cache-control"].startswith("private, no-store")
+    assert len(owner_usage.json()["daily_usage"]) == 1
+    assert owner_usage.json()["daily_usage"][0]["cost_usd"] == 0.001
+
+    outsider_usage = client.get("/api/v1/agent-harness/usage", headers=outsider_headers)
+    assert outsider_usage.status_code == 200
+    assert outsider_usage.json()["daily_usage"] == []
 
     outsider_list = client.get("/api/v1/agent-harness/runs", headers=outsider_headers)
     assert outsider_list.status_code == 200
