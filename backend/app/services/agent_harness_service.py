@@ -390,8 +390,10 @@ def run_research_agent(
             input_tokens=input_tokens, output_tokens=output_tokens, cost=actual_cost,
         )
         db.commit()
-        db.refresh(run)
+        # Usage is now durable. A subsequent refresh/telemetry failure must
+        # never release the reservation and allow the same spend twice.
         budget_settled = True
+        db.refresh(run)
         _settle_daily_budget(budget_key, budget_ttl, actual_cost - reserve)
         return AgentExecutionResult(
             run=run, steps=tuple(steps), answer=answer,
