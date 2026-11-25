@@ -7,7 +7,15 @@ const get = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 test("admin page authenticates before reading monitoring data", () => {
   const page = get("../src/app/admin/page.tsx");
   assert.match(page, /getAccessToken\(/);
-  assert.match(page, /if \(!token\) redirect\("\/login"\)/);
+  assert.match(page, /getAccessToken\(\{ allowRefresh: false \}\)/);
+  assert.match(page, /if \(!token\) \{/);
+  assert.match(page, /if \(await hasRefreshToken\(\)\) return <SessionServiceUnavailable \/>;/);
+  assert.match(page, /redirect\("\/login"\)/);
+  assert.ok(
+    page.indexOf("token = await getAccessToken") <
+      page.indexOf('backendUrl("/admin/overview")'),
+    "admin monitoring data must not be fetched before session validation",
+  );
   assert.match(page, /response\.status === 403\) notFound\(/);
   assert.match(page, /cache: "no-store"/);
   assert.match(page, /index: false/);
