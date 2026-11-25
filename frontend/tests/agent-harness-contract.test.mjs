@@ -18,6 +18,10 @@ const detailRoute = readFileSync(
   new URL("../src/app/api/agent-harness/runs/[runId]/route.ts", import.meta.url),
   "utf8",
 );
+const usageRoute = readFileSync(
+  new URL("../src/app/api/agent-harness/usage/route.ts", import.meta.url),
+  "utf8",
+);
 const tracePage = readFileSync(
   new URL("../src/app/agent-harness/page.tsx", import.meta.url),
   "utf8",
@@ -26,7 +30,8 @@ const tracePage = readFileSync(
 test("research agent is opt-in and only exposed in Knowledge mode", () => {
   assert.match(workspace, /useState\(false\);/);
   assert.match(workspace, /chatMode === "knowledge" && \(/);
-  assert.match(workspace, /Research Agent \{researchAgentEnabled \? "On" : "Off"\}/);
+  assert.match(workspace, /Research Agent<\/span>/);
+  assert.match(workspace, /researchAgentEnabled \? "On" : "Off"/);
   assert.match(workspace, /if \(researchAgentEnabled\)/);
   assert.match(workspace, /setResearchAgentEnabled\(false\)/);
 });
@@ -57,4 +62,9 @@ test("trace viewer surfaces owner trace summaries and individual execution steps
   assert.match(tracePage, /Execution timeline/);
   assert.match(tracePage, /selected\.steps\.map/);
   assert.match(tracePage, /Only your own traces are shown/);
+  assert.match(tracePage, /Daily agent spend/);
+  assert.match(tracePage, /Embeddings.*not itemized/);
+  assert.match(usageRoute, /getAccessToken\\(\\)/);
+  assert.match(usageRoute, /privateJsonResponse\\(/);
+  assert.match(usageRoute, /agent-harness\\/usage/);
 });
