@@ -22,7 +22,6 @@ from app.core.rate_limit import get_rate_limit_redis
 from app.llms import create_configured_llm_provider
 from app.models.agent_trace import AgentDailyUsage, AgentRun, AgentStep
 from app.retrieval import RetrievalQuery
-from app.rag.answer_types import INSUFFICIENT_EVIDENCE_SENTINEL
 from app.services.rag_answer_service import (
     INSUFFICIENT_EVIDENCE_MESSAGE,
     RAGAnswerResult,
@@ -239,12 +238,12 @@ def run_research_agent(
         },
         created_at=created,
     )
-    db.add(run)
-    db.flush()
     steps: list[AgentStep] = []
     budget_settled = False
 
     try:
+        db.add(run)
+        db.flush()
         guardrail_started = time.perf_counter()
         steps.append(_step(
             run_id=run_id, index=0, step_type="input_guardrail",
