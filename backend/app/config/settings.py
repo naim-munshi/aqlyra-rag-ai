@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: (
         int
     ) = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=14, ge=1, le=30)
 
     # Admin monitoring is disabled unless explicitly assigned to verified
     # immutable user UUIDs. Never use emails/usernames as admin identities.

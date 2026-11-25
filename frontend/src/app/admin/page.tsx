@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
 import { AdminMonitor } from "@/components/admin/admin-monitor";
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
 import { backendUrl } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
 import type { AdminOverview } from "@/types/admin";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,18 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminPage() {
-  const token = await getAccessToken();
-  if (!token) redirect("/login");
+  let token: string | null;
+  try {
+    token = await getAccessToken({ allowRefresh: false });
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
+  if (!token) {
+    // The Server Component cannot rotate cookies. Let the recovery screen
+    // call the writable /api/auth/me handler when a refresh ticket exists.
+    if (await hasRefreshToken()) return <SessionServiceUnavailable />;
+    redirect("/login");
+  }
 
   let response: Response;
   try {
@@ -27,7 +38,7 @@ export default async function AdminPage() {
   } catch {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#080b12] p-6 text-white">
-        <p role="status">Monitoring service is currently unavailable.</p>
+        <p role="status">Monitoring service is currently unavailable. Retry shortly.</p>
       </main>
     );
   }
@@ -36,7 +47,7 @@ export default async function AdminPage() {
   if (!response.ok) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#080b12] p-6 text-white">
-        <p role="status">Monitoring service is currently unavailable.</p>
+        <p role="status">Monitoring service is currently unavailable. Retry shortly.</p>
       </main>
     );
   }
