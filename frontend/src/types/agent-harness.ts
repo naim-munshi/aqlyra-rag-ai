@@ -44,3 +44,17 @@ export type AgentRunDetail = AgentRunSummary & {
 export type AgentApiError = {
   detail?: string | { message?: string } | Array<{ msg?: string }>;
 };
+
+
+export type AgentDailyUsage = {
+  usage_date: string;
+  request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+};
+
+export type AgentUsageDashboard = {
+  daily_budget_usd: number;
+  daily_usage: AgentDailyUsage[];
+};
