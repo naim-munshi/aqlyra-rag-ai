@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -80,3 +80,16 @@ class AgentRunSummaryResponse(BaseModel):
 class AgentRunDetailResponse(AgentRunSummaryResponse):
     answer_redacted: str | None
     steps: list[AgentTraceStepResponse]
+
+
+class AgentDailyUsageResponse(BaseModel):
+    usage_date: date
+    request_count: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
+class AgentUsageDashboardResponse(BaseModel):
+    daily_budget_usd: float
+    daily_usage: list[AgentDailyUsageResponse]
