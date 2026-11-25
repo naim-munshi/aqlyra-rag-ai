@@ -11,8 +11,9 @@ from app.llms import LLMProviderRequestError
 from app.models.agent_trace import AgentRun, AgentStep
 from app.models.user import User
 from app.schemas.agent_harness import (
-    AgentResearchRequest, AgentResearchResponse, AgentRunDetailResponse,
-    AgentRunSummaryResponse, AgentTraceStepResponse,
+    AgentDailyUsageResponse, AgentResearchRequest, AgentResearchResponse,
+    AgentRunDetailResponse, AgentRunSummaryResponse, AgentTraceStepResponse,
+    AgentUsageDashboardResponse,
 )
 from app.schemas.rag import RAGCitationResponse, RAGUsageResponse
 from app.services.agent_harness_service import (
