@@ -128,7 +128,14 @@ done
 # The API Dockerfile and voice Dockerfile have different roles.
 # Package a temporary *voice-only* build context instead of modifying either.
 context="$(mktemp -d)"
-trap 'rm -rf "$context"' EXIT
+state_tmp=""
+cleanup() {
+  rm -rf "$context"
+  if [[ -n "$state_tmp" ]]; then
+    rm -f -- "$state_tmp"
+  fi
+}
+trap cleanup EXIT
 cp "${backend_dir}/Dockerfile.voice" "${context}/Dockerfile"
 cp "${backend_dir}/requirements.txt" "${backend_dir}/requirements-voice.txt" "$context/"
 cp "${backend_dir}/.dockerignore" "$context/.dockerignore"
@@ -157,10 +164,11 @@ if [[ "$action" == create ]]; then
     echo "LiveKit created no agent config. Check CLI output and agent list." >&2
     exit 1
   fi
-  state_tmp="${state_file}.tmp.$"
+  state_tmp="$(mktemp "${state_file}.tmp.XXXXXX")"
   cp "$context/livekit.toml" "$state_tmp"
   chmod 600 "$state_tmp"
-  mv "$state_tmp" "$state_file"
+  mv -f -- "$state_tmp" "$state_file"
+  state_tmp=""
 else
   (
     cd "$context"
