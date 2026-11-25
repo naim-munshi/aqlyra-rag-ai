@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import (
     APIRouter,
     Depends,
+    Response,
     HTTPException,
     status,
 )
@@ -24,13 +27,44 @@ from app.services.voice_session_service import (
     VoiceConversationNotFoundError,
     VoiceDocumentValidationError,
     create_voice_session,
+    voice_is_ready,
+    missing_voice_configuration_keys,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/voice",
     tags=["Voice"],
 )
+
+
+@router.get("/status")
+def voice_status(
+    response: Response,
+    _current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Credential-free and private; readiness does not assert a live RTC call."""
+    response.headers["Cache-Control"] = "private, no-store"
+    available = voice_is_ready()
+    if not available:
+        # Operators need an actionable reason when a worker is Online
+        # but the Render API is unable to mint real LiveKit sessions.
+        # Never log values: provider URLs, keys and JWTs are sensitive.
+        logger.warning(
+            "voice_realtime_unavailable missing_configuration_keys=%s",
+            ",".join(missing_voice_configuration_keys()) or "other",
+        )
+    return {
+        "available": available,
+        "detail": (
+            "Voice calling is ready to connect."
+            if available
+            else "Voice calling is not available yet. "
+                 "Please continue with text chat."
+        ),
+    }
 
 
 @router.post(

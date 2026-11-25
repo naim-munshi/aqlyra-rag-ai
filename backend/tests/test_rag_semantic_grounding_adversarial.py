@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from typing import cast
 
@@ -454,3 +455,76 @@ def test_rag_propagates_invalid_verifier_response(
         )
 
     assert len(provider.calls) == 2
+
+
+def test_grounded_stage_metrics_include_verification_cost_without_private_text(
+    monkeypatch, caplog,
+) -> None:
+    provider = SequencedProvider(
+        (
+            "All documents use AES-256 encryption [S1].",
+            "UNSUPPORTED",
+            "JWT bearer tokens protect private API routes [S1].",
+            "SUPPORTED",
+        )
+    )
+    monkeypatch.setattr(settings, "RAG_GROUNDING_VERIFIER_ENABLED", True)
+    monkeypatch.setattr(rag_service, "_retrieve_rag_hits", lambda **kwargs: [])
+    monkeypatch.setattr(
+        rag_service, "build_evidence_context",
+        lambda *args, **kwargs: create_context(),
+    )
+    with caplog.at_level(logging.INFO, logger="app.services.rag_answer_service"):
+        result = rag_service.answer_question(
+            db=cast(Session, None),
+            user_id="private-synthetic-user",
+            question="What controls private routes?",
+            provider=provider,
+        )
+    assert not result.is_refusal
+    records = [
+        record.getMessage() for record in caplog.records
+        if "rag_stage_latency_ms" in record.getMessage()
+    ]
+    assert len(records) == 1
+    log = records[0]
+    assert "verifier_calls=2" in log
+    assert "repair_calls=1" in log
+    assert "retrieval=" in log and "generation=" in log
+    assert "citation=" in log and "verifier=" in log and "repair=" in log
+    # Logs contain only coarse performance counters, no user/source content.
+    assert "JWT bearer tokens" not in log
+    assert "private-synthetic-user" not in log
+    assert "What controls private routes" not in log
+    assert "security.md" not in log
+
+
+def test_no_evidence_logs_stage_without_calling_verifier(
+    monkeypatch, caplog,
+) -> None:
+    from app.llms import create_llm_provider
+    from app.rag import EvidenceContext
+
+    monkeypatch.setattr(rag_service, "_retrieve_rag_hits", lambda **kwargs: [])
+    monkeypatch.setattr(
+        rag_service, "build_evidence_context",
+        lambda *args, **kwargs: EvidenceContext(
+            text="", sources=(), estimated_tokens=0,
+            skipped_count=0, was_truncated=False,
+        ),
+    )
+    with caplog.at_level(logging.INFO, logger="app.services.rag_answer_service"):
+        result = rag_service.answer_question(
+            db=cast(Session, None),
+            user_id="synthetic-no-evidence",
+            question="What is the unpublished access code?",
+            provider=create_llm_provider(provider_name="deterministic"),
+        )
+    assert result.is_refusal
+    stage_logs = [
+        record.getMessage() for record in caplog.records
+        if "rag_stage_latency_ms" in record.getMessage()
+    ]
+    assert len(stage_logs) == 1
+    assert "verifier_calls=0" in stage_logs[0]
+    assert "generation=0.00" in stage_logs[0]

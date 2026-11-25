@@ -472,3 +472,50 @@ def test_embedding_rebuild_is_rate_limited(
     assert second.status_code == 429
     assert "retry-after" in second.headers
 
+def _proxy_ip_request(peer: str, forged_ip: str):
+    from starlette.requests import Request
+
+    return Request({
+        "type": "http",
+        "method": "POST",
+        "scheme": "https",
+        "path": "/api/v1/auth/login",
+        "query_string": b"",
+        "headers": [
+            (b"x-aqlyra-client-ip", forged_ip.encode("ascii")),
+            (b"x-forwarded-for", b"192.0.2.1"),
+        ],
+        "client": (peer, 54321),
+        "server": ("aqlyra-api", 443),
+    })
+
+
+def test_public_production_ingress_ignores_spoofed_client_ip(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(
+        settings, "RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS", "",
+    )
+    request = _proxy_ip_request("198.51.100.19", "203.0.113.234")
+    assert rate_limit._resolve_client_ip(request) == "198.51.100.19"
+
+
+def test_production_only_trusts_header_from_explicit_direct_proxy(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(
+        settings, "RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS",
+        "10.10.20.1, 2001:db8::3",
+    )
+    direct_proxy = _proxy_ip_request("10.10.20.1", "203.0.113.234")
+    untrusted = _proxy_ip_request("198.51.100.19", "203.0.113.234")
+    assert rate_limit._resolve_client_ip(direct_proxy) == "203.0.113.234"
+    assert rate_limit._resolve_client_ip(untrusted) == "198.51.100.19"
+
+
+def test_invalid_proxy_allowlist_fails_closed(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(
+        settings, "RATE_LIMIT_TRUSTED_PROXY_SOURCE_IPS",
+        "0.0.0.0/0",
+    )
+    request = _proxy_ip_request("198.51.100.19", "203.0.113.234")
+    assert rate_limit._resolve_client_ip(request) == "198.51.100.19"

@@ -37,6 +37,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     id: str
+    is_admin: bool = False
     username: str
     email: EmailStr
     is_active: bool

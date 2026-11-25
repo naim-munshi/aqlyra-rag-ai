@@ -37,6 +37,7 @@ from app.database.base import Base
 from app.database.connection import get_db
 from app.main import app
 from app.models import (
+    CloudUploadIntent,
     Conversation,
     Document,
     DocumentChunk,
@@ -46,11 +47,18 @@ from app.models import (
     Memory,
     MemoryEmbedding,
     Message,
+    PasswordResetCode,
+    RefreshSession,
     User,
+    StudyCase,
+    StudyCaseDocument,
+    StudyResearchReport,
+    StudyUniversity,
 )
 
 _REGISTERED_MODELS = (
     User,
+    CloudUploadIntent,
     Conversation,
     Message,
     Document,
@@ -60,6 +68,7 @@ _REGISTERED_MODELS = (
     EmailVerificationCode,
     Memory,
     MemoryEmbedding,
+    RefreshSession,
 )
 
 test_engine = create_engine(
