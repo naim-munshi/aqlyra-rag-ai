@@ -206,6 +206,17 @@ class LiveKitVoiceDeploymentContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertFalse(self.log_file.exists())
 
+    def test_create_uses_unique_atomic_state_tempfile_and_cleans_it(self) -> None:
+        result = self.run_script("create")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state_file = self.state_dir / "livekit-voice.toml"
+        self.assertTrue(state_file.is_file())
+        self.assertEqual(stat.S_IMODE(state_file.stat().st_mode), 0o600)
+        leftovers = list(self.state_dir.glob("livekit-voice.toml.tmp.*"))
+        self.assertEqual(leftovers, [])
+        log = self.log_file.read_text(encoding="utf-8")
+        self.assertIn("agent create", log)
+
 
 if __name__ == "__main__":
     unittest.main()
