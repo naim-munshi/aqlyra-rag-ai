@@ -1,5 +1,5 @@
 """Authenticated Knowledge research-agent endpoints and owner-only trace viewer."""
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -106,21 +106,25 @@ def research(
     )
 
 
-@router.get("/runs", response_model=list[AgentRunSummaryResponse], headers=PRIVATE_HEADERS)
+@router.get("/runs", response_model=list[AgentRunSummaryResponse])
 def runs(
+    response: Response,
     limit: int = Query(default=20, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AgentRunSummaryResponse]:
+    response.headers.update(PRIVATE_HEADERS)
     return [_run_summary(run) for run in list_agent_runs(db, user_id=str(user.id), limit=limit)]
 
 
-@router.get("/runs/{run_id}", response_model=AgentRunDetailResponse, headers=PRIVATE_HEADERS)
+@router.get("/runs/{run_id}", response_model=AgentRunDetailResponse)
 def run_detail(
     run_id: str,
+    response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentRunDetailResponse:
+    response.headers.update(PRIVATE_HEADERS)
     run = get_agent_run(db, user_id=str(user.id), run_id=run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Agent trace not found.")
