@@ -6,6 +6,12 @@ from sqlalchemy import engine_from_config, pool
 from app.config.settings import settings
 from app.database.base import Base
 from app.models import (
+    AgentDailyUsage,
+    AgentRun,
+    AgentStep,
+    AgentDailyUsage,
+    AgentRun,
+    AgentStep,
     CloudUploadIntent,
     Conversation,
     Document,
