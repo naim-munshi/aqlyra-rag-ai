@@ -8,7 +8,7 @@ from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.llms import LLMProviderRequestError
-from app.models.agent_trace import AgentRun, AgentStep
+from app.models.agent_trace import AgentDailyUsage, AgentRun, AgentStep
 from app.models.user import User
 from app.schemas.agent_harness import (
     AgentResearchRequest, AgentResearchResponse, AgentRunDetailResponse,
@@ -17,7 +17,7 @@ from app.schemas.agent_harness import (
 from app.schemas.rag import RAGCitationResponse, RAGUsageResponse
 from app.services.agent_harness_service import (
     AgentBudgetExceeded, AgentBudgetUnavailable, AgentInputRejected,
-    get_agent_run, list_agent_runs, run_research_agent,
+    get_agent_run, list_agent_daily_usage, list_agent_runs, run_research_agent,
 )
 
 router = APIRouter(prefix="/agent-harness", tags=["Agent Harness"])
@@ -103,6 +103,30 @@ def research(
         ),
         trace_id=result.run.trace_id, cost_usd=float(result.cost_usd),
         cost_basis=result.cost_basis, steps=[_step_response(step) for step in result.steps],
+    )
+
+
+@router.get("/usage", response_model=AgentUsageDashboardResponse)
+def usage_dashboard(
+    response: Response,
+    days: int = Query(default=14, ge=1, le=31),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AgentUsageDashboardResponse:
+    response.headers.update(PRIVATE_HEADERS)
+    rows = list_agent_daily_usage(db, user_id=str(user.id), days=days)
+    return AgentUsageDashboardResponse(
+        daily_budget_usd=settings.AGENT_DAILY_BUDGET_USD,
+        daily_usage=[
+            AgentDailyUsageResponse(
+                usage_date=row.usage_date,
+                request_count=row.request_count,
+                input_tokens=row.input_tokens,
+                output_tokens=row.output_tokens,
+                cost_usd=float(row.cost_usd),
+            )
+            for row in rows
+        ],
     )
 
 
