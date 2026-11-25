@@ -8,7 +8,7 @@ from app.core.rate_limit import limit_rag_request
 from app.database.connection import get_db
 from app.embeddings import EmbeddingError
 from app.llms import LLMProviderRequestError
-from app.models.agent_trace import AgentDailyUsage, AgentRun, AgentStep
+from app.models.agent_trace import AgentRun, AgentStep
 from app.models.user import User
 from app.schemas.agent_harness import (
     AgentResearchRequest, AgentResearchResponse, AgentRunDetailResponse,
