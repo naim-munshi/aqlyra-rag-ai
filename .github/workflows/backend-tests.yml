@@ -125,6 +125,15 @@ jobs:
           alembic upgrade head
           alembic current
 
+      - name: Run research-agent golden evaluation gates
+        working-directory: backend
+        run: |
+          python -m pytest \
+            tests/test_agent_harness_guardrails.py \
+            tests/test_agent_harness_golden.py \
+            tests/test_agent_harness_api.py \
+            -q
+
       - name: Run backend tests
         working-directory: backend
         run: |
