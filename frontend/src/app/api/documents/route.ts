@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { privateJsonResponse } from "@/lib/security/private-json";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import { getAccessToken } from "@/lib/auth/session";
@@ -12,7 +12,7 @@ export async function GET() {
   const accessToken = await getAccessToken();
 
   if (!accessToken) {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Not authenticated" },
       { status: 401 },
     );
@@ -35,14 +35,14 @@ export async function GET() {
         response,
       );
 
-    return NextResponse.json(
+    return privateJsonResponse(
       data ?? { detail: "Backend returned an invalid response" },
       {
         status: response.status,
       },
     );
   } catch {
-    return NextResponse.json(
+    return privateJsonResponse(
       { detail: "Unable to connect to backend" },
       { status: 502 },
     );

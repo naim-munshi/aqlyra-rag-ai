@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import {
   backendUrl,
@@ -20,6 +21,7 @@ type NormalChatStreamRequest = {
   display_content?: string;
   conversation_id?: string | null;
   document_ids?: string[];
+  web_mode?: "auto" | "off" | "on" | "deep";
 };
 
 type ApiError = {
@@ -47,9 +49,12 @@ export async function POST(
 
   try {
     body =
-      (await request.json()) as
+      (await readBoundedJson(request, 65536)) as
         NormalChatStreamRequest;
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json(
       {
         detail: "Invalid request body",
@@ -98,6 +103,10 @@ export async function POST(
         status: 400,
       },
     );
+  }
+
+  if (body.web_mode !== undefined && !["auto", "off", "on", "deep"].includes(body.web_mode)) {
+    return NextResponse.json({ detail: "Invalid web research mode" }, { status: 400 });
   }
 
   const displayContent =
@@ -206,6 +215,7 @@ export async function POST(
                 : {}),
               document_ids:
                 documentIds,
+              web_mode: body.web_mode ?? "auto",
             }),
             cache: "no-store",
             signal: request.signal,
@@ -302,6 +312,7 @@ export async function POST(
               : {}),
             document_ids:
               documentIds,
+            web_mode: body.web_mode ?? "auto",
           }),
           cache: "no-store",
           signal: request.signal,

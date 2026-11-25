@@ -1,7 +1,12 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 20;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, max-age=0",
+};
+const WARMUP_HEADERS = {
+  ...NO_STORE_HEADERS,
+  "Retry-After": "10",
 };
 
 export async function GET() {
@@ -15,7 +20,7 @@ export async function GET() {
       },
       {
         status: 503,
-        headers: NO_STORE_HEADERS,
+        headers: WARMUP_HEADERS,
       },
     );
   }
@@ -31,7 +36,7 @@ export async function GET() {
 
   const timeout = setTimeout(
     () => controller.abort(),
-    3000,
+    10000,
   );
 
   try {
@@ -68,7 +73,7 @@ export async function GET() {
         },
         {
           status: 503,
-          headers,
+          headers: { ...headers, "Retry-After": "10" },
         },
       );
     }
@@ -89,7 +94,7 @@ export async function GET() {
       },
       {
         status: 503,
-        headers: NO_STORE_HEADERS,
+        headers: WARMUP_HEADERS,
       },
     );
   } finally {

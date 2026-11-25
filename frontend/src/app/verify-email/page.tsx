@@ -19,8 +19,8 @@ export default function VerifyEmailPage() {
             Check your inbox
           </h1>
           <p className="mt-3 text-[15px] leading-6 text-[var(--aq-muted)]">
-            Enter the one-time code sent by Aqlyra. The code
-            expires in 10 minutes.
+            Enter the emailed code and your registration password.
+            The code expires in 10 minutes.
           </p>
 
           <VerifyEmailForm />
