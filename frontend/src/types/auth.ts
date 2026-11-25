@@ -1,5 +1,6 @@
 export type UserResponse = {
   id: string;
+  is_admin?: boolean;
   username: string;
   email: string;
   is_active: boolean;
@@ -11,6 +12,7 @@ export type UserResponse = {
 export type LoginInput = {
   email: string;
   password: string;
+  remember_me?: boolean;
 };
 
 export type RegisterInput = {
@@ -31,6 +33,7 @@ export type BackendRegistrationResponse = RegistrationResponse & {
 export type VerifyEmailInput = {
   email: string;
   code: string;
+  password: string;
 };
 
 export type ResendVerificationInput = {
@@ -52,6 +55,8 @@ export type VerificationDispatchResponse = MessageResponse & {
 export type TokenResponse = {
   access_token: string;
   token_type: "bearer";
+  refresh_token?: string | null;
+  user?: UserResponse | null;
 };
 
 export type BackendError = {

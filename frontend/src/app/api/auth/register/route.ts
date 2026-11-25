@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
+
+import { trustedProxyClientIp } from "@/lib/security/client-ip";
 
 import { backendUrl, readJson } from "@/lib/api/backend";
 import {
@@ -12,11 +16,21 @@ import type {
 } from "@/types/auth";
 
 export async function POST(request: Request) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   let body: RegisterInput;
 
   try {
-    body = (await request.json()) as RegisterInput;
-  } catch {
+    body = (await readBoundedJson(request)) as RegisterInput;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json(
       { detail: "Invalid request body" },
       { status: 400 },
@@ -27,14 +41,10 @@ export async function POST(request: Request) {
     "Content-Type": "application/json",
   });
 
-  const clientIp =
-    request.headers.get("x-aqlyra-client-ip");
+  const clientIp = trustedProxyClientIp(request);
 
   if (clientIp) {
-    backendHeaders.set(
-      "X-Aqlyra-Client-IP",
-      clientIp,
-    );
+    backendHeaders.set("X-Aqlyra-Client-IP", clientIp);
   }
 
   try {

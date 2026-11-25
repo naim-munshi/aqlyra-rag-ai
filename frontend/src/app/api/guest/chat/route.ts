@@ -1,0 +1,112 @@
+import { createHash, createHmac } from "node:crypto";
+import { isIP } from "node:net";
+import { NextResponse } from "next/server";
+
+import { backendUrl } from "@/lib/api/backend";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const headers = { "Cache-Control": "private, no-store" };
+// Account for UTF-8 Japanese, Bangla and emoji in 5 bounded turns.
+const maxBodyBytes = 20_000;
+
+export async function POST(request: Request) {
+  if (process.env.NEXT_PUBLIC_AQLYRA_GUEST_ENABLED !== "true") {
+    return NextResponse.json(
+      { detail: "Guest chat is not enabled" },
+      { status: 503, headers },
+    );
+  }
+  // Never trust browser-supplied IP values or expose the signing key.
+  // Vercel overwrites X-Forwarded-For at its own ingress.
+  const secret = process.env.GUEST_PROXY_SECRET;
+  // Require the Vercel-authored client-IP header; never fall back to
+  // arbitrary forwarded headers supplied along another ingress path.
+  const clientIp = process.env.VERCEL === "1"
+    ? request.headers.get("x-vercel-forwarded-for")
+    : null;
+  if (!secret || secret.length < 32 || !clientIp || isIP(clientIp) === 0) {
+    return NextResponse.json(
+      { detail: "Guest chat is not available yet" },
+      { status: 503, headers },
+    );
+  }
+  // Bound memory before parsing JSON: request.text() buffers an attacker-
+  // controlled body in full, even if we reject its size afterward.
+  let body: string;
+  try {
+    const declaredLength = request.headers.get("content-length");
+    if (declaredLength !== null) {
+      const length = Number(declaredLength);
+      if (!Number.isSafeInteger(length) || length < 0 || length > maxBodyBytes) {
+        return NextResponse.json(
+          { detail: "Guest message is too long" },
+          { status: 413, headers },
+        );
+      }
+    }
+    const reader = request.body?.getReader();
+    if (!reader) {
+      return NextResponse.json(
+        { detail: "Invalid request body" },
+        { status: 400, headers },
+      );
+    }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBodyBytes) {
+        await reader.cancel();
+        return NextResponse.json(
+          { detail: "Guest message is too long" },
+          { status: 413, headers },
+        );
+      }
+      chunks.push(value);
+    }
+    body = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+    JSON.parse(body);
+  } catch {
+    return NextResponse.json(
+      { detail: "Invalid request body" },
+      { status: 400, headers },
+    );
+  }
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const digest = createHash("sha256").update(body).digest("hex");
+  const signature = createHmac("sha256", secret)
+    .update(timestamp + ":" + clientIp + ":" + digest)
+    .digest("hex");
+  try {
+    const upstream = await fetch(backendUrl("/guest/chat"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Aqlyra-Guest-IP": clientIp,
+        "X-Aqlyra-Guest-Timestamp": timestamp,
+        "X-Aqlyra-Guest-Signature": signature,
+      },
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await upstream.json().catch(() => ({
+      detail: "Guest service is temporarily unavailable",
+    }));
+    const upstreamHeaders = new Headers(headers);
+    const retryAfter = upstream.headers.get("retry-after");
+    if (retryAfter) upstreamHeaders.set("Retry-After", retryAfter);
+    return NextResponse.json(data, {
+      status: upstream.status, headers: upstreamHeaders,
+    });
+  } catch {
+    return NextResponse.json(
+      { detail: "Guest service is temporarily unavailable" },
+      { status: 503, headers },
+    );
+  }
+}
