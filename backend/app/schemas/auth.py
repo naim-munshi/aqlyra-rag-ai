@@ -8,6 +8,13 @@ from app.schemas.user import UserResponse
 class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
+    # Tokens are exchanged only between FastAPI and the first-party BFF.
+    refresh_token: str | None = None
+    user: UserResponse | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=40, max_length=4000)
 
 
 class RegistrationResponse(UserResponse):
