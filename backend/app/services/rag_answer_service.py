@@ -300,6 +300,7 @@ def answer_question(
     grounding_verifier: GroundingVerifier | None = None,
     reranker: RerankerProvider | None = None,
     query_rewriter: QueryRewriter | None = None,
+    precomputed_hits: list[RetrievalHit] | None = None,
 ) -> RAGAnswerResult:
     cleaned_question = question.strip()
 
@@ -320,19 +321,25 @@ def answer_question(
     )
 
     retrieval_started = time.perf_counter()
-    hits = _retrieve_rag_hits(
-        db=db,
-        query=RetrievalQuery(
-            user_id=user_id,
-            text=cleaned_retrieval_question,
-            top_k=top_k,
-            document_ids=document_ids,
-            chunk_roles=chunk_roles,
-            min_similarity=min_similarity,
-        ),
-        reranker=reranker,
-        query_rewriter=query_rewriter,
-    )
+    if precomputed_hits is None:
+        hits = _retrieve_rag_hits(
+            db=db,
+            query=RetrievalQuery(
+                user_id=user_id,
+                text=cleaned_retrieval_question,
+                top_k=top_k,
+                document_ids=document_ids,
+                chunk_roles=chunk_roles,
+                min_similarity=min_similarity,
+            ),
+            reranker=reranker,
+            query_rewriter=query_rewriter,
+        )
+    else:
+        # Agent retrieval is already owner-scoped and bounded. Reuse those
+        # hits so the final synthesis does not silently perform a second,
+        # unrelated search or bypass the agent's tool trace.
+        hits = list(precomputed_hits)
 
     retrieval_ms = (time.perf_counter() - retrieval_started) * 1000
     context_started = time.perf_counter()
