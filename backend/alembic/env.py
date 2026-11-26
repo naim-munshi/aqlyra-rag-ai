@@ -6,6 +6,9 @@ from sqlalchemy import engine_from_config, pool
 from app.config.settings import settings
 from app.database.base import Base
 from app.models import (
+    AgentDailyUsage,
+    AgentRun,
+    AgentStep,
     CloudUploadIntent,
     Conversation,
     Document,
@@ -34,6 +37,9 @@ if config.config_file_name is not None:
 
 # Importing the models registers their tables with Base.metadata.
 _ = (
+    AgentDailyUsage,
+    AgentRun,
+    AgentStep,
     CloudUploadIntent,
     Conversation,
     Document,

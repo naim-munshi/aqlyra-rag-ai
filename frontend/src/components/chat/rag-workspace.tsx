@@ -46,6 +46,7 @@ import type {
   RAGCitationResponse,
   RAGErrorResponse,
 } from "@/types/rag";
+import type { AgentResearchResponse } from "@/types/agent-harness";
 
 type DocumentApiError = {
   detail?:
@@ -74,6 +75,7 @@ type ChatArtifact = {
 };
 
 type ChatTurn = {
+  agentTrace?: Pick<AgentResearchResponse, "trace_id" | "cost_usd" | "cost_basis" | "steps">;
   artifacts?: ChatArtifact[];
   id: string;
   mode: ChatMode;
@@ -428,6 +430,7 @@ export function RAGWorkspace({
     useState("");
   const [webMode, setWebMode] =
     useState<"auto" | "off" | "on" | "deep">("auto");
+  const [researchAgentEnabled, setResearchAgentEnabled] = useState(false);
 
   const [
     workspaceHydrated,
@@ -551,6 +554,9 @@ export function RAGWorkspace({
     abortRef.current?.abort();
 
     setChatMode(nextMode);
+    if (nextMode !== "knowledge") {
+      setResearchAgentEnabled(false);
+    }
 
     window.dispatchEvent(
       new CustomEvent(
@@ -1818,6 +1824,43 @@ export function RAGWorkspace({
         return;
       }
 
+      if (researchAgentEnabled) {
+        const agentResponse = await fetch("/api/agent-harness/research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: effectiveQuestion,
+            document_ids: attachedDocument ? [attachedDocument.id] : [],
+          }),
+          signal: controller.signal,
+        });
+        const agentData = await agentResponse.json() as
+          | AgentResearchResponse
+          | RAGErrorResponse;
+        if (!agentResponse.ok || !("trace_id" in agentData)) {
+          throw new Error(getRagErrorMessage(agentData as RAGErrorResponse));
+        }
+        const agentResult = agentData as AgentResearchResponse;
+        setTurns((current) => current.map((turn) =>
+          turn.id === turnId
+            ? {
+                ...turn,
+                loading: false,
+                streamedAnswer: agentResult.answer,
+                result: agentResult,
+                agentTrace: {
+                  trace_id: agentResult.trace_id,
+                  cost_usd: agentResult.cost_usd,
+                  cost_basis: agentResult.cost_basis,
+                  steps: agentResult.steps,
+                },
+                error: "",
+              }
+            : turn,
+        ));
+        return;
+      }
+
       let conversationId =
         knowledgeConversationId;
 
@@ -2438,6 +2481,33 @@ export function RAGWorkspace({
               Knowledge
             </button>
           </div>
+          {chatMode === "knowledge" && (
+            <div className="ml-2 flex items-center gap-1">
+              <button
+                type="button"
+                aria-pressed={researchAgentEnabled}
+                disabled={ragLoading}
+                onClick={() => setResearchAgentEnabled((current) => !current)}
+                title="Run Knowledge questions through the bounded, traced research agent"
+                className={[
+                  "rounded-full border px-2.5 py-1.5 text-[10px] font-semibold transition sm:px-3",
+                  researchAgentEnabled
+                    ? "border-[var(--aq-cyan)] bg-[var(--aq-blue-soft)] text-[var(--aq-blue)]"
+                    : "border-[var(--aq-border)] text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
+                ].join(" ")}
+              >
+                <span className="hidden sm:inline">Research Agent</span>
+                <span className="sm:hidden">Agent</span>
+                <span>{researchAgentEnabled ? "On" : "Off"}</span>
+              </button>
+              <a
+                href="/agent-harness"
+                className="hidden rounded-full px-2 py-1.5 text-[10px] font-semibold text-[var(--aq-muted)] hover:text-[var(--aq-text)] sm:inline-flex"
+              >
+                Traces
+              </a>
+            </div>
+          )}
         </div>
 
         {!hasConversation ? (
@@ -2588,6 +2658,35 @@ export function RAGWorkspace({
 
                         {turn.result && (
                           <div className="rounded-2xl border border-[var(--aq-border)] bg-[var(--aq-card-strong)] p-5">
+                            {turn.agentTrace && (
+                              <div className="mb-4 rounded-xl border border-[var(--aq-border)] bg-[var(--aq-card)] p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs font-semibold text-[var(--aq-text)]">
+                                    Research Agent · {turn.agentTrace.steps.length} steps
+                                  </p>
+                                  <a
+                                    href="/agent-harness"
+                                    className="text-[10px] font-semibold text-[var(--aq-blue)] hover:underline"
+                                  >
+                                    Open trace viewer
+                                  </a>
+                                </div>
+                                <p className="mt-1 text-[10px] text-[var(--aq-muted)]">
+                                  Trace {turn.agentTrace.trace_id} · estimated {turn.agentTrace.cost_usd.toFixed(6)} USD · {turn.agentTrace.cost_basis.replaceAll("_", " ")}
+                                </p>
+                                <ol className="mt-3 flex flex-wrap gap-1.5">
+                                  {turn.agentTrace.steps.map((step) => (
+                                    <li
+                                      key={step.id}
+                                      className="rounded-md border border-[var(--aq-border)] px-2 py-1 text-[9px] text-[var(--aq-muted)]"
+                                    >
+                                      {step.step_type.replaceAll("_", " ")}
+                                      {step.tool_name ? " · " + step.tool_name : ""}
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
                             <MarkdownMessage
                               content={
                                 turn.result
