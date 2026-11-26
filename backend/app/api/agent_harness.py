@@ -140,6 +140,8 @@ def runs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AgentRunSummaryResponse]:
+    if not settings.AGENT_HARNESS_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
     response.headers.update(PRIVATE_HEADERS)
     return [_run_summary(run) for run in list_agent_runs(db, user_id=str(user.id), limit=limit)]
 
@@ -151,6 +153,8 @@ def run_detail(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentRunDetailResponse:
+    if not settings.AGENT_HARNESS_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
     response.headers.update(PRIVATE_HEADERS)
     run = get_agent_run(db, user_id=str(user.id), run_id=run_id)
     if run is None:
