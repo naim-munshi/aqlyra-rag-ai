@@ -1,3 +1,4 @@
+from app.models.agent_trace import AgentDailyUsage, AgentRun, AgentStep
 from app.models.cloud_upload_intent import CloudUploadIntent
 from app.models.conversation import Conversation
 from app.models.conversation_document import ConversationDocument
@@ -16,6 +17,9 @@ from app.models.study_case import StudyCase, StudyCaseDocument, StudyResearchRep
 from app.models.user import User
 
 __all__ = [
+    "AgentDailyUsage",
+    "AgentRun",
+    "AgentStep",
     "CloudUploadIntent",
     "Conversation",
     "ConversationDocument",
