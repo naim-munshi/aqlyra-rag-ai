@@ -22,6 +22,8 @@ The agent does not accept arbitrary tool names, URLs, SQL, shell commands, brows
 
 All routes are under `/api/v1/agent-harness` and require the normal Aqlyra access token.
 
+Even when the global feature flag is enabled, every agent route also requires the authenticated immutable user UUID to appear in `AGENT_HARNESS_ALLOWED_USER_IDS`. The setting is a comma-separated UUID allowlist; an empty or non-matching list denies access with HTTP 403. This is the canary gate and applies to research, usage and trace reads.
+
 - `POST /research`: run one bounded research request.
 - `GET /runs?limit=20`: list the authenticated user's recent runs.
 - `GET /runs/{run_id}`: fetch one of that user's traces.
@@ -60,6 +62,7 @@ Important accounting limitation: the current cost number covers measured languag
 The feature stays off by default. Enable it only after applying the additive Alembic migration and confirming the active provider's published input/output price per one million tokens:
 
 - `AGENT_HARNESS_ENABLED=true`
+- `AGENT_HARNESS_ALLOWED_USER_IDS=<comma-separated immutable user UUIDs>` (required for canary access; empty means deny all)
 - `AGENT_INPUT_PRICE_PER_1M_USD=<current provider input price>`
 - `AGENT_OUTPUT_PRICE_PER_1M_USD=<current provider output price>`
 - `AGENT_DAILY_BUDGET_USD=0.25` (example daily ceiling)
