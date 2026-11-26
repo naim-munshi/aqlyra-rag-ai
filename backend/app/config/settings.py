@@ -195,6 +195,15 @@ class Settings(BaseSettings):
     BROWSER_AGENT_HTML_CANARY_ON_STARTUP: bool = False
     BROWSER_AGENT_ALLOWED_HOSTS: str = ""
     WEB_RESEARCH_ENABLED: bool = False
+    # Knowledge research-agent harness stays off until provider pricing is explicitly configured.
+    AGENT_HARNESS_ENABLED: bool = False
+    AGENT_DAILY_BUDGET_USD: float = Field(default=0.25, gt=0, le=100)
+    AGENT_INPUT_PRICE_PER_1M_USD: float | None = Field(default=None, ge=0, le=1000)
+    AGENT_OUTPUT_PRICE_PER_1M_USD: float | None = Field(default=None, ge=0, le=1000)
+    AGENT_MAX_INPUT_TOKENS: int = Field(default=12_000, ge=1_000, le=100_000)
+    AGENT_MAX_OUTPUT_TOKENS: int = Field(default=2_000, ge=100, le=20_000)
+    AGENT_MAX_STEPS: int = Field(default=7, ge=5, le=7)
+    AGENT_MAX_RETRIEVALS: int = Field(default=3, ge=1, le=3)
     # Public research is never allowed to exhaust chat latency through
     # automatic provider retries. Override explicitly only after staging.
     WEB_RESEARCH_LLM_MAX_RETRIES: int = Field(default=0, ge=0, le=2)
