@@ -6,7 +6,7 @@ from app.config.settings import settings
 from app.api.v1 import health as health_module
 
 
-EXPECTED_HEAD = "a1f8c6d2e904"
+EXPECTED_HEAD = "f6a9b2c4d8e1"
 
 
 class _Scalar:
@@ -23,19 +23,24 @@ class _Scalar:
 class _Database:
     def __init__(
         self, revision, schema, full_schema=True, fit_columns=True,
-        refresh_sessions_ready=True,
+        refresh_sessions_ready=True, agent_tables_ready=True,
     ):
         self.revision = revision
         self.schema = schema
         self.full_schema = full_schema
         self.fit_columns = fit_columns
         self.refresh_sessions_ready = refresh_sessions_ready
+        self.agent_tables_ready = agent_tables_ready
         self.closed = False
 
     def execute(self, query):
         sql = str(query)
         if "alembic_version" in sql:
             return _Scalar(self.revision)
+        if all(name in sql for name in (
+            "agent_runs", "agent_steps", "agent_daily_usage",
+        )):
+            return _Scalar(self.agent_tables_ready)
         if "refresh_sessions" in sql:
             return _Scalar(self.refresh_sessions_ready)
         if "information_schema.columns" in sql:
@@ -54,7 +59,7 @@ class _Database:
 
 def _prepare(
     monkeypatch, tmp_path, *, revision, schema, full_schema=True,
-    fit_columns=True, refresh_sessions_ready=True,
+    fit_columns=True, refresh_sessions_ready=True, agent_tables_ready=True,
 ):
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
@@ -62,6 +67,7 @@ def _prepare(
     fake = _Database(
         revision, schema, full_schema=full_schema, fit_columns=fit_columns,
         refresh_sessions_ready=refresh_sessions_ready,
+        agent_tables_ready=agent_tables_ready,
     )
     monkeypatch.setattr(health_module, "SessionLocal", lambda: fake)
     return fake
@@ -163,6 +169,20 @@ def test_readiness_rejects_refresh_head_without_study_tables(
     )
     response = client.get("/api/v1/readiness")
     assert response.status_code == 503
+    assert db.closed
+
+
+def test_readiness_rejects_agent_head_with_missing_agent_harness_tables(
+    client, monkeypatch, tmp_path,
+):
+    db = _prepare(
+        monkeypatch, tmp_path, revision=EXPECTED_HEAD,
+        schema=True, full_schema=True, fit_columns=True,
+        agent_tables_ready=False,
+    )
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service is not ready"}
     assert db.closed
 
 

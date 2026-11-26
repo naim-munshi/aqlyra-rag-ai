@@ -29,6 +29,10 @@ from app.services.web_research_capability import public_web_research_status
 
 router = APIRouter()
 
+# Production may run either the pre-agent schema or the current additive
+# agent-harness head during a rolling deployment.
+SUPPORTED_PRODUCTION_SCHEMA_HEADS = {"a1f8c6d2e904", "f6a9b2c4d8e1"}
+
 
 def _validated_render_revision() -> dict[str, str]:
     """Expose only a valid Git SHA; never publish arbitrary environment text.
@@ -85,9 +89,9 @@ def readiness():
             # Login, email verification and Google login all persist a refresh
             # session. Older Core/Study Fit revisions are not ready for this
             # API even when their other tables and columns are present.
-            if version != "a1f8c6d2e904":
+            if version not in SUPPORTED_PRODUCTION_SCHEMA_HEADS:
                 raise RuntimeError("Aqlyra database revision is not current")
-            if version in ("d4ec2f9b7860", "0bd6703bf8a4", "a1f8c6d2e904"):
+            if version in ("d4ec2f9b7860", "0bd6703bf8a4", "a1f8c6d2e904", "f6a9b2c4d8e1"):
                 check_stage = "schema_full_additive"
                 full_tables_ready = db.execute(
                     text(
@@ -101,7 +105,7 @@ def readiness():
                 if not full_tables_ready:
                     raise RuntimeError("Aqlyra additive schema tables are unavailable")
 
-            if version in ("0bd6703bf8a4", "a1f8c6d2e904"):
+            if version in ("0bd6703bf8a4", "a1f8c6d2e904", "f6a9b2c4d8e1"):
                 check_stage = "schema_study_fit"
                 fit_columns_ready = db.execute(
                     text(
@@ -118,6 +122,19 @@ def readiness():
                 ).scalar_one()
                 if not fit_columns_ready:
                     raise RuntimeError("Aqlyra study fit schema is unavailable")
+
+            if version == "f6a9b2c4d8e1":
+                check_stage = "schema_agent_harness"
+                agent_harness_tables_ready = db.execute(
+                    text(
+                        "SELECT "
+                        "to_regclass('public.agent_runs') IS NOT NULL "
+                        "AND to_regclass('public.agent_steps') IS NOT NULL "
+                        "AND to_regclass('public.agent_daily_usage') IS NOT NULL"
+                    )
+                ).scalar_one()
+                if not agent_harness_tables_ready:
+                    raise RuntimeError("Aqlyra agent harness schema is unavailable")
 
             check_stage = "schema_refresh_sessions"
             refresh_sessions_ready = db.execute(
