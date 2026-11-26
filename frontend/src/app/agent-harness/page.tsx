@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type {
   AgentApiError,
@@ -56,7 +56,7 @@ export default function AgentHarnessPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadUsage() {
+  const loadUsage = useCallback(async () => {
     try {
       const response = await fetch("/api/agent-harness/usage?days=14", {
         cache: "no-store",
@@ -68,9 +68,9 @@ export default function AgentHarnessPage() {
     } catch {
       // The run list remains useful when the daily roll-up is unavailable.
     }
-  }
+  }, []);
 
-  async function loadRuns() {
+  const loadRuns = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -83,16 +83,17 @@ export default function AgentHarnessPage() {
         return;
       }
       setRuns(data);
-      if (selected) {
-        const refreshed = data.find((item) => item.id === selected.id);
-        if (!refreshed) setSelected(null);
-      }
+      setSelected((current) =>
+        current && !data.some((item) => item.id === current.id)
+          ? null
+          : current,
+      );
     } catch {
       setError("Trace service is unavailable.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   async function openRun(runId: string) {
     setDetailLoading(true);
@@ -122,9 +123,8 @@ export default function AgentHarnessPage() {
       void loadUsage();
     }, 0);
     // This page is an on-demand trace viewer; no background polling.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [loadRuns, loadUsage]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6">
