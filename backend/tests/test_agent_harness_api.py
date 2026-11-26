@@ -64,7 +64,10 @@ def upload_and_process(
 def test_agent_trace_endpoints_are_owner_scoped_and_private(
     client: TestClient,
     db_session: Session,
+    monkeypatch,
 ) -> None:
+    # Trace reads are intentionally gated in production until the agent is enabled.
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ENABLED", True)
     owner_id, owner_headers = create_account(
         client, username="agenttraceowner", email="agenttraceowner@example.org",
     )
