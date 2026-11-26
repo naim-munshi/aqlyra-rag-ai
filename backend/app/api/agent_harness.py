@@ -24,6 +24,22 @@ from app.services.agent_harness_service import (
 router = APIRouter(prefix="/agent-harness", tags=["Agent Harness"])
 PRIVATE_HEADERS = {"Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie"}
 
+def _require_agent_access(user: User) -> None:
+    if not settings.AGENT_HARNESS_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+
+    allowed_user_ids = {
+        item.strip()
+        for item in settings.AGENT_HARNESS_ALLOWED_USER_IDS.split(",")
+        if item.strip()
+    }
+    if not allowed_user_ids or str(user.id) not in allowed_user_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="Knowledge research agent is not enabled for this account.",
+        )
+
+
 
 def _step_response(step: AgentStep) -> AgentTraceStepResponse:
     return AgentTraceStepResponse(
@@ -55,8 +71,7 @@ def research(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentResearchResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     try:
         result = run_research_agent(
             db=db, user_id=str(user.id), question=request.question,
