@@ -84,7 +84,7 @@ def research(
             chunk_level=source.chunk_level, chunk_index=source.chunk_index,
             source_label=source.source_label, section_path=list(source.section_path),
             start_page=source.start_page, end_page=source.end_page,
-            similarity_score=source.similarity_score, excerpt=source.content,
+            similarity_score=source.similarity_score, excerpt=redact_pii(source.content),
             was_truncated=source.was_truncated,
         )
         for source in answer.citations
