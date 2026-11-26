@@ -26,7 +26,8 @@ PRIVATE_HEADERS = {"Cache-Control": "private, no-store, max-age=0", "Vary": "Coo
 
 
 def _require_agent_access(user: User) -> None:
-    _require_agent_access(user)
+    if not settings.AGENT_HARNESS_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
 
     allowed_user_ids = {
         item.strip()
