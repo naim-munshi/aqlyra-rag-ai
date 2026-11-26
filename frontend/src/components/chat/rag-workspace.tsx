@@ -2309,7 +2309,9 @@ export function RAGWorkspace({
                       : "border-[var(--aq-border)] text-[var(--aq-muted)] hover:text-[var(--aq-text)]",
                   ].join(" ")}
                 >
-                  Research Agent {researchAgentEnabled ? "On" : "Off"}
+                  <span className="hidden sm:inline">Research Agent</span>
+                  <span className="sm:hidden">Agent</span>
+                  <span>{researchAgentEnabled ? "On" : "Off"}</span>
                 </button>
                 <a
                   href="/agent-harness"
