@@ -26,8 +26,7 @@ PRIVATE_HEADERS = {"Cache-Control": "private, no-store, max-age=0", "Vary": "Coo
 
 
 def _require_agent_access(user: User) -> None:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
 
     allowed_user_ids = {
         item.strip()
@@ -129,8 +128,7 @@ def usage_dashboard(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentUsageDashboardResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     rows = list_agent_daily_usage(db, user_id=str(user.id), days=days)
     return AgentUsageDashboardResponse(
@@ -155,8 +153,7 @@ def runs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AgentRunSummaryResponse]:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     return [_run_summary(run) for run in list_agent_runs(db, user_id=str(user.id), limit=limit)]
 
@@ -168,8 +165,7 @@ def run_detail(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentRunDetailResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     run = get_agent_run(db, user_id=str(user.id), run_id=run_id)
     if run is None:
