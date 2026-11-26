@@ -25,6 +25,22 @@ router = APIRouter(prefix="/agent-harness", tags=["Agent Harness"])
 PRIVATE_HEADERS = {"Cache-Control": "private, no-store, max-age=0", "Vary": "Cookie"}
 
 
+def _require_agent_access(user: User) -> None:
+    if not settings.AGENT_HARNESS_ENABLED:
+        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+
+    allowed_user_ids = {
+        item.strip()
+        for item in settings.AGENT_HARNESS_ALLOWED_USER_IDS.split(",")
+        if item.strip()
+    }
+    if not allowed_user_ids or str(user.id) not in allowed_user_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="Knowledge research agent is not enabled for this account.",
+        )
+
+
 def _step_response(step: AgentStep) -> AgentTraceStepResponse:
     return AgentTraceStepResponse(
         id=step.id, step_index=step.step_index, step_type=step.step_type,
@@ -55,8 +71,7 @@ def research(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentResearchResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     try:
         result = run_research_agent(
             db=db, user_id=str(user.id), question=request.question,
@@ -114,8 +129,7 @@ def usage_dashboard(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentUsageDashboardResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     rows = list_agent_daily_usage(db, user_id=str(user.id), days=days)
     return AgentUsageDashboardResponse(
@@ -140,8 +154,7 @@ def runs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AgentRunSummaryResponse]:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     return [_run_summary(run) for run in list_agent_runs(db, user_id=str(user.id), limit=limit)]
 
@@ -153,8 +166,7 @@ def run_detail(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentRunDetailResponse:
-    if not settings.AGENT_HARNESS_ENABLED:
-        raise HTTPException(status_code=503, detail="Knowledge research agent is disabled.")
+    _require_agent_access(user)
     response.headers.update(PRIVATE_HEADERS)
     run = get_agent_run(db, user_id=str(user.id), run_id=run_id)
     if run is None:

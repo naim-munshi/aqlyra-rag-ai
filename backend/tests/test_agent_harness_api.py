@@ -74,6 +74,9 @@ def test_agent_trace_endpoints_are_owner_scoped_and_private(
     outsider_id, outsider_headers = create_account(
         client, username="agenttraceoutsider", email="agenttraceoutsider@example.org",
     )
+    monkeypatch.setattr(
+        settings, "AGENT_HARNESS_ALLOWED_USER_IDS", f"{owner_id},{outsider_id}",
+    )
     run_id = str(uuid4())
     run = AgentRun(
         id=run_id,
@@ -166,6 +169,33 @@ def test_trace_read_endpoints_fail_closed_when_agent_is_disabled(
         assert "disabled" in response.json()["detail"].lower()
 
 
+def test_agent_harness_requires_explicit_canary_user_allowlist(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ENABLED", True)
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ALLOWED_USER_IDS", "")
+    _, headers = create_account(
+        client, username="agentnotcanary", email="agentnotcanary@example.org",
+    )
+
+    responses = (
+        client.post(
+            "/api/v1/agent-harness/research",
+            headers=headers,
+            json={"question": "What is in my Knowledge base?"},
+        ),
+        client.get("/api/v1/agent-harness/runs", headers=headers),
+        client.get("/api/v1/agent-harness/usage", headers=headers),
+        client.get(f"/api/v1/agent-harness/runs/{uuid4()}", headers=headers),
+    )
+    assert [response.status_code for response in responses] == [403, 403, 403, 403]
+
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ALLOWED_USER_IDS", str(uuid4()))
+    denied = client.get("/api/v1/agent-harness/runs", headers=headers)
+    assert denied.status_code == 403
+
+
 def test_research_endpoint_is_disabled_until_pricing_and_budget_are_configured(
     client: TestClient,
 ) -> None:
@@ -185,7 +215,7 @@ def test_research_agent_returns_cited_answer_and_complete_trace(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    _, headers = create_account(
+    owner_id, headers = create_account(
         client, username="agentgolden", email="agentgolden@example.org",
     )
     document_id = upload_and_process(
@@ -201,6 +231,7 @@ def test_research_agent_returns_cited_answer_and_complete_trace(
     )
 
     monkeypatch.setattr(settings, "AGENT_HARNESS_ENABLED", True)
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ALLOWED_USER_IDS", owner_id)
     monkeypatch.setattr(settings, "AGENT_INPUT_PRICE_PER_1M_USD", 0.15)
     monkeypatch.setattr(settings, "AGENT_OUTPUT_PRICE_PER_1M_USD", 0.60)
     monkeypatch.setattr(settings, "AGENT_DAILY_BUDGET_USD", 0.25)
@@ -253,10 +284,11 @@ def test_research_agent_blocks_prompt_override_before_budget_reservation(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    _, headers = create_account(
+    owner_id, headers = create_account(
         client, username="agentinjection", email="agentinjection@example.org",
     )
     monkeypatch.setattr(settings, "AGENT_HARNESS_ENABLED", True)
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ALLOWED_USER_IDS", owner_id)
     monkeypatch.setattr(
         agent_service, "_reserve_daily_budget",
         lambda *args: (_ for _ in ()).throw(AssertionError("budget must not be reserved")),
