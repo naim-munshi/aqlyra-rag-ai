@@ -116,10 +116,14 @@ export default function AgentHarnessPage() {
   }
 
   useEffect(() => {
-    void loadRuns();
-    void loadUsage();
+    // Defer initial network loading until after the effect commit.
+    const timer = window.setTimeout(() => {
+      void loadRuns();
+      void loadUsage();
+    }, 0);
     // This page is an on-demand trace viewer; no background polling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
