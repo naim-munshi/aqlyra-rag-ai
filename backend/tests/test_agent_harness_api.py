@@ -169,7 +169,6 @@ def test_trace_read_endpoints_fail_closed_when_agent_is_disabled(
         assert "disabled" in response.json()["detail"].lower()
 
 
-
 def test_agent_harness_requires_explicit_canary_user_allowlist(
     client: TestClient,
     monkeypatch,
