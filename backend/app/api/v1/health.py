@@ -90,9 +90,10 @@ def readiness():
                 "b5e4a019dc72",
                 "d4ec2f9b7860",
                 "0bd6703bf8a4",  # reviewed additive Study Program Fit migration
+                "f6a9b2c4d8e1",  # additive Agent Harness trace/cost schema
             ):
                 raise RuntimeError("Aqlyra database revision is not current")
-            if version in ("d4ec2f9b7860", "0bd6703bf8a4"):
+            if version in ("d4ec2f9b7860", "0bd6703bf8a4", "f6a9b2c4d8e1"):
                 check_stage = "schema_full_additive"
                 full_tables_ready = db.execute(
                     text(
@@ -106,7 +107,7 @@ def readiness():
                 if not full_tables_ready:
                     raise RuntimeError("Aqlyra additive schema tables are unavailable")
 
-            if version == "0bd6703bf8a4":
+            if version in ("0bd6703bf8a4", "f6a9b2c4d8e1"):
                 check_stage = "schema_study_fit"
                 fit_columns_ready = db.execute(
                     text(
@@ -123,6 +124,19 @@ def readiness():
                 ).scalar_one()
                 if not fit_columns_ready:
                     raise RuntimeError("Aqlyra study fit schema is unavailable")
+
+            if version == "f6a9b2c4d8e1":
+                check_stage = "schema_agent_harness"
+                agent_tables_ready = db.execute(
+                    text(
+                        "SELECT "
+                        "to_regclass('public.agent_runs') IS NOT NULL "
+                        "AND to_regclass('public.agent_steps') IS NOT NULL "
+                        "AND to_regclass('public.agent_daily_usage') IS NOT NULL"
+                    )
+                ).scalar_one()
+                if not agent_tables_ready:
+                    raise RuntimeError("Aqlyra Agent Harness schema is unavailable")
 
             check_stage = "schema_core"
             core_schema_ready = db.execute(
