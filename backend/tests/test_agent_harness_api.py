@@ -1,9 +1,9 @@
-from datetime import date\nfrom uuid import uuid4
+from datetime import date
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
 from app.config.settings import settings
 from app.core.rate_limit import limit_rag_request
 from app.main import app
