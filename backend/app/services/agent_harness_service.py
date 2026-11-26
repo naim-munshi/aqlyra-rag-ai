@@ -253,7 +253,8 @@ def run_research_agent(
         ))
 
         plan_started = time.perf_counter()
-        allowed_retrievals = min(settings.AGENT_MAX_RETRIEVALS, settings.AGENT_MAX_STEPS - 4)\n        queries = build_research_plan(safe_question, allowed_retrievals)
+        allowed_retrievals = min(settings.AGENT_MAX_RETRIEVALS, settings.AGENT_MAX_STEPS - 4)
+        queries = build_research_plan(safe_question, allowed_retrievals)
         steps.append(_step(
             run_id=run_id, index=1, step_type="plan",
             input_summary={"goal": safe_question},
