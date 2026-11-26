@@ -197,6 +197,8 @@ class Settings(BaseSettings):
     WEB_RESEARCH_ENABLED: bool = False
     # Knowledge research-agent harness stays off until provider pricing is explicitly configured.
     AGENT_HARNESS_ENABLED: bool = False
+    # Immutable user UUIDs allowed to run the agent or view its traces; empty denies all.
+    AGENT_HARNESS_ALLOWED_USER_IDS: str = ""
     AGENT_DAILY_BUDGET_USD: float = Field(default=0.25, gt=0, le=100)
     AGENT_INPUT_PRICE_PER_1M_USD: float | None = Field(default=None, ge=0, le=1000)
     AGENT_OUTPUT_PRICE_PER_1M_USD: float | None = Field(default=None, ge=0, le=1000)
