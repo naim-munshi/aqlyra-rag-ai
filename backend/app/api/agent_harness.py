@@ -18,7 +18,7 @@ from app.schemas.agent_harness import (
 from app.schemas.rag import RAGCitationResponse, RAGUsageResponse
 from app.services.agent_harness_service import (
     AgentBudgetExceeded, AgentBudgetUnavailable, AgentInputRejected,
-    get_agent_run, list_agent_daily_usage, list_agent_runs, run_research_agent,
+    get_agent_run, list_agent_daily_usage, list_agent_runs, redact_pii, run_research_agent,
 )
 
 router = APIRouter(prefix="/agent-harness", tags=["Agent Harness"])
