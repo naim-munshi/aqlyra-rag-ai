@@ -173,7 +173,8 @@ def test_research_agent_returns_cited_answer_and_complete_trace(
         content=(
             "# Support hours\n\n"
             "Aqlyra test support hours are Monday to Friday, "
-            "09:30 to 17:30 Japan Standard Time."
+            "09:30 to 17:30 Japan Standard Time. "
+            "Privacy test contact: qa-agent@example.org or +1 415 555 0123."
         ),
     )
 
@@ -209,6 +210,9 @@ def test_research_agent_returns_cited_answer_and_complete_trace(
 
     assert payload["trace_id"]
     assert payload["citation_count"] >= 1
+    excerpts = " ".join(item["excerpt"] for item in payload["citations"])
+    assert "qa-agent@example.org" not in excerpts
+    assert "+1 415 555 0123" not in excerpts
     assert payload["is_refusal"] is False
     assert payload["cost_usd"] >= 0
     assert payload["cost_basis"] in {
