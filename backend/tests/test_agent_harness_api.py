@@ -147,6 +147,25 @@ def test_agent_trace_endpoints_are_owner_scoped_and_private(
     assert unauthenticated.status_code == 401
 
 
+def test_trace_read_endpoints_fail_closed_when_agent_is_disabled(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "AGENT_HARNESS_ENABLED", False)
+    _, headers = create_account(
+        client, username="agenttracedisabled", email="agenttracedisabled@example.org",
+    )
+    paths = (
+        "/api/v1/agent-harness/runs",
+        "/api/v1/agent-harness/usage",
+        f"/api/v1/agent-harness/runs/{uuid4()}",
+    )
+    for path in paths:
+        response = client.get(path, headers=headers)
+        assert response.status_code == 503, response.text
+        assert "disabled" in response.json()["detail"].lower()
+
+
 def test_research_endpoint_is_disabled_until_pricing_and_budget_are_configured(
     client: TestClient,
 ) -> None:
