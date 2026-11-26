@@ -63,7 +63,7 @@ test("trace viewer surfaces owner trace summaries and individual execution steps
   assert.match(tracePage, /selected\.steps\.map/);
   assert.match(tracePage, /Only your own traces are shown/);
   assert.match(tracePage, /Daily agent spend/);
-  assert.match(tracePage, /Embeddings.*not itemized/);
+  assert.match(tracePage, /Embedding.*not itemized/);
   assert.match(usageRoute, /getAccessToken\(\)/);
   assert.match(usageRoute, /privateJsonResponse\(/);
   assert.match(usageRoute, /agent-harness\/usage/);
