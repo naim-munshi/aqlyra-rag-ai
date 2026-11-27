@@ -1,3 +1,7 @@
+import json
+from uuid import uuid4
+
+import pytest
 """End-to-end artifacts authorization, real bytes, and formula safety."""
 from io import BytesIO
 from types import SimpleNamespace
@@ -243,3 +247,340 @@ def test_artifact_storage_quota_is_atomic(tmp_path, monkeypatch):
     assert results.count(True) == 2
     assert results.count(False) == 10
     assert len(artifact_storage.list_artifacts(user_id=owner)) == 2
+
+
+def test_private_neon_object_artifacts_are_owner_scoped_and_cleaned(tmp_path, monkeypatch):
+    import json
+    from io import BytesIO
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, *, Bucket, Key, Body, ContentType, CacheControl):
+            self.objects[(Bucket, Key)] = (
+                Body if isinstance(Body, bytes) else Body.read(),
+                ContentType,
+            )
+
+        def get_object(self, *, Bucket, Key):
+            if (Bucket, Key) not in self.objects:
+                error = RuntimeError("missing synthetic object")
+                error.response = {
+                    "Error": {"Code": "NoSuchKey"},
+                    "ResponseMetadata": {"HTTPStatusCode": 404},
+                }
+                raise error
+            body, _ = self.objects[(Bucket, Key)]
+            return {"Body": BytesIO(body), "ContentLength": len(body)}
+
+        def list_objects_v2(self, *, Bucket, Prefix, MaxKeys):
+            keys = sorted(
+                key for bucket, key in self.objects
+                if bucket == Bucket and key.startswith(Prefix)
+            )[:MaxKeys]
+            return {
+                "Contents": [{"Key": key} for key in keys],
+                "IsTruncated": False,
+            }
+
+        def delete_object(self, *, Bucket, Key):
+            self.objects.pop((Bucket, Key), None)
+
+    owner = str(uuid4())
+    other_user = str(uuid4())
+    fake = FakeS3()
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "test-access")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(settings, "LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED", False)
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
+    monkeypatch.setattr(artifact_storage, "_s3_client", lambda: fake)
+
+    item = artifact_storage.create_artifact(
+        user_id=owner, title="Private report", kind="md",
+        content="# Private report\n\nNever expose this to another account.",
+        provider_name="synthetic-test", source_document_ids=[], citation_count=0,
+    )
+    assert item["owner_id"] == owner
+    assert item["sha256"]
+    assert artifact_storage.read_artifact(
+        user_id=owner, artifact_id=item["id"]
+    )["content"].startswith("# Private report")
+    assert artifact_storage.read_artifact(
+        user_id=other_user, artifact_id=item["id"]
+    ) is None
+    assert artifact_storage.list_artifacts(user_id=other_user) == []
+    assert len(artifact_storage.list_artifacts(user_id=owner)) == 1
+    assert all(
+        key.startswith(f"artifacts/{owner}/")
+        for bucket, key in fake.objects
+    )
+    assert artifact_storage.delete_artifact(
+        user_id=other_user, artifact_id=item["id"]
+    ) is False
+
+    downloaded = artifact_storage.artifact_download(
+        user_id=owner, artifact_id=item["id"]
+    )
+    assert downloaded is not None
+    path, metadata = downloaded
+    assert path.read_bytes() == b"# Private report\n\nNever expose this to another account."
+    assert metadata["sha256"] == item["sha256"]
+    artifact_storage.cleanup_artifact_download(path)
+    assert not path.exists()
+
+    assert artifact_storage.delete_artifact(
+        user_id=owner, artifact_id=item["id"]
+    ) is True
+    assert artifact_storage.read_artifact(
+        user_id=owner, artifact_id=item["id"]
+    ) is None
+    assert fake.objects == {}
+
+
+def test_private_object_artifact_quota_and_provider_failure_fail_closed(monkeypatch):
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, *, Bucket, Key, Body, ContentType, CacheControl):
+            self.objects[(Bucket, Key)] = (
+                Body if isinstance(Body, bytes) else Body.read(), ContentType
+            )
+
+        def list_objects_v2(self, *, Bucket, Prefix, MaxKeys):
+            keys = sorted(
+                key for bucket, key in self.objects
+                if bucket == Bucket and key.startswith(Prefix)
+            )[:MaxKeys]
+            return {"Contents": [{"Key": key} for key in keys], "IsTruncated": False}
+
+        def delete_object(self, *, Bucket, Key):
+            self.objects.pop((Bucket, Key), None)
+
+        def get_object(self, *, Bucket, Key):
+            raise AssertionError("This quota test should not need to read objects")
+
+    owner = str(uuid4())
+    fake = FakeS3()
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "test-access")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
+    monkeypatch.setattr(artifact_storage, "MAX_ARTIFACTS_PER_USER", 1)
+    monkeypatch.setattr(artifact_storage, "_s3_client", lambda: fake)
+
+    artifact_storage.create_artifact(
+        user_id=owner, title="One", kind="md", content="# One",
+        provider_name="test", source_document_ids=[], citation_count=0,
+    )
+    with pytest.raises(artifact_storage.ArtifactQuotaError):
+        artifact_storage.create_artifact(
+            user_id=owner, title="Two", kind="md", content="# Two",
+            provider_name="test", source_document_ids=[], citation_count=0,
+        )
+
+    class BrokenS3:
+        def list_objects_v2(self, **kwargs):
+            return {"Contents": [], "IsTruncated": False}
+
+        def put_object(self, **kwargs):
+            raise RuntimeError("provider error must not escape")
+
+        def delete_object(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(artifact_storage, "_s3_client", lambda: BrokenS3())
+    # Even with the old ephemeral test switch set, an explicitly configured
+    # private provider failure must not fall back to an ephemeral disk.
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", True)
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="Private artifact write failed"):
+        artifact_storage.create_artifact(
+            user_id=str(uuid4()), title="No fallback", kind="md", content="# No fallback",
+            provider_name="test", source_document_ids=[], citation_count=0,
+        )
+
+
+
+def test_private_storage_mode_keeps_preexisting_local_artifacts_visible(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, *, Bucket, Key, Body, ContentType, CacheControl):
+            self.objects[(Bucket, Key)] = (
+                Body if isinstance(Body, bytes) else Body.read(), ContentType,
+            )
+
+        def list_objects_v2(self, *, Bucket, Prefix, MaxKeys):
+            keys = sorted(
+                key for bucket, key in self.objects
+                if bucket == Bucket and key.startswith(Prefix)
+            )[:MaxKeys]
+            return {
+                "Contents": [{"Key": key} for key in keys],
+                "IsTruncated": False,
+            }
+
+        def get_object(self, *, Bucket, Key):
+            if (Bucket, Key) not in self.objects:
+                error = RuntimeError("missing")
+                error.response = {"Error": {"Code": "NoSuchKey"}}
+                raise error
+            body, _ = self.objects[(Bucket, Key)]
+            return {"Body": BytesIO(body), "ContentLength": len(body)}
+
+        def delete_object(self, *, Bucket, Key):
+            self.objects.pop((Bucket, Key), None)
+
+    owner = str(uuid4())
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", False)
+    local = artifact_storage.create_artifact(
+        user_id=owner, title="Earlier local report", kind="md",
+        content="# Earlier local report",
+        provider_name="old-release", source_document_ids=[], citation_count=0,
+    )
+    # Simulate metadata written by the pre-object-storage release.
+    local_record = (
+        tmp_path / "artifact-workspace" / owner / (local["id"] + ".json")
+    )
+    legacy_metadata = json.loads(local_record.read_text(encoding="utf-8"))
+    legacy_metadata.pop("owner_id", None)
+    legacy_metadata.pop("storage_backend", None)
+    local_record.write_text(
+        json.dumps(legacy_metadata), encoding="utf-8",
+    )
+
+    fake = FakeS3()
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "LOCAL_UPLOAD_DURABLE_STORAGE_VERIFIED", False)
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", False)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "test-access")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(artifact_storage, "_s3_client", lambda: fake)
+
+    remote = artifact_storage.create_artifact(
+        user_id=owner, title="New remote report", kind="md",
+        content="# New remote report",
+        provider_name="new-release", source_document_ids=[], citation_count=0,
+    )
+
+    listing = artifact_storage.list_artifacts(user_id=owner)
+    ids = {entry["id"] for entry in listing}
+    assert ids == {local["id"], remote["id"]}
+    assert artifact_storage.read_artifact(
+        user_id=owner, artifact_id=local["id"]
+    )["content"] == "# Earlier local report"
+    old_download = artifact_storage.artifact_download(
+        user_id=owner, artifact_id=local["id"]
+    )
+    assert old_download is not None
+    assert old_download[0].read_bytes() == b"# Earlier local report"
+    assert artifact_storage.delete_artifact(
+        user_id=owner, artifact_id=local["id"]
+    )
+    assert artifact_storage.read_artifact(
+        user_id=owner, artifact_id=remote["id"]
+    )["content"] == "# New remote report"
+
+
+def test_private_artifact_listing_fails_closed_when_s3_pagination_is_truncated(monkeypatch):
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    class TruncatedS3:
+        def list_objects_v2(self, **kwargs):
+            return {"Contents": [], "IsTruncated": True}
+
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "test-access")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(artifact_storage, "_s3_client", lambda: TruncatedS3())
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="listing was truncated"):
+        artifact_storage.list_artifacts(user_id=str(uuid4()))
+
+
+def test_artifact_routes_report_storage_outage_as_503_not_missing(client, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+
+    import app.api.artifacts as artifact_api
+
+    owner = _auth(client, "artifactstorageoutage")
+
+    def unavailable(**kwargs):
+        raise artifact_api.ArtifactStorageError("synthetic storage outage")
+
+    monkeypatch.setattr(artifact_api, "list_artifacts", unavailable)
+    response = client.get("/api/v1/artifacts", headers=owner)
+    assert response.status_code == 503
+
+    monkeypatch.setattr(artifact_api, "read_artifact", unavailable)
+    response = client.get("/api/v1/artifacts/" + str(uuid4()), headers=owner)
+    assert response.status_code == 503
+
+    monkeypatch.setattr(artifact_api, "delete_artifact", unavailable)
+    response = client.delete("/api/v1/artifacts/" + str(uuid4()), headers=owner)
+    assert response.status_code == 503
+
+
+
+def test_selected_but_incomplete_private_backend_does_not_fall_back_to_local(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from app.config.settings import settings
+    from app.services import artifact_storage
+
+    owner = str(uuid4())
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://test.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    monkeypatch.setattr(settings, "EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED", True)
+
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="Durable artifact storage"):
+        artifact_storage.create_artifact(
+            user_id=owner, title="Must not fallback", kind="md", content="# No fallback",
+            provider_name="test", source_document_ids=[], citation_count=0,
+        )
+    with pytest.raises(artifact_storage.ArtifactStorageError, match="misconfigured"):
+        artifact_storage.list_artifacts(user_id=owner)

@@ -23,6 +23,7 @@ from app.core.rate_limit import get_rate_limit_redis
 from app.services.storage_durability_policy import (
     artifact_writes_permitted,
     local_writes_permitted,
+    private_object_storage_configured,
 )
 from app.services.web_research_capability import public_web_research_status
 
@@ -229,7 +230,9 @@ def readiness():
             # cloud object write: it only describes the selected code path.
             # Core deliberately has no remote artifact/cloud-upload settings.
             "artifact_storage": (
-                "ready" if local_writes_permitted()
+                "private_object_storage_configured"
+                if private_object_storage_configured()
+                else "ready" if local_writes_permitted()
                 else "ephemeral_test_only" if artifact_writes_permitted()
                 else "writes_disabled"
             ),

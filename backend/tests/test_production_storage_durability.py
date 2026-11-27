@@ -40,6 +40,31 @@ def test_core_does_not_fake_remote_artifact_support(ephemeral_production):
     assert not artifact_writes_permitted()
 
 
+def test_configured_private_object_storage_enables_artifacts_without_enabling_uploads(
+    ephemeral_production, monkeypatch,
+):
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://bucket.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "synthetic-access")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "synthetic-secret")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    assert artifact_writes_permitted()
+    assert not local_writes_permitted()
+
+
+def test_incomplete_private_object_storage_does_not_enable_artifacts(
+    ephemeral_production, monkeypatch,
+):
+    monkeypatch.setattr(settings, "PRIVATE_OBJECT_STORAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "AWS_ENDPOINT_URL_S3", "https://bucket.aws.neon.tech")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "")
+    monkeypatch.setattr(settings, "AWS_REGION", "us-east-2")
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_BUCKET", "aqlyra-private-test")
+    assert not artifact_writes_permitted()
+
+
 def test_development_local_uploads_remain_usable(ephemeral_production, monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "development")
     assert local_writes_permitted()
