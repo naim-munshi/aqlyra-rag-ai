@@ -17,7 +17,7 @@ def inventory():
     postgres["config"]["source"] = {"image": "pgvector/pgvector:pg16"}
     postgres["volumes"] = [{"mountPath": "/var/lib/postgresql/data", "state": "live"}]
     backend = service("aqlyra-backend")
-    backend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.CORE_BRANCH, "commitSha": SHA}
+    backend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.RELEASE_BRANCH, "commitSha": SHA}
     backend["volumes"] = [{"mountPath": "/app/uploads", "state": "live"}]
     backend["variableNames"] = sorted(gate.REQUIRED_BACKEND_VARIABLE_NAMES)
     frontend = service("aqlyra-frontend")
