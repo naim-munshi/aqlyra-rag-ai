@@ -104,54 +104,61 @@ Use test accounts only. Verify:
 The automated smoke test cannot prove these authenticated or provider-backed
 flows work. All must pass before public launch.
 
-## GitHub main branch protection (owner-only setting)
+## GitHub branch protection (main + release candidates)
 
-The [Always-on Merge Gate](../.github/workflows/merge-gate.yml) runs on
-**every** pull request to `main`, including documentation-only changes.
-It checks offline security tests, operational scripts, Markdown links,
-and the production Compose network/storage contract. This makes it a
-safe **required status check**: path-filtered CI jobs cannot be
-required for all PRs because some changes do not trigger them.
+Last direct ruleset inspection (2026-11-27) found the active
+`aqlyra-main-production-gate` ruleset (ID `25905480`) on `main`.
+It has 11 required job contexts and deletion/non-fast-forward protections,
+but currently requires **0 approving reviews**. It is therefore not yet
+sufficient for independent release review.
 
-**Repository owner action (cannot be completed by this connector):**
+The release candidate must have its **own active branch ruleset** as well.
+The read-only `scripts/ops/release_gate.py` now fails closed unless:
 
-1. Open **Settings → Rules → Rulesets → New branch ruleset** in GitHub.
-2. Give it the name `Protect Aqlyra main`, set enforcement **Active**,
-   and target the `main` branch.
-3. Enable **Require a pull request before merging**, **Require status
-   checks to pass**, **Block force pushes** and **Restrict deletions**.
-4. Choose exactly `Always-on Merge Gate` as the required job after
-   it has run successfully. Optionally require conversation resolution.
-5. As a solo developer, do not require one external approval unless a
-   separate reviewer is available. Review the rule before saving so
-   the repository owner does not lock out their own merge workflow.
-6. Confirm `main` is protected; no rule is considered active until
-   GitHub reports it as such.
+- `main` is protected by an active ruleset with at least one approval and
+  all 11 main required job contexts;
+- the exact release branch reports `protected=true` and is covered by an
+  active release ruleset with at least one approval, deletion and
+  non-fast-forward protection, and all 13 release contexts;
+- the exact current commit SHA has successful backend, frontend, dependency,
+  security, documentation, merge-gate and native ARM64 workflow runs.
 
-For changes to code, inspect the additional backend, frontend,
-dependency-audit and native ARM64 checks before merging. Some of these
-workflows use path filters and therefore are **not** guaranteed to
-appear on documentation-only pull requests.
+**Repository owner action (GitHub Settings; cannot be completed by this
+connector):**
 
-## Release and rollback
+1. Edit `aqlyra-main-production-gate` and set at least one independent
+   approving review. Keep its 11 existing required job contexts, deletion
+   restriction, non-fast-forward restriction and empty bypass list.
+2. Create a separate active branch ruleset named
+   `aqlyra-release-branches-gate`, targeting
+   `refs/heads/release/**` (or the exact approved candidate branch).
+3. Require a pull request, at least one independent approving review,
+   stale-approval dismissal, deletion and non-fast-forward protection.
+   Keep bypass permissions empty.
+4. Require all 13 release job contexts listed in
+   `docs/GITHUB_RULESET.md`, including PostgreSQL 18 and frontend
+   CSRF/XSS regression.
+5. Confirm the ruleset actually matches
+   `release/study-abroad-included-20261129` and the branch API reports
+   it as protected. Do not mark it protected based only on a successful CI run.
 
-Record the deployed Git SHA, Docker image digests, current Alembic revision,
-and the timestamp/location of the latest verified off-host backup. Before
-deploying a migration, rehearse its forward and recovery behavior on staging.
+The frontend, ARM64 predeploy, documentation and Always-on Merge Gate
+workflows now trigger for both pushes to and PRs targeting `release/**`.
+A standard-library regression test verifies this coverage. This is necessary
+because the release gate requires these job contexts on the exact candidate
+SHA; workflows that only run on `main` would leave release checks permanently
+missing.
 
-Deploy by pinned, reviewed commits, not by force-pushing `main`.
-GitHub `main` branch protection was not enabled as of this audit; configure
-the required CI status checks and merge policy before an unrestricted
-production release. On a release
-failure, stop accepting new writes, inspect service health, and restore a
-**verified** snapshot when schema or data rollback is necessary. Restoring the
-database and upload archive replaces current data and can lose writes since
-the backup; do not run restore automatically. Never execute `docker compose
-down -v` on a persistent environment.
+Run offline checks in the candidate checkout:
 
-After successful deployment, rerun the smoke check and manually verify
-critical authenticated flows. Promote to production only when all release
-checks have recorded evidence.
+```bash
+python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v
+python3 scripts/ops/release_gate.py --json
+```
+
+The script reports `production_approved=false` even when automation passes.
+HTTPS staging, real-provider research/RAG, two-user isolation, backups,
+restore rehearsals and owner approval remain separate release requirements.
 
 ## Reverse-proxy hardening
 

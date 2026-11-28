@@ -17,11 +17,11 @@ def inventory():
     postgres["config"]["source"] = {"image": "pgvector/pgvector:pg16"}
     postgres["volumes"] = [{"mountPath": "/var/lib/postgresql/data", "state": "live"}]
     backend = service("aqlyra-backend")
-    backend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.CORE_BRANCH, "commitSha": SHA}
+    backend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.RELEASE_BRANCH, "commitSha": SHA}
     backend["volumes"] = [{"mountPath": "/app/uploads", "state": "live"}]
-    backend["variableNames"] = sorted(gate.REQUIRED_BACKEND_VARIABLE_NAMES)
+    backend["variableNames"] = sorted(gate.REQUIRED_BACKEND_VARIABLE_NAMES | {"TAVILY_API_KEY"})
     frontend = service("aqlyra-frontend")
-    frontend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.CORE_BRANCH, "commitSha": SHA}
+    frontend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.RELEASE_BRANCH, "commitSha": SHA}
     frontend["variableNames"] = sorted(gate.REQUIRED_FRONTEND_VARIABLE_NAMES)
     frontend["domains"]["serviceDomains"] = [{"domain": "example.up.railway.app"}]
     return {"storageSecurity": {"backendUploadRWAsUID10001Verified": True, "backendRunningAsRoot": False},
@@ -80,6 +80,21 @@ class TestRailwayStagingGate(unittest.TestCase):
         errors = gate.assess(data, SHA)
         self.assertTrue(any("not live" in e for e in errors))
         self.assertTrue(any("SUCCESS" in e for e in errors))
+
+    def test_study_abroad_research_provider_is_required(self):
+        data = inventory()
+        names = data["services"][1]["variableNames"]
+        names.remove("TAVILY_API_KEY")
+        errors = gate.assess(data, SHA)
+        self.assertTrue(any("Study Abroad source research" in e for e in errors))
+
+    def test_private_searxng_is_an_accepted_research_provider(self):
+        data = inventory()
+        names = data["services"][1]["variableNames"]
+        names.remove("TAVILY_API_KEY")
+        names.extend(["SEARXNG_BASE_URL", "SEARXNG_SERVICE_TOKEN"])
+        errors = gate.assess(data, SHA)
+        self.assertFalse(any("Study Abroad source research" in e for e in errors))
 
     def test_unscoped_repository_fails(self):
         data = inventory()

@@ -1,6 +1,7 @@
 """Offline checks for the Aqlyra release decision gate."""
 from __future__ import annotations
 
+import copy
 import importlib.util
 import pathlib
 import unittest
@@ -16,7 +17,7 @@ class ReleaseGateTests(unittest.TestCase):
     def setUp(self):
         self.sha = "a" * 40
         self.main = {"protected": True, "commit": {"sha": "b" * 40}}
-        self.release = {"commit": {"sha": self.sha}}
+        self.release = {"protected": True, "commit": {"sha": self.sha}}
         self.rulesets = [{
             "target": "branch",
             "enforcement": "active",
@@ -36,6 +37,14 @@ class ReleaseGateTests(unittest.TestCase):
                 }},
             ],
         }]
+        release_ruleset = copy.deepcopy(self.rulesets[0])
+        release_ruleset["conditions"]["ref_name"]["include"] = [
+            "refs/heads/" + gate.RELEASE_BRANCH
+        ]
+        release_ruleset["rules"][3]["parameters"]["required_status_checks"] = [
+            {"context": context} for context in gate.RELEASE_CHECK_CONTEXTS
+        ]
+        self.rulesets.append(release_ruleset)
         self.runs = {
             "workflow_runs": [
                 {
@@ -121,10 +130,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("Required CI not green" in x for x in errors))
 
-    def test_release_gate_defaults_to_scoped_core_branch(self):
+    def test_release_gate_defaults_to_study_abroad_included_candidate(self):
         self.assertEqual(
             gate.RELEASE_BRANCH,
-            "release/core-without-study-abroad-20261027",
+            "release/study-abroad-included-20261129",
         )
 
     def test_cli_respects_candidate_branch_and_uses_exact_sha(self):
@@ -144,9 +153,18 @@ class ReleaseGateTests(unittest.TestCase):
             if path == "/actions/runs?branch=release-candidate-test&per_page=100":
                 return self.runs
             if path == "/rulesets":
-                return [{"id": 42, "target": "branch", "enforcement": "active"}]
+                return [
+                    {"id": 42, "target": "branch", "enforcement": "active"},
+                    {"id": 43, "target": "branch", "enforcement": "active"},
+                ]
             if path == "/rulesets/42":
                 return self.rulesets[0]
+            if path == "/rulesets/43":
+                ruleset = copy.deepcopy(self.rulesets[1])
+                ruleset["conditions"]["ref_name"]["include"] = [
+                    "refs/heads/release-candidate-test"
+                ]
+                return ruleset
             raise AssertionError("Unexpected API path: " + path)
 
         stream = io.StringIO()
@@ -165,6 +183,55 @@ class ReleaseGateTests(unittest.TestCase):
             "/actions/runs?branch=release-candidate-test&per_page=100",
             calls,
         )
+
+    def test_unprotected_release_branch_fails_even_with_all_checks_green(self):
+        self.release["protected"] = False
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("Release branch is NOT branch protected" in x for x in errors))
+
+    def test_main_ruleset_alone_does_not_protect_release_candidate(self):
+        self.rulesets = [self.rulesets[0]]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
+    def test_release_ruleset_must_require_postgres_matrix_and_frontend_security(self):
+        required = self.rulesets[1]["rules"][3]["parameters"]["required_status_checks"]
+        required.pop()
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
+    def test_release_exclusion_glob_cannot_exclude_candidate(self):
+        self.rulesets[1]["conditions"]["ref_name"]["exclude"] = [
+            "refs/heads/release/*"
+        ]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
+    def test_release_ruleset_must_cover_the_exact_candidate_branch(self):
+        self.rulesets[1]["conditions"]["ref_name"]["include"] = [
+            "refs/heads/release-other-branch"
+        ]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
+    def test_release_wildcard_ruleset_covers_candidate(self):
+        self.rulesets[1]["conditions"]["ref_name"]["include"] = [
+            "refs/heads/release/**"
+        ]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertTrue(ok)
+        self.assertEqual(errors, [])
+
+    def test_release_ruleset_requires_independent_approval(self):
+        self.rulesets[1]["rules"][2]["parameters"]["required_approving_review_count"] = 0
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
 
     def test_branch_specific_ruleset_does_not_protect_main(self):
         self.rulesets[0]["conditions"]["ref_name"]["include"] = [

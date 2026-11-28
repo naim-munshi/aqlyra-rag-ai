@@ -35,6 +35,6 @@ AI providers require separate opt-in configuration. Tests may use deterministic 
 - `GET /api/v1/readiness`: dependency checks; no raw secrets.
 - `GET /api/v1/metrics`: operational metrics per security configuration.
 
-Deployment branch: `release/core-without-study-abroad-20261027`. Verify the exact Render deployed SHA before claiming a code change is live. Never merge to protected `main` without approval. Browser Agent disabled by default; the keyless search backend must not replace Tavily until broad, cited live tests pass.
+Current full-scope source candidate: `release/study-abroad-included-20261129` (Study Abroad included). It is based on the historical `release/core-without-study-abroad-20261027` release line; that legacy name does not mean Study Abroad is excluded from the candidate code. This branch is not proof of a Render deployment. Verify the exact Render deployed SHA and run Study Abroad/auth/RAG staging E2E before claiming backend parity. Never merge to protected `main` without independent review and owner approval. Browser Agent remains disabled by default; the keyless search backend must not replace Tavily until broad, cited live tests pass.
 
 See [full acceptance](../docs/RELEASE_ACCEPTANCE.md), [demo script](../docs/PRODUCT_DEMO_AND_ACCEPTANCE.md) and [recorded status](../docs/PRODUCTION_STATUS_2026-10-31.md).

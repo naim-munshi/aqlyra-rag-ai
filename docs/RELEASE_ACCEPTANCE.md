@@ -5,7 +5,7 @@
 **Repository:** `naim-munshi/aqlyra-rag-ai` only. This is the **full-stack**
 application, not the separate `aqlyrax` Vercel portfolio demonstration.
 
-**Source candidate:** `release/core-without-study-abroad-20261027`, selectively integrated from Draft PR #35 and verified on its own PR. The Study Abroad feature is deferred on its original development branches. The reviewed core requires GitHub Ruleset approval and staging acceptance. Production is **not** live until all external
+**Source candidate:** `release/study-abroad-included-20261129`, based on the existing release line after Agent Harness PRs #235, #236, and #237. Study Abroad API, models, schemas, migration, validation, and frontend are **included**. The legacy `release/core-without-study-abroad-20261027` name is historical and does not define the current product scope. This candidate still requires exact-head CI, enforced independent review, and staging acceptance. Production is **not** approved until all external
 acceptance gates below are verified on the exact release commit.
 
 ## What the automated checks have established
@@ -13,7 +13,7 @@ acceptance gates below are verified on the exact release commit.
 The integration branch has a CI-backed baseline for Python/Postgres,
 JavaScript/Next.js, high-severity Python SAST, audited dependency pins, an ARM64 Caddy -> Next.js ->
 FastAPI -> Postgres/Redis smoke, fresh-volume Docker readiness,
-owner-scoped RAG/auth, generated Office files, and browser-agent fail-closed behavior. Study Abroad is explicitly excluded from this release. **Always verify the current head's checks**,
+owner-scoped RAG/auth, generated Office files, and browser-agent fail-closed behavior. Study Abroad is included and requires its own owner-isolation, evidence-provenance, and provider-backed workflow acceptance. **Always verify the current head's checks**,
 not the earlier passing SHA. A mocked LLM response is not proof of
 provider-backed factual accuracy, and a disposable backup is not a
 production off-host restore test.
@@ -58,9 +58,10 @@ passport scans, raw user messages or medical records).
 | Google sign-in | Actual authorized Google Client ID; verified audience/issuer/subject flow; refuse invalid credentials |
 | JWT revocation | Copied token rejected after logout/reset; other user remains logged in |
 | Private RAG | Real-file ingest/OCR/embedding, retrieval quality with cited answers; no cross-user documents in responses; unsupported claims refused |
+| Study Abroad source research | In isolated staging, explicitly enable `WEB_RESEARCH_ENABLED` and configure `TAVILY_API_KEY` or authenticated `SEARXNG_BASE_URL` + `SEARXNG_SERVICE_TOKEN`; verify opt-in profile consent, official-source filtering, citations, freshness, abstention and two-account ownership |
 | AI Files | Create and download actual DOCX/XLSX/PPTX/PDF/MD, enforce cross-account 404, delete/version, require fresh consent whenever source selection changes |
 | Browser Agent | Remain production-disabled until separate OS/container isolation, egress firewall, durable approvals, prompt injection/SSRF review |
-| Migrations | Rehearse `f18a3c42e917` on a **restored disposable database** with backed-up uploads, not a live wipe. The Study Abroad migration `d4ec2f9b7860` must not ship in this scoped release. |
+| Migrations | Rehearse `f18a3c42e917` on a **restored disposable database** with backed-up uploads, not a live wipe. The Study Abroad migration `d4ec2f9b7860` is included in this release scope. Rehearse it only on a restored disposable database and verify Study Abroad tables, owner isolation, and API/UI compatibility before production rollout. |
 | Backups | Encrypt and test an off-host backup (Postgres + uploads + private artifacts) and record RPO/RTO/retention/restore owner |
 | Language rendering | Inspect Japanese, Bangla, Arabic and mixed-script files on real Office/PDF clients; PDF glyph/shaping support may fail |
 | Performance | Synthetic load, p95 latency, error/rate-limit behavior, memory/CPU quotas and provider spend |
@@ -107,7 +108,7 @@ before collecting any new sensitive files.
   unlimited artifact generation, true background job queues,
   source-specific visa guarantees and unrestricted browser automation
   are out of scope for the pre-production core.
-- Study Abroad (API, frontend, models, migration and source-validation code) is deferred and must be brought back through a separate PR with explicit review and provider-backed acceptance.
+- Study Abroad is included in this candidate. Admission/visa outcomes are never guaranteed; source provenance, freshness, evidence citations, owner isolation, and unsupported-question abstention require provider-backed acceptance.
 - `main` remains protected; a reviewed PR and verified staging evidence are required before merge or production rollout.
 
 ## Incident and rollback contacts

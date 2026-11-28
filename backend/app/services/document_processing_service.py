@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.datetime_utils import utc_now_naive
@@ -110,26 +110,47 @@ def process_document(
     verified_source_path: Path | None = None,
     claimed_for_worker: bool = False,
 ) -> Document:
-    if document.status == "ready":
-        raise DocumentProcessingConflictError(
-            "Document has already been processed"
-        )
-
-    if document.status in {"processing", "queued"} and not (
-        claimed_for_worker and document.status == "processing"
-    ):
-        raise DocumentProcessingConflictError(
-            f"Document is currently {document.status}"
-        )
-
     document_id = document.id
 
-    document.status = "processing"
-    document.error_message = None
-
-    try:
+    if claimed_for_worker:
+        # The durable queue has already claimed this row under
+        # SELECT ... FOR UPDATE SKIP LOCKED. Re-check the persisted state
+        # before doing any destructive chunk/unit replacement.
+        db.refresh(document)
+        if document.status != "processing":
+            raise DocumentProcessingConflictError(
+                "The background processing claim is no longer active"
+            )
+    else:
+        # Manual requests must acquire the same database-level state
+        # transition as the queue. A read-then-write check is racy: a queue
+        # worker could claim the row after this request reads "uploaded".
+        claimed_id = db.execute(
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.status.in_(("uploaded", "failed")),
+            )
+            .values(
+                status="processing",
+                error_message=None,
+                processed_at=None,
+            )
+            .returning(Document.id)
+        ).scalar_one_or_none()
+        if claimed_id is None:
+            db.rollback()
+            if document.status == "ready":
+                raise DocumentProcessingConflictError(
+                    "Document has already been processed"
+                )
+            raise DocumentProcessingConflictError(
+                "Document is already queued or being processed"
+            )
         db.commit()
         db.refresh(document)
+
+    try:
 
         if document.storage_path.startswith("cloud://"):
             if verified_source_path is None or not verified_source_path.is_file():

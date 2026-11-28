@@ -43,6 +43,29 @@ def safe_index_failure_reason(exc: Exception) -> str:
         return "pdf_raster_limit"
     return "document_parse_error_other"
 
+def safe_worker_error_diagnostics(exc: Exception) -> dict[str, object]:
+    """Expose only safe PostgreSQL diagnostics; never log SQL or exception text."""
+    original = getattr(exc, "orig", None)
+    sqlstate = None
+    if original is not None:
+        for attribute in ("sqlstate", "pgcode"):
+            candidate = getattr(original, attribute, None)
+            if (
+                isinstance(candidate, str)
+                and len(candidate) == 5
+                and candidate.isascii()
+                and candidate.isalnum()
+            ):
+                sqlstate = candidate.upper()
+                break
+    return {
+        "sqlstate": sqlstate or "unavailable",
+        "connection_invalidated": bool(
+            getattr(exc, "connection_invalidated", False)
+        ),
+    }
+
+
 log = logging.getLogger(__name__)
 # Keep the background queue aligned with the actual parser registry.
 # Images are processed with bounded OCR, not synthetic embeddings.
@@ -227,25 +250,47 @@ class KnowledgeIndexWorker:
             target=self._loop, daemon=True, name="aqlyra-knowledge-index",
         )
         self._thread.start()
+        log.info(
+            "knowledge_worker_started poll_interval_seconds=%s",
+            settings.KNOWLEDGE_INDEX_POLL_SECONDS,
+        )
 
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=3)
+            log.info("knowledge_worker_stopped")
 
     def _loop(self) -> None:
         # Reclaim stale work every 30 minutes, not every poll.
         last_reclaim = None
+        last_idle_log = None
         while not self._stop.is_set():
+            phase = "reclaim_stale_processing"
             try:
                 now = utc_now_naive()
                 if last_reclaim is None or now - last_reclaim > timedelta(minutes=30):
                     with SessionLocal() as db:
                         reclaim_stale_processing(db)
                     last_reclaim = now
+                phase = "claim_and_process_document"
                 if run_one_index_job():
+                    last_idle_log = None
                     continue
+                if (
+                    last_idle_log is None
+                    or now - last_idle_log >= timedelta(minutes=1)
+                ):
+                    log.info("knowledge_worker_idle")
+                    last_idle_log = now
             except Exception as exc:
-                log.warning("knowledge_worker_unavailable error_type=%s",
-                            type(exc).__name__)
+                diagnostics = safe_worker_error_diagnostics(exc)
+                log.warning(
+                    "knowledge_worker_unavailable phase=%s error_type=%s "
+                    "sqlstate=%s connection_invalidated=%s",
+                    phase,
+                    type(exc).__name__,
+                    diagnostics["sqlstate"],
+                    diagnostics["connection_invalidated"],
+                )
             self._stop.wait(settings.KNOWLEDGE_INDEX_POLL_SECONDS)

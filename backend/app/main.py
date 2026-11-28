@@ -11,6 +11,7 @@ from app.services.web_research_capability import public_web_research_status
 _knowledge_worker = KnowledgeIndexWorker()
 from app.middleware.auth_body_limit import AuthenticationBodyLimitMiddleware
 from app.middleware.json_body_limit import JsonBodyLimitMiddleware
+from app.middleware.multipart_body_limit import MultipartBodyLimitMiddleware
 from app.middleware.chat_concurrency import ChatConcurrencyMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.observability import (
@@ -53,6 +54,11 @@ app.add_middleware(
 # Separate, bounded direct-Render ingress for other JSON payloads.
 # Last middleware is outermost in Starlette; auth requests bypass this one.
 app.add_middleware(JsonBodyLimitMiddleware)
+app.add_middleware(
+    MultipartBodyLimitMiddleware,
+    max_body_bytes=(settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024) + (64 * 1024),
+    upload_path=f"{settings.API_V1_STR}/documents/upload",
+)
 
 app.include_router(
     api_router,

@@ -8,6 +8,7 @@ outside this script: do not interpret success as permission to deploy.
 from __future__ import annotations
 
 import argparse
+from fnmatch import fnmatchcase
 import json
 import os
 import sys
@@ -16,7 +17,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 REPO = "naim-munshi/aqlyra-rag-ai"
-RELEASE_BRANCH = "release/core-without-study-abroad-20261027"
+RELEASE_BRANCH = "release/study-abroad-included-20261129"
 REQUIRED = frozenset({
     "Backend Tests",
     "Frontend and Deployment Checks",
@@ -42,6 +43,13 @@ CHECK_CONTEXTS = frozenset({
     "High-severity Python SAST",
 })
 
+# Release-specific rulesets additionally require the full PostgreSQL matrix and
+# the frontend CSRF/XSS boundary suite.
+RELEASE_CHECK_CONTEXTS = CHECK_CONTEXTS | frozenset({
+    "Python 3.13 / PostgreSQL 18",
+    "Frontend CSRF, XSS and proxy security regression",
+})
+
 def github_api(path: str) -> dict | list:
     """Access only canonical GitHub API resources, never user-supplied URLs."""
     url = "https://api.github.com/repos/" + REPO + path
@@ -60,8 +68,22 @@ def github_api(path: str) -> dict | list:
     return result
 
 
-def verified_main_ruleset(rulesets: list[dict]) -> bool:
-    """Require enforced default-branch reviews, status checks and ref safety."""
+def _pattern_matches_targets(pattern: str, targets: set[str]) -> bool:
+    """Evaluate a GitHub ref pattern against the exact target ref(s)."""
+    if pattern == "~ALL":
+        return True
+    if pattern == "~DEFAULT_BRANCH":
+        return "refs/heads/main" in targets
+    return any(
+        target.startswith("refs/heads/") and fnmatchcase(target, pattern)
+        for target in targets
+    )
+
+
+def _verified_ruleset_for_targets(
+    rulesets: list[dict], targets: set[str], required_contexts: frozenset[str]
+) -> bool:
+    """Require active review, CI, deletion and non-fast-forward rules for a ref."""
     for ruleset in rulesets:
         if not isinstance(ruleset, dict):
             continue
@@ -70,8 +92,9 @@ def verified_main_ruleset(rulesets: list[dict]) -> bool:
         refs = (ruleset.get("conditions") or {}).get("ref_name") or {}
         includes = set(refs.get("include") or [])
         excludes = set(refs.get("exclude") or [])
-        targets = {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}
-        if not includes.intersection(targets) or excludes.intersection(targets):
+        if not any(_pattern_matches_targets(item, targets) for item in includes):
+            continue
+        if any(_pattern_matches_targets(item, targets) for item in excludes):
             continue
         rules = {
             rule.get("type"): rule for rule in (ruleset.get("rules") or [])
@@ -91,13 +114,28 @@ def verified_main_ruleset(rulesets: list[dict]) -> bool:
             item.get("context") for item in checks
             if isinstance(item, dict) and isinstance(item.get("context"), str)
         }
-        if CHECK_CONTEXTS.issubset(contexts):
+        if required_contexts.issubset(contexts):
             return True
     return False
 
 
+def verified_main_ruleset(rulesets: list[dict]) -> bool:
+    """Require an enforced ruleset for the default main branch."""
+    return _verified_ruleset_for_targets(
+        rulesets, {"refs/heads/main", "~DEFAULT_BRANCH", "~ALL"}, CHECK_CONTEXTS
+    )
+
+
+def verified_release_ruleset(rulesets: list[dict], branch_name: str) -> bool:
+    """Require an enforced ruleset that explicitly covers this release branch."""
+    return _verified_ruleset_for_targets(
+        rulesets, {"refs/heads/" + branch_name, "~ALL"}, RELEASE_CHECK_CONTEXTS
+    )
+
+
 def evaluate(
-    main: dict, release: dict, runs: dict, rulesets: list[dict] | None = None
+    main: dict, release: dict, runs: dict, rulesets: list[dict] | None = None,
+    release_branch: str = RELEASE_BRANCH,
 ) -> tuple[bool, list[str], str]:
     errors: list[str] = []
     sha = release.get("commit", {}).get("sha", "")
@@ -109,6 +147,13 @@ def evaluate(
     if not verified_main_ruleset(rulesets or []):
         errors.append(
             "No verified active main ruleset enforcing reviews, all required "
+            "job checks, deletion and force-push restrictions"
+        )
+    if release.get("protected") is not True:
+        errors.append("Release branch is NOT branch protected: enforce required reviews and checks")
+    if not verified_release_ruleset(rulesets or [], release_branch):
+        errors.append(
+            "No verified active release ruleset enforcing reviews, all required "
             "job checks, deletion and force-push restrictions"
         )
     if main.get("commit", {}).get("sha") == sha:
@@ -152,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Machine-readable result")
     parser.add_argument(
         "--release-branch", default=RELEASE_BRANCH,
-        help="Exact GitHub release-candidate branch to verify (default: core release without Study Abroad)",
+        help="Exact GitHub release-candidate branch to verify (default: full-scope candidate with Study Abroad included)",
     )
     args = parser.parse_args(argv)
     try:
@@ -177,7 +222,9 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Invalid ruleset details")
         if not isinstance(main_data, dict) or not isinstance(release_data, dict) or not isinstance(run_data, dict):
             raise ValueError("Invalid GitHub metadata")
-        ok, errors, sha = evaluate(main_data, release_data, run_data, rulesets)
+        ok, errors, sha = evaluate(
+            main_data, release_data, run_data, rulesets, args.release_branch
+        )
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, KeyError) as exc:
         ok, errors, sha = False, ["GitHub verification unavailable: " + type(exc).__name__], ""
     report = {
@@ -189,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         "errors": errors,
         "manual_approval_required": [
             "Owner approval and enforced main branch ruleset",
+            "Enforced release-branch ruleset with an independent approval and 13 exact required contexts",
             "Real HTTPS staging with Google, SMTP, LLM and embeddings",
             "DB migrations verified on a restored disposable dataset",
             "Cross-tenant auth/RAG and consent tests with real providers",

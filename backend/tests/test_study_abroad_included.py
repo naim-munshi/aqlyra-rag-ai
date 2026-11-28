@@ -1,4 +1,4 @@
-"""Study Abroad route activation in the scoped Core backend (schema already migrated)."""
+"""Study Abroad route and model registration are included in the unified release scope."""
 from app.database.base import Base
 
 def test_study_abroad_route_is_registered(client):
