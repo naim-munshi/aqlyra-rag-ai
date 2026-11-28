@@ -17,6 +17,8 @@ The existing branch name `release/core-without-study-abroad-20261027` is legacy 
 - Updated GitHub ruleset documentation to match the last observed active ruleset state: 11 required job contexts are present, but required approving reviews are set to zero.
 - Updated README and backend handoff text to distinguish source scope from actual deployed state.
 - Restored the authenticated Study Abroad page, bounded BFF API proxy, workspace UI, sidebar navigation, and feature documentation into the candidate; changed the upload error copy to avoid a deployment-specific file-size promise.
+- Added explicit WEB_RESEARCH_ENABLED/provider configuration requirements to the staging validator and production env template; research remains default-off until staging acceptance.
+- Recorded that advanced Study Fit, Program Research and Evidence Brief APIs are not yet exposed by dedicated UI controls.
 
 ## Remaining blockers not safely changeable from this code PR
 
@@ -26,7 +28,7 @@ The existing branch name `release/core-without-study-abroad-20261027` is legacy 
 | Render backend | Live deployment SHA/workspace not freshly accessible | Confirm exact deployed commit, migration head, API health, provider connectivity |
 | Neon database | Live schema/role/RLS not accessible through current connector | Confirm current Alembic head, owner isolation, production role and RLS policies |
 | Railway staging | Only `aqlyra-voice-worker` present and Offline; no full stack | Provision/verify API, frontend, PostgreSQL/pgvector, Redis and private storage |
-| Study Abroad | Included in code scope; production journey not independently accepted | Run source-grounded program research, case CRUD, file/evidence ownership and two-user privacy E2E |
+| Study Abroad | Student Journey UI restored; advanced Study Fit / Program Research / Evidence Brief routes are API-only, not surfaced in the current UI; production journey not independently accepted | Run source-grounded research, case CRUD, file/evidence ownership and two-user privacy E2E; decide whether to add dedicated UI for advanced APIs |
 | Agent Harness | PRs #235–#237 merged on release line; feature defaults OFF | Apply only additive migration on restored disposable DB, set explicit model prices, canary allowlist and test budget/trace privacy |
 | Voice | Railway worker Offline | Restore worker under reviewed config, then run a real LiveKit room/audio/STT/TTS test |
 | Backup/restore | Off-host encrypted DB + object restore not verified | Perform separate encrypted export and isolated restore rehearsal with RPO/RTO |
