@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { hasTrustedRequestOrigin } from "@/lib/security/origin";
+import { readBoundedJson, RequestBodyTooLargeError } from "@/lib/security/request-body";
 
 import { trustedProxyClientIp } from "@/lib/security/client-ip";
 
@@ -9,14 +11,34 @@ import type {
 } from "@/types/auth";
 
 export async function POST(request: Request) {
+  if (!hasTrustedRequestOrigin(request)) {
+    return NextResponse.json(
+      { detail: "Untrusted request origin" },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   let body: LoginInput;
 
   try {
-    body = (await request.json()) as LoginInput;
-  } catch {
+    body = (await readBoundedJson(request)) as LoginInput;
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+    }
     return NextResponse.json(
       { detail: "Invalid request body" },
       { status: 400 },
+    );
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      typeof body.email !== "string" || !body.email.trim() ||
+      typeof body.password !== "string" || !body.password ||
+      (body.remember_me !== undefined && typeof body.remember_me !== "boolean")) {
+    return NextResponse.json(
+      { detail: "Invalid login request" },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
@@ -36,19 +58,35 @@ export async function POST(request: Request) {
       {
         method: "POST",
         headers: backendHeaders,
-        body: JSON.stringify(body),
+        // Persistence is first-party BFF policy, never an auth-provider
+        // permission or an extra field in the password validation request.
+        body: JSON.stringify({
+          email: body.email,
+          password: body.password,
+        }),
         cache: "no-store",
+        // The upstream may cold-start; never leave browser sign-in pending
+        // until the Vercel function's platform timeout.
+        signal: AbortSignal.timeout(45_000),
       },
     );
 
     return await completeAuthentication(
       loginResponse,
       "Login failed",
+      { remember: body.remember_me !== false },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { detail: "Sign-in service is temporarily unavailable. Please retry." },
+        { status: 503, headers: { "Retry-After": "10", "Cache-Control": "private, no-store" } },
+      );
+    }
     return NextResponse.json(
       { detail: "Backend service is unavailable" },
-      { status: 502 },
+      { status: 502, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }
