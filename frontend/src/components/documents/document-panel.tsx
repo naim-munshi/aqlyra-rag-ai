@@ -388,7 +388,7 @@ export function DocumentPanel() {
   }
 
   return (
-    <section className="aq-panel flex min-h-0 flex-col p-4">
+    <section className="aq-panel flex h-full min-h-0 w-full flex-col overflow-hidden p-4">
       <input
         ref={fileInputRef}
         type="file"
@@ -487,7 +487,13 @@ export function DocumentPanel() {
         </div>
       )}
 
-      <div className="aq-scrollbar mt-5 min-h-0 flex-1 overflow-y-auto">
+      <div
+        data-testid="documents-scroll-region"
+        role="region"
+        aria-label="Your documents"
+        tabIndex={0}
+        className="aq-scrollbar mt-5 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y"
+      >
         {loading ? (
           <div className="flex h-full min-h-[220px] flex-col items-center justify-center text-center">
             <LoaderCircle

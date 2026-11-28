@@ -202,3 +202,45 @@ def test_missing_uploaded_original_returns_safe_conflict(
         if item["id"] == document_id
     )
     assert record["status"] == "failed"
+
+
+def test_concurrent_manual_processing_requests_only_claim_document_once(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """A second request cannot replace chunks while the first is processing."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    import app.services.document_processing_service as processing
+
+    headers = create_auth_headers(client)
+    uploaded = upload_test_document(client, headers)
+    assert uploaded.status_code == 201
+    document_id = uploaded.json()["id"]
+
+    original_parse = processing.parse_document
+    parse_started = Event()
+    continue_parse = Event()
+
+    def block_first_parse(*args, **kwargs):
+        parse_started.set()
+        assert continue_parse.wait(timeout=10)
+        return original_parse(*args, **kwargs)
+
+    monkeypatch.setattr(processing, "parse_document", block_first_parse)
+
+    url = f"/api/v1/documents/{document_id}/process"
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first_future = executor.submit(
+            client.post, url, headers=headers,
+        )
+        assert parse_started.wait(timeout=10), "first request never acquired the claim"
+
+        second_response = client.post(url, headers=headers)
+        continue_parse.set()
+        first_response = first_future.result(timeout=20)
+
+    assert second_response.status_code == 409
+    assert first_response.status_code == 200, first_response.text
+    assert first_response.json()["status"] == "ready"
