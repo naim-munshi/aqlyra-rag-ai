@@ -507,3 +507,46 @@ def test_google_sign_in_reclaims_unverified_squatted_email(
 
     assert reclaimed.status_code == 200
     assert attacker_login.status_code == 401
+
+
+
+def test_refresh_ticket_renews_access_and_logout_revokes_it(
+    client: TestClient,
+) -> None:
+    registered = register_user(client)
+    assert registered.status_code == 201
+
+    login = login_user(client)
+    assert login.status_code == 200
+    payload = login.json()
+    access_token = payload["access_token"]
+    refresh_token = payload["refresh_token"]
+    assert isinstance(refresh_token, str) and len(refresh_token) >= 40
+
+    # An access JWT cannot be used as a refresh ticket.
+    wrong_ticket = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": access_token},
+    )
+    assert wrong_ticket.status_code == 401
+
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert refreshed.status_code == 200
+    refreshed_access = refreshed.json()["access_token"]
+    assert refreshed_access != access_token
+
+    logout = client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {refreshed_access}"},
+    )
+    assert logout.status_code == 200
+
+    # Logout increments auth_epoch, invalidating every earlier refresh ticket.
+    revoked = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert revoked.status_code == 401
