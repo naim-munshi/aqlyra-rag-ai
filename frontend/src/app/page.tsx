@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { KnowledgeWorkspace } from "@/components/workspace/knowledge-workspace";
 import { Sidebar } from "@/components/workspace/sidebar";
 import { backendUrl, readJson } from "@/lib/api/backend";
-import { getAccessToken } from "@/lib/auth/session";
+import { getAccessToken, hasRefreshToken } from "@/lib/auth/session";
+import { SessionServiceUnavailable } from "@/components/status/session-service-unavailable";
+import { isValidUserIdentity } from "@/lib/auth/user-response";
 import { unauthenticatedLanding } from "@/lib/deployment/mode";
 import type {
   BackendError,
@@ -11,9 +13,10 @@ import type {
 } from "@/types/auth";
 
 async function getCurrentUser(): Promise<UserResponse | null> {
-  const token = await getAccessToken();
+  const token = await getAccessToken({ allowRefresh: false });
 
   if (!token) {
+    if (await hasRefreshToken()) throw new Error("Session renewal required");
     return null;
   }
 
@@ -26,33 +29,32 @@ async function getCurrentUser(): Promise<UserResponse | null> {
           Authorization: `Bearer ${token}`,
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
       },
     );
 
-    if (!response.ok) {
-      return null;
-    }
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) throw new Error("Aqlyra is temporarily unavailable");
 
     const data =
       await readJson<UserResponse | BackendError>(
         response,
       );
 
-    if (
-      !data ||
-      !("username" in data)
-    ) {
-      return null;
-    }
-
+    if (!isValidUserIdentity(data)) throw new Error("Invalid user response");
     return data;
   } catch {
-    return null;
+    throw new Error("Aqlyra is temporarily unavailable");
   }
 }
 
 export default async function Home() {
-  const user = await getCurrentUser();
+  let user: UserResponse | null;
+  try {
+    user = await getCurrentUser();
+  } catch {
+    return <SessionServiceUnavailable />;
+  }
 
   if (!user) {
     // Portfolio-only builds redirect to the interactive preview, while the
