@@ -54,3 +54,24 @@ def test_readiness_labels_temporary_artifact_mode_without_claiming_durable_uploa
     assert response.status_code == 200
     assert response.json()["checks"]["storage"] == "writes_disabled"
     assert response.json()["checks"]["artifact_storage"] == "ephemeral_test_only"
+
+
+
+def test_readiness_does_not_claim_private_remote_artifacts_are_verified(
+    client, monkeypatch, tmp_path,
+):
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(settings, "ARTIFACT_REMOTE_STORAGE_ENABLED", True)
+    monkeypatch.setattr(health_module, "local_writes_permitted", lambda: False)
+    monkeypatch.setattr(health_module, "artifact_writes_permitted", lambda: True)
+
+    def unexpected_disk_probe(**kwargs):
+        raise AssertionError("Remote artifact mode must not probe local disk")
+
+    monkeypatch.setattr(health_module.tempfile, "NamedTemporaryFile", unexpected_disk_probe)
+    response = client.get("/api/v1/readiness")
+    assert response.status_code == 200
+    assert response.json()["checks"]["storage"] == "writes_disabled"
+    assert response.json()["checks"]["artifact_storage"] == "private_remote_configured_unverified"
