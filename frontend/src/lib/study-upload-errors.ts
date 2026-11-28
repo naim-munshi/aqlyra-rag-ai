@@ -4,7 +4,7 @@ export function studyUploadErrorMessage(status: number): string {
     case 401:
       return "Your session expired. Sign in again before uploading private documents.";
     case 413:
-      return "The upload limit on this path is 3 MiB. Choose a smaller file.";
+      return "The file exceeds the current upload limit. Choose a smaller file.";
     case 415:
       return "Unsupported file format. Use PDF, Word, Excel, PowerPoint or plain text.";
     case 429:
