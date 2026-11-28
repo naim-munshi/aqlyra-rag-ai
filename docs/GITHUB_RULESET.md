@@ -1,18 +1,19 @@
 # GitHub main branch ruleset - owner setup and verification
 
-Status as checked on 2026-10-27: `main` is not protected and there are no
-active repository rulesets. **This requires a GitHub repository administrator's
-explicit action.** GitHub's connected code integration cannot update Rulesets;
-do not confuse an always-on CI job with enforced branch protection.
+Last direct ruleset inspection (2026-11-27) found an active ruleset:
+`aqlyra-main-production-gate` (ID `25905480`), targeting the default branch,
+with 11 required job contexts plus deletion and non-fast-forward restrictions.
+However, its required approving review count is **0**; last-push approval and
+code-owner review are also disabled. Therefore the ruleset is active but does
+**not** enforce the independent review required by this release policy.
+The GitHub connector cannot update Rulesets; a repository administrator must
+change this setting. Do not confuse an active ruleset or green CI with a
+complete release protection gate.
 
-## Owner action - create one enforced ruleset
+## Owner action - complete the existing enforced ruleset
 
 Open https://github.com/naim-munshi/aqlyra-rag-ai/settings/rules.
-**Fastest:** choose **New ruleset > Import a ruleset** and select
-[the ready-to-import Aqlyra ruleset JSON](aqlyra-main.ruleset.json).
-Review all settings and select **Create**. This imports the 11 job checks,
-requires an independent PR review, and enables force-push/deletion protection.
-If import is unavailable, use **New branch ruleset** and the fields below.
+Edit the existing `aqlyra-main-production-gate` ruleset instead of creating a duplicate. Preserve the 11 required job checks and deletion/non-fast-forward restrictions. Set required approving reviews to **at least 1 independent reviewer**, dismiss stale approvals on new commits, and enable last-push approval where supported. Keep bypass permissions empty. The JSON template remains a reference; importing it as a second ruleset is not necessary.
 Do not include an admin bypass; if GitHub rejects any imported field,
 review it explicitly instead of silently downgrading enforcement.
 
@@ -62,14 +63,14 @@ just to obtain a green badge.
 1. Reopen the ruleset; ensure it says **Active** and targets `main`, with
    the exact 11 required job checks, at least one required review, and both
    deletion and force-push restrictions.
-2. Inspect the latest core release PR, excluding Study Abroad, and verify required checks are populated
+2. Inspect the full-scope release candidate PR, including Study Abroad, and verify required checks are populated
    on its **exact current head SHA**, not on a previous commit.
 3. In the intended release branch checkout, use:
    ```sh
    python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v
    python3 scripts/ops/release_gate.py --json
    ```
-   By default the script checks the core release branch. If another
+   By default the script checks the Study-Abroad-included candidate branch. If another
    branch becomes the final candidate, pass
    `--release-branch <exact-branch-name>`; never assume PR #33 is latest.
 4. Expect `production_approved=false` even if the automated release gate
