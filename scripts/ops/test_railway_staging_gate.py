@@ -21,7 +21,7 @@ def inventory():
     backend["volumes"] = [{"mountPath": "/app/uploads", "state": "live"}]
     backend["variableNames"] = sorted(gate.REQUIRED_BACKEND_VARIABLE_NAMES)
     frontend = service("aqlyra-frontend")
-    frontend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.CORE_BRANCH, "commitSha": SHA}
+    frontend["config"]["source"] = {"repo": gate.EXPECTED_REPO, "branch": gate.RELEASE_BRANCH, "commitSha": SHA}
     frontend["variableNames"] = sorted(gate.REQUIRED_FRONTEND_VARIABLE_NAMES)
     frontend["domains"]["serviceDomains"] = [{"domain": "example.up.railway.app"}]
     return {"storageSecurity": {"backendUploadRWAsUID10001Verified": True, "backendRunningAsRoot": False},
