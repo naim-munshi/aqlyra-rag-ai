@@ -2,6 +2,8 @@
 
 **In 30 seconds:** Full-stack, multilingual Knowledge RAG + general AI chat. Next.js/Vercel frontend, FastAPI/Render backend, Neon PostgreSQL + pgvector, Redis and a separate 384D semantic worker. Private Knowledge combines genuine dense and lexical retrieval, RRF fusion, evidence context and traceable citations.
 
+> **Current release-scope decision — 29 November 2026:** Study Abroad is included in the unified candidate `release/study-abroad-included-20261129` (API, models, migration, evidence workflow, tests and frontend). The old `release/core-without-study-abroad-20261027` branch name and earlier scope documents are historical. This source-scope decision is **not** proof that the feature is live on Render; the exact backend deployment SHA and real staging E2E must be verified separately. Agent Harness PRs #235–#237 are present on the release line but the feature remains disabled by default.
+
 **Verified result (10 November 2026):** **1,035 / 1,035 eligible ready chunks indexed** with matching current-model semantic vectors (`bekko-static-multilingual-int8-mrl384-v1`); **7 quarantined answer-key chunks excluded**. This measures **index coverage only**, not precision, grounded-answer accuracy, speedup or user-level E2E reliability.
 
 **Real-model offline benchmark (10 November 2026):** IBM Granite 97M multilingual R2, 384D genuine model weights, **20 English synthetic queries over 30 generated chunks**, Hit Rate@1 **0.90**, Hit Rate@3 **1.00**, MRR@5 **0.933**. This is an **offline dense-only test**, not end-to-end production accuracy or a directly comparable rerun of the historical 70-chunk deterministic baseline. [Measured GitHub Actions run](https://github.com/naim-munshi/aqlyra-rag-ai/actions/runs/42760735012) · [Benchmark methodology PR #176](https://github.com/naim-munshi/aqlyra-rag-ai/pull/176).
@@ -137,7 +139,7 @@ The production stack requires real provider/environment configuration; developme
 
 ## Production safety and release process
 
-- Current backend release: **`release/core-without-study-abroad-20261027`**. Frontend Vercel release: **`release/unified-core-frontend-rag-20261031`**; they are separate release tracks.
+- Current full-scope source candidate: **`release/study-abroad-included-20261129`**. The legacy backend release branch name is not the product scope. Vercel production is independently pinned to its recorded deployment SHA; confirm the current Render SHA before claiming backend parity.
 - Keep protected `main` unchanged unless the repository owner explicitly approves a reviewed merge.
 - Use exact-head GitHub CI, limited-scope PRs, non-destructive deployment, post-deploy HTTP checks and sanitized logs.
 - Never log API tokens, original user messages, private uploaded content or browser approval secrets.
