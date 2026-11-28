@@ -229,7 +229,9 @@ def readiness():
             # cloud object write: it only describes the selected code path.
             # Core deliberately has no remote artifact/cloud-upload settings.
             "artifact_storage": (
-                "ready" if local_writes_permitted()
+                "private_remote_configured_unverified"
+                if settings.ARTIFACT_REMOTE_STORAGE_ENABLED
+                else "ready" if local_writes_permitted()
                 else "ephemeral_test_only" if artifact_writes_permitted()
                 else "writes_disabled"
             ),
