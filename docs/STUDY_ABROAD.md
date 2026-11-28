@@ -15,6 +15,12 @@ It is **not** an immigration law service, licensed adviser, application represen
 - Database migration: `d4ec2f9b7860`.
 - Source files include `backend/app/api/study_abroad.py`, `backend/app/api/study_fit.py`, `backend/app/api/study_evidence_brief.py`, `backend/app/api/study_program_research.py`, and `frontend/src/components/study-abroad/study-abroad-workspace.tsx`.
 
+## Current frontend coverage
+
+The current authenticated workspace exposes student-case CRUD, checklist status/source notes, university shortlist CRUD, opt-in profile research, private document linking/upload, and case-scoped document Q&A.
+
+The backend also registers Study Fit, program requirement suggestions, Program Research, Evidence Brief, and Advisor endpoints. These advanced API capabilities do **not** yet have dedicated controls/results in the current Student Journey workspace. Keep them documented as backend API capabilities only; do not describe them as completed user-facing workflows until the frontend surfaces and end-to-end tests are added.
+
 ## Privacy and data handling
 
 - Every case is owned by the authenticated user. Case, linked-document, research, and shortlist endpoints must enforce that owner relationship server-side.
