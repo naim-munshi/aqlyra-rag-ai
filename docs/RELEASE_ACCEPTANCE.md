@@ -58,6 +58,7 @@ passport scans, raw user messages or medical records).
 | Google sign-in | Actual authorized Google Client ID; verified audience/issuer/subject flow; refuse invalid credentials |
 | JWT revocation | Copied token rejected after logout/reset; other user remains logged in |
 | Private RAG | Real-file ingest/OCR/embedding, retrieval quality with cited answers; no cross-user documents in responses; unsupported claims refused |
+| Study Abroad source research | In isolated staging, explicitly enable `WEB_RESEARCH_ENABLED` and configure `TAVILY_API_KEY` or authenticated `SEARXNG_BASE_URL` + `SEARXNG_SERVICE_TOKEN`; verify opt-in profile consent, official-source filtering, citations, freshness, abstention and two-account ownership |
 | AI Files | Create and download actual DOCX/XLSX/PPTX/PDF/MD, enforce cross-account 404, delete/version, require fresh consent whenever source selection changes |
 | Browser Agent | Remain production-disabled until separate OS/container isolation, egress firewall, durable approvals, prompt injection/SSRF review |
 | Migrations | Rehearse `f18a3c42e917` on a **restored disposable database** with backed-up uploads, not a live wipe. The Study Abroad migration `d4ec2f9b7860` is included in this release scope. Rehearse it only on a restored disposable database and verify Study Abroad tables, owner isolation, and API/UI compatibility before production rollout. |
