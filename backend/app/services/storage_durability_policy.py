@@ -12,9 +12,5 @@ def local_writes_permitted(cfg: Settings = settings) -> bool:
 
 
 def artifact_writes_permitted(cfg: Settings = settings) -> bool:
-    # Explicit owner-approved testing may use disposable local artifact files.
-    # Never mark the mount as durable or allow document uploads as a side effect.
-    return local_writes_permitted(cfg) or (
-        cfg.APP_ENV == "production"
-        and cfg.EPHEMERAL_ARTIFACT_TEST_MODE_ENABLED
-    )
+    # Core never pretends an unavailable remote backend is active.
+    return cfg.ARTIFACT_REMOTE_STORAGE_ENABLED or local_writes_permitted(cfg)
