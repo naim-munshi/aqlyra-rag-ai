@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 REQUIRED = {"aqlyra-backend", "aqlyra-frontend", "aqlyra-postgres-pgvector", "aqlyra-redis"}
-CORE_BRANCH = "release/core-without-study-abroad-20261027"
+RELEASE_BRANCH = "release/study-abroad-included-20261129"
 EXPECTED_REPO = "naim-munshi/aqlyra-rag-ai"
 EXPECTED_ENV = "staging"
 
@@ -90,7 +90,7 @@ def assess(snapshot: dict, commit: str) -> list[str]:
         source = cfg.get("source") or item.get("source") or {}
         if source.get("repo") != EXPECTED_REPO:
             errors.append(name + " GitHub source does not match Aqlyra")
-        if source.get("branch") != CORE_BRANCH:
+        if source.get("branch") != RELEASE_BRANCH:
             errors.append(name + " does not follow scoped core branch")
         if source.get("commitSha") != commit:
             errors.append(name + " is not pinned to expected commit")
@@ -115,8 +115,9 @@ def assess(snapshot: dict, commit: str) -> list[str]:
         missing = required_vars - actual
         if missing:
             errors.append(name + " missing variable names: " + ", ".join(sorted(missing)))
-    if "study-abroad" in " ".join(by_name.keys()).lower():
-        errors.append("Study Abroad is deferred from the scoped release")
+    # Study Abroad is an application feature in the same backend/frontend deployment,
+    # not a separate Railway service. Its API, migration, evidence, and privacy
+    # workflows are verified by the dedicated staging E2E acceptance suite.
 
     return errors
 
