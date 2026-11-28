@@ -16,6 +16,7 @@ The existing branch name `release/core-without-study-abroad-20261027` is legacy 
 - Updated release gate default branch and its unit-test expectation.
 - Updated GitHub ruleset documentation to match the last observed active ruleset state: 11 required job contexts are present, but required approving reviews are set to zero.
 - Updated README and backend handoff text to distinguish source scope from actual deployed state.
+- Restored the authenticated Study Abroad page, bounded BFF API proxy, workspace UI, sidebar navigation, and feature documentation into the candidate; changed the upload error copy to avoid a deployment-specific file-size promise.
 
 ## Remaining blockers not safely changeable from this code PR
 
