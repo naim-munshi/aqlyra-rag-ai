@@ -16,7 +16,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 REPO = "naim-munshi/aqlyra-rag-ai"
-RELEASE_BRANCH = "release/core-without-study-abroad-20261027"
+RELEASE_BRANCH = "release/study-abroad-included-20261129"
 REQUIRED = frozenset({
     "Backend Tests",
     "Frontend and Deployment Checks",
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Machine-readable result")
     parser.add_argument(
         "--release-branch", default=RELEASE_BRANCH,
-        help="Exact GitHub release-candidate branch to verify (default: core release without Study Abroad)",
+        help="Exact GitHub release-candidate branch to verify (default: full-scope candidate with Study Abroad included)",
     )
     args = parser.parse_args(argv)
     try:
