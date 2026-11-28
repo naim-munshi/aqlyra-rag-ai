@@ -56,6 +56,7 @@ def create_access_token(
         "sub": subject,
         "ver": token_version,
         "type": "access",
+        "jti": token_urlsafe(24),
         "iat": now,
         "exp": expires_at,
     }
