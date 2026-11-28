@@ -219,6 +219,20 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("No verified active release ruleset" in x for x in errors))
 
+    def test_release_wildcard_ruleset_covers_candidate(self):
+        self.rulesets[1]["conditions"]["ref_name"]["include"] = [
+            "refs/heads/release/**"
+        ]
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertTrue(ok)
+        self.assertEqual(errors, [])
+
+    def test_release_ruleset_requires_independent_approval(self):
+        self.rulesets[1]["rules"][2]["parameters"]["required_approving_review_count"] = 0
+        ok, errors, _ = gate.evaluate(self.main, self.release, self.runs, self.rulesets)
+        self.assertFalse(ok)
+        self.assertTrue(any("No verified active release ruleset" in x for x in errors))
+
     def test_branch_specific_ruleset_does_not_protect_main(self):
         self.rulesets[0]["conditions"]["ref_name"]["include"] = [
             "refs/heads/development"
