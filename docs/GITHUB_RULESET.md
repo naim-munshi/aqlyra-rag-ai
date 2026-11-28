@@ -58,6 +58,52 @@ If there is no independent collaborator who can review the release PR,
 add a trusted reviewer before trying to merge. Do not weaken the policy
 just to obtain a green badge.
 
+## Separate release-branch ruleset (required)
+
+The existing main ruleset does **not** protect release branches. The release
+gate therefore requires a second active ruleset that explicitly covers the
+candidate. It currently checks the exact branch
+`release/study-abroad-included-20261129`; a pattern rule covering
+`refs/heads/release/**` is also accepted.
+
+Create `aqlyra-release-branches-gate` with:
+
+- Enforcement: **Active**.
+- Target: `refs/heads/release/**` (or exact candidate branch).
+- Require pull requests and at least **one independent approving review**.
+- Dismiss stale approvals on new commits; enable last-push approval where
+  available.
+- Require deletion restriction and non-fast-forward protection.
+- Bypass actors: **none**.
+- Require all **13 release job contexts** below.
+
+### Required release job contexts (13)
+
+The release ruleset must require the 11 contexts already used by the main
+ruleset plus two stronger release checks:
+
+1. `Python 3.13 / PostgreSQL 16`
+2. `Frontend lint, typecheck and build`
+3. `Validate staging smoke contracts`
+4. `Validate production Compose configuration`
+5. `Build production Docker images`
+6. `Native ARM64 builds + real local reverse-proxy smoke`
+7. `npm security audit`
+8. `Python security audit`
+9. `Check Markdown links and code fences`
+10. `Always-on Merge Gate`
+11. `High-severity Python SAST`
+12. `Python 3.13 / PostgreSQL 18`
+13. `Frontend CSRF, XSS and proxy security regression`
+
+The frontend, ARM64 predeploy, documentation and Always-on Merge Gate
+workflows have been updated to run for `release/**` pushes and pull requests.
+Backend, dependency-audit and static-security workflows already cover
+`release/**`. The regression test
+`scripts/ops/test_release_security_workflow_coverage.py` guards this
+coverage. Do not add a context as required until that job has completed
+successfully on the candidate branch.
+
 ## Verify enforcement without changing production
 
 1. Reopen the ruleset; ensure it says **Active** and targets `main`, with
