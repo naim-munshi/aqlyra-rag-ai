@@ -1,55 +1,44 @@
-# Aqlyra core release scope — Study Abroad deferred (2026-10-27)
+# Aqlyra unified release scope — Study Abroad included (2026-11-29)
 
-## Source control and scope
+## Source control and product scope
 
-- **Core candidate:** `release/core-without-study-abroad-20261027`,
-  created as a clean branch from the protected `main` release base.
-- **Source of integration:** the verified code snapshot of Draft PR #35,
-  commit `6458786dc1c79b549ebc0800f936fbc127d8e2f7`.
-- **Excluded**: all Study Abroad API, models, business logic, schemas,
-  migration `d4ec2f9b7860`, tests, Next.js route and UI.
-  The authenticated /study-abroad page and /api/v1/study-abroad APIs must
-  respond 404 rather than being displayed or operating unexpectedly.
-- **Included**: existing RAG document ingestion, indexing, embeddings,
-  pgvector schema and hybrid retrieval; auth and revocation fixes; AI Files;
-  Web Research; the Browser Agent in disabled/fail-closed production mode;
-  all security and release-gate fixes.
-- **No deletion or alteration of current production user data**, migrations,
-  uploads, document schemas, embeddings or credentials.
-- The original 2026-10-27 README was frozen for the initial candidate; it was later superseded by a 2026-10-31 production-beta README with explicitly bounded live verification. See [Production Status](PRODUCTION_STATUS_2026-10-31.md).
+- **Unified release candidate:** `release/study-abroad-included-20261129`.
+- **Base source line:** `release/core-without-study-abroad-20261027`, after the bounded Knowledge Agent production-line port (PR #236), canary user allowlist (PR #237), and readiness support (PR #235).
+- **Study Abroad is INCLUDED** in this release candidate: API routers, models, schemas, services, migration `d4ec2f9b7860`, tests, authenticated Next.js route, and workspace UI.
+- The legacy branch name `release/core-without-study-abroad-20261027` is historical. Its name and older documents do not override this product-scope decision.
+- **Also included:** Converse, Knowledge ingestion/indexing, semantic and lexical retrieval, RRF fusion, Auth/session controls, AI Files, Web Research, Agent Harness (disabled by default), and the Browser Agent in disabled/fail-closed mode.
+- Study Abroad is an evidence-assistance workflow, not a guarantee of admission, visa approval, legal eligibility, or current programme availability. Every recommendation must retain source provenance, freshness, user ownership, and explicit uncertainty.
+- No deletion or alteration of current production user data, credentials, uploads, document schemas, embeddings, or migration history is authorized by this scope change.
 
-Study Abroad is preserved on its feature/integration branches for a later
-separate review. Do not copy a mixed Study Abroad database migration into
-this release or attempt to run `alembic downgrade` against real user data
-to exclude that feature. If a *staging* database already applied the
-deferred revision, use a fresh disposable staging database rather than
-a destructive downgrade. Never delete live data to adjust scope.
+## Required integration invariants
 
-## Merge controls
+1. The backend router must register Study Abroad endpoints and all associated models must be included in SQLAlchemy/Alembic metadata.
+2. The migration chain must contain `d4ec2f9b7860` and be rehearsed on a restored disposable database before any production migration.
+3. The authenticated frontend route and workspace must call the same backend API contract that is tested in staging.
+4. Study Abroad cases, requirements, evidence, uploads, and generated briefs must be owner-scoped. Two independent accounts must not read, mutate, or infer each other's records.
+5. Program research must preserve source URLs, retrieval time, evidence excerpts, and unsupported-claim abstention. No visa/admission outcome may be represented as guaranteed.
+6. Readiness must verify all required Study Abroad schema objects when the feature is part of the release.
+7. CI and staging gates must validate this exact candidate SHA; a green check on another branch or old SHA is not acceptance.
 
-A user authorized merging the **core except Study Abroad**. Actual merge
-must still satisfy the active GitHub `main` Ruleset: independent review,
-the required 11 CI job checks on the exact head, no stale approvals, and
-the release acceptance requirements in `docs/RELEASE_ACCEPTANCE.md`.
-Do not bypass this Ruleset; do not merge the old mixed Draft PR #33/#35
-by accident. Production deployment is separately gated.
+## Release safety
 
-## Phase sequence
+- Do not merge the candidate into protected `main` or deploy it solely because this branch exists or automated CI passes.
+- Do not apply migrations to the production database as part of branch alignment.
+- Never run `alembic downgrade` or delete production rows to reconcile release scope.
+- If a disposable staging database has an incompatible migration history, rebuild only that disposable database from a clean/verified fixture.
+- Agent Harness remains default-off. Enable only for explicit canary user IDs after database migration, model pricing, budget, and owner-isolation acceptance.
+- Browser Agent remains disabled until OS/container isolation and network egress controls are independently verified.
 
-1. GitHub main protection verified.
-2. Staging infrastructure: currently incomplete. Existing Railway
-   `Aqlyra-Staging` has uncommitted backend + pgvector service drafts but
-   no confirmed live deployment, private volumes, Redis or frontend.
-   Select a host design and verify disposable, persistent, isolated
-   staging before real acceptance.
-3. Auth/session/privacy real E2E using at least two staging accounts.
-4. LLM-backed semantic RAG grounding, citations and tenant-isolation
-   acceptance.
-5. AI Files exports and Office/PDF multilingual reviews, **excluding**
-   Study Abroad.
-6. Browser/renderer worker isolation (or Browser Agent remains disabled).
-7. Off-host encrypted backup + tested restore, documented RPO/RTO.
-8. Independent release review, gradual deploy, live smoke, alerts
-   and rollback.
+## Acceptance sequence
 
-See `docs/GITHUB_RULESET.md` and Issue #34 for remaining evidence.
+1. Verify GitHub protections, exact-head required checks, and independent review policy.
+2. Build isolated staging with API, frontend, PostgreSQL/pgvector, Redis, and private persistent storage.
+3. Rehearse all migrations, including Study Abroad and Agent Harness, on a restored disposable database.
+4. Run two-account Auth, conversation, document, artifact, and Study Abroad privacy E2E.
+5. Run provider-backed multilingual RAG, source-grounded Study Abroad research, citations, and unsupported-question tests.
+6. Accept AI Files exports, Office/PDF rendering, and cloud storage lifecycle.
+7. Keep Browser Agent disabled unless sandbox and egress acceptance passes; verify Voice only with an active LiveKit worker and a real audio session.
+8. Verify off-host encrypted database/object backup and a separate restore rehearsal with RPO/RTO.
+9. Obtain independent release review and explicit owner approval before controlled production rollout.
+
+See [release acceptance](RELEASE_ACCEPTANCE.md), [GitHub ruleset setup](GITHUB_RULESET.md), and [the Railway staging validator](../scripts/ops/railway_staging_gate.py).
