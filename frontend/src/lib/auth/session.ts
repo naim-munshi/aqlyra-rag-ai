@@ -174,9 +174,10 @@ export async function getAccessToken(
   if (typeof rotatedRefreshToken === "string") {
     await setRefreshToken(rotatedRefreshToken);
   }
-  // During a staggered rollout an older API may not rotate refresh tickets.
-  // In that case retain the existing HttpOnly refresh cookie until backend
-  // rotation is deployed; the new API always returns the successor.
+  // The current API uses a fixed-expiry, non-rotating refresh ticket.
+  // Retain the existing HttpOnly cookie until its original expiry; logout and
+  // password reset revoke it by incrementing auth_epoch. If a future API
+  // rotates tickets, persist the successor returned above.
   return renewed;
 }
 
