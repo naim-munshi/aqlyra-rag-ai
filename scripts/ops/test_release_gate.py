@@ -121,10 +121,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("Required CI not green" in x for x in errors))
 
-    def test_release_gate_defaults_to_scoped_core_branch(self):
+    def test_release_gate_defaults_to_study_abroad_included_candidate(self):
         self.assertEqual(
             gate.RELEASE_BRANCH,
-            "release/core-without-study-abroad-20261027",
+            "release/study-abroad-included-20261129",
         )
 
     def test_cli_respects_candidate_branch_and_uses_exact_sha(self):
