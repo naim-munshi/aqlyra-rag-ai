@@ -23,7 +23,13 @@ REQUIRED_BACKEND_VARIABLE_NAMES = {
     "SMTP_HOST", "SMTP_USERNAME", "SMTP_FROM_EMAIL",
     "GROQ_API_KEY", "HF_TOKEN", "BROWSER_AGENT_ENABLED",
     "CORS_ORIGINS", "RATE_LIMIT_ENABLED", "RAG_GROUNDING_VERIFIER_ENABLED",
+    "WEB_RESEARCH_ENABLED", "WEB_SEARCH_PROVIDER",
 }
+# Study Abroad live research requires Tavily or the authenticated private SearXNG gateway.
+SEARCH_PROVIDER_ALTERNATIVES = (
+    {"TAVILY_API_KEY"},
+    {"SEARXNG_BASE_URL", "SEARXNG_SERVICE_TOKEN"},
+)
 REQUIRED_FRONTEND_VARIABLE_NAMES = {"BACKEND_API_URL", "NEXT_PUBLIC_GOOGLE_CLIENT_ID"}
 
 
@@ -115,6 +121,13 @@ def assess(snapshot: dict, commit: str) -> list[str]:
         missing = required_vars - actual
         if missing:
             errors.append(name + " missing variable names: " + ", ".join(sorted(missing)))
+    backend_names = set((by_name.get("aqlyra-backend") or {}).get("variableNames") or [])
+    if not any(option.issubset(backend_names) for option in SEARCH_PROVIDER_ALTERNATIVES):
+        errors.append(
+            "aqlyra-backend needs TAVILY_API_KEY or both SEARXNG_BASE_URL and "
+            "SEARXNG_SERVICE_TOKEN for Study Abroad source research"
+        )
+
     # Study Abroad is an application feature in the same backend/frontend deployment,
     # not a separate Railway service. Its API, migration, evidence, and privacy
     # workflows are verified by the dedicated staging E2E acceptance suite.
