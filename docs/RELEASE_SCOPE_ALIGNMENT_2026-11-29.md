@@ -25,15 +25,15 @@ The existing branch name `release/core-without-study-abroad-20261027` is legacy 
 
 Fresh GitHub comparisons:
 
-- `main` → `release/study-abroad-included-20261129`: **diverged**, candidate is 558 commits ahead and 8 behind; merge base `6bd16d5f42bbb75989d7590ac7b33f7ae4e2f884`.
-- `release/core-without-study-abroad-20261027` → `release/study-abroad-included-20261129`: candidate is 39 commits ahead and 0 behind. PR #238 targets this legacy release branch.
+- `main` → `release/study-abroad-included-20261129`: **diverged**, candidate is 561 commits ahead and 8 behind; merge base `6bd16d5f42bbb75989d7590ac7b33f7ae4e2f884`.
+- `release/core-without-study-abroad-20261027` → `release/study-abroad-included-20261129`: candidate is 42 commits ahead and 0 behind. PR #238 targets this legacy release branch.
 - `main` → `release/unified-core-frontend-rag-20261031`: also diverged, 307 commits ahead and 8 behind.
 
 Therefore:
 - Do not merge the 558-commit candidate wholesale into `main`, reset/force-push either branch, or rebase it over main without an explicit integration plan and full review.
 - Keep the candidate as a separately reviewed full-stack release line for staging. Vercel production is still on `main`; the Render backend is not freshly verified. A unified deployment requires exact frontend/backend SHA alignment and explicit owner approval before changing deployment source or aliases.
 - PR #238 is a **Draft** and does not merge or deploy automatically.
-- Other open PRs remain separate workstreams: #36 (large core release PR), #58 (unified frontend/RAG release line), #213 (artifact storage + release protection work), #207 (staged tenant RLS), #216 (upload/worker ingress guards), #231 (auth/session compatibility), #232 (worker diagnostics), and #221 (RLS/storage rollout docs). None of those open PRs is treated as merged or production-accepted by this alignment.
+- Other open PRs remain separate workstreams: #36 (large core release PR), #58 (unified frontend/RAG release line), #213 (artifact storage + release protection work), #207 (staged tenant RLS), #231 (auth/session compatibility), and #221 (RLS/storage rollout docs). PR #216 (upload/worker ingress guards) and PR #232 (worker diagnostics) are merged into this candidate; neither merge constitutes production deployment or production acceptance.
 
 ## Remaining blockers not safely changeable from this code PR
 
